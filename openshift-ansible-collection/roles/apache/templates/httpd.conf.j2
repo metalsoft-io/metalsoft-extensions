@@ -1,0 +1,28 @@
+# Apache HTTP Server configuration file
+
+ServerRoot "/etc/httpd"
+Listen 0.0.0.0:8080
+
+Include conf.modules.d/*.conf
+
+User apache
+Group apache
+
+ServerAdmin root@localhost
+DocumentRoot "/var/www/html"
+<Directory "/var/www/html">
+    AllowOverride None
+    Require all granted
+</Directory>
+
+ErrorLog "logs/error_log"
+CustomLog "logs/access_log" common
+
+<IfModule dir_module>
+    DirectoryIndex index.html
+</IfModule>
+
+# Disable directory listing
+<Directory "/var/www/html">
+    Options -Indexes
+</Directory>

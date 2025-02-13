@@ -1,0 +1,105 @@
+# Install Apache Web Server
+- name: Install Apache Web Server packages
+  dnf:
+    name: 
+      - httpd
+      - mailcap
+    state: present
+
+# Ensure /var/www/html/ocp4/ directory exists
+- name: Ensure /var/www/html directory exists
+  file:
+    path: /var/www/html/ocp4/
+    state: directory
+    owner: apache
+    group: apache
+    mode: '0770'
+
+- name: Ensure index.html exists with basic content
+  copy:
+    dest: /var/www/html/ocp4/index.html
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Welcome to Apache</title>
+      </head>
+      <body>
+        <h1>Welcome to Apache</h1>
+        <p>If you see this page, the Apache web server is successfully configured!</p>
+      </body>
+      </html>
+    owner: apache
+    group: apache
+    mode: '0644'
+
+
+# Ensure mime.types exists for Apache
+- name: Ensure mime.types exists for Apache
+  file:
+    src: /etc/mime.types
+    dest: /etc/httpd/conf/mime.types
+    state: link
+    owner: root
+    group: root
+    mode: '0644'
+    force: yes
+
+# Configure httpd.conf
+- name: Configure httpd.conf using the template
+  template:
+    src: httpd.conf.j2
+    dest: /etc/httpd/conf/httpd.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+# Restore SELinux context for Apache configuration
+- name: Restore SELinux context for Apache configuration
+  command: restorecon -v /etc/httpd/conf/httpd.conf
+
+# Restore SELinux context for mime.types link
+- name: Restore SELinux context for mime.types link
+  command: restorecon -v /etc/httpd/conf/mime.types
+
+# Enable and start Apache service
+- name: Enable Apache service
+  service:
+    name: httpd
+    enabled: yes
+
+- name: Start Apache service
+  service:
+    name: httpd
+    state: started
+
+# Validate Apache configuration syntax
+- name: Validate Apache configuration syntax
+  shell: httpd -t
+  register: apache_syntax_check
+  failed_when: apache_syntax_check.rc != 0
+  changed_when: false
+
+# Verify Apache is running
+- name: Verify Apache service is active
+  shell: systemctl is-active httpd
+  register: apache_status
+  failed_when: apache_status.stdout.strip() != "active"
+  changed_when: false
+
+- name: Restart Apache service to apply new configuration
+  service:
+    name: httpd
+    state: restarted
+
+# Validate HTTP response
+- name: Test Apache HTTP response
+  shell: curl -s http://127.0.0.1:8080
+  register: apache_test
+  changed_when: false
+
+- name: Debug Apache HTTP response
+  debug:
+    msg: "Apache HTTP response: {{ apache_test.stdout }}"
+
+

@@ -1,0 +1,140 @@
+# Install BIND DNS
+- name: Install BIND DNS
+  dnf:
+    name:
+      - bind
+      - bind-utils
+    state: present
+
+# Ensure necessary directories exist
+- name: Ensure /var/named directory exists
+  file:
+    path: /var/named
+    state: directory
+    owner: root
+    group: named
+    mode: '0770'
+
+- name: Ensure logging directory exists
+  file:
+    path: /var/named/data
+    state: directory
+    owner: root
+    group: named
+    mode: '0770'
+
+# Set SELinux contexts for named.conf and zones (BEFORE copying files)
+- name: Ensure SELinux context for /etc/named/conf
+  command: semanage fcontext -a -t named_conf_t "/etc/named.conf"
+  ignore_errors: true
+  changed_when: false
+
+- name: Ensure SELinux context for /var/named
+  command: semanage fcontext -a -t named_zone_t "/var/named(/.*)?"
+  ignore_errors: true
+  changed_when: false
+
+- name: Ensure SELinux context for /etc/named/zones
+  command: semanage fcontext -a -t named_zone_t "/etc/named(/.*)?"
+  ignore_errors: true
+  changed_when: false
+
+# Configure named.conf using the template
+- name: Configure named.conf using the template
+  template:
+    src: dns.conf.j2
+    dest: /etc/named.conf
+    owner: root
+    group: named
+    mode: '0644'
+
+# Create forward zone file for ocp.lan zone
+- name: Configure forward zone file for ocp.lan zone
+  template:
+    src: db.ocp.lan.j2
+    dest: "/etc/named/zones/db.{{ base_domain }}"
+    owner: root
+    group: named
+    mode: '0644'
+
+# Create reverse zone file
+- name: Configure reverse zone file
+  template:
+    src: db.reverse.j2
+    dest: "/etc/named/zones/db.reverse"
+    owner: root
+    group: named
+    mode: '0644'
+
+# Restore SELinux contexts after copying files
+- name: Restore SELinux context for /etc/named.conf
+  command: restorecon -v /etc/named.conf
+
+- name: Restore SELinux contexts for /var/named and /etc/named/zones
+  command: restorecon -R /var/named /etc/named/zones
+
+# Validate configuration syntax
+- name: Validate named.conf syntax
+  command: named-checkconf /etc/named.conf
+  register: named_conf_check
+  failed_when: named_conf_check.rc != 0
+  changed_when: false
+
+- name: Validate forward zone file syntax
+  command: named-checkzone "{{ base_domain }}" "/etc/named/zones/db.{{ base_domain }}"
+  register: forward_zone_check
+  failed_when: forward_zone_check.rc != 0
+  changed_when: false
+
+# Restart (or Reload) the named service so the new zones take effect
+- name: Restart named service
+  service:
+    name: named
+    state: restarted
+
+# Configure the primary network interface to use the local DNS server (parameterized)
+- name: Set default interface DNS to 127.0.0.1 and ignore auto DNS
+  command: >
+    nmcli con modify {{ ansible_default_ipv4.interface }}
+    ipv4.dns "127.0.0.1"
+    ipv4.ignore-auto-dns yes
+  become: yes
+
+# Restart NetworkManager to apply the new configuration
+- name: Restart NetworkManager to apply new DNS settings
+  service:
+    name: NetworkManager
+    state: restarted
+  become: yes
+
+# Verify DNS resolution using the local server
+- name: Test forward DNS resolution
+  shell: dig @127.0.0.1 api.lab.{{ base_domain }} +short
+  register: forward_dns_test
+  changed_when: false
+
+- name: Debug forward DNS resolution result
+  debug:
+    msg: "Forward DNS resolution for api.lab.{{ base_domain }}: {{ forward_dns_test.stdout.strip() }}"
+
+- name: Test reverse DNS resolution
+  shell: dig -x {{ ansible_default_ipv4.address }} @127.0.0.1 +short
+  register: reverse_dns_test
+  changed_when: false
+
+- name: Debug reverse DNS resolution result
+  debug:
+    msg: "Reverse DNS resolution for {{ ansible_default_ipv4.address }}: {{ reverse_dns_test.stdout.strip() }}"
+
+# Additional reverse zone syntax validation if desired
+- name: Validate reverse zone syntax (alternative format)
+  command: named-checkzone "{{ '.'.join(ansible_default_ipv4.network.split('.')[:3][::-1]) }}.in-addr.arpa" /etc/named/zones/db.reverse
+  register: reverse_zone_validation
+  failed_when: reverse_zone_validation.rc != 0
+  changed_when: false
+
+# Debug DNS variables
+- name: Debug DNS variables
+  debug:
+    msg:
+      - "base_domain: {{ base_domain }}"

@@ -1,0 +1,91 @@
+# Global settings
+global
+    log         /var/run/rsyslog/dev-log local0 info
+    log         /var/run/rsyslog/dev-log local1 notice
+    maxconn     20000
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    user        haproxy
+    group       haproxy
+    daemon
+    stats socket /var/lib/haproxy/stats level admin
+
+# Common defaults
+defaults
+    log                     global
+    mode                    tcp
+    option                  dontlognull
+    option                  redispatch
+    retries                 3
+    timeout connect         40000ms
+    timeout client          300000ms
+    timeout server          300000ms
+
+# Stats endpoint
+listen stats
+    bind :9000
+    mode http
+    log global
+    stats enable
+    stats uri /stats
+    stats refresh 10000ms
+
+# Kube API Server
+frontend k8s_api_frontend
+    bind :6443
+    default_backend k8s_api_backend
+    mode tcp
+    log global
+
+backend k8s_api_backend
+    mode tcp
+    log global
+    balance source
+    {% for i in range(3) %}
+    server master-{{ i }} {{ ansible_default_ipv4.address }}:6443 check
+    {% endfor %}
+
+# OCP Machine Config Server
+frontend ocp_machine_config_server_frontend
+    mode tcp
+    bind :22623
+    default_backend ocp_machine_config_server_backend
+    log global
+
+backend ocp_machine_config_server_backend
+    mode tcp
+    log global
+    balance source
+    {% for i in range(3) %}
+    server master-{{ i }} {{ ansible_default_ipv4.address }}:22623 check
+    {% endfor %}
+
+# OCP HTTP Ingress
+frontend ocp_http_ingress_frontend
+    bind :80
+    default_backend ocp_http_ingress_backend
+    mode tcp
+    log global
+
+backend ocp_http_ingress_backend
+    mode tcp
+    log global
+    balance source
+    {% for i in range(2) %}
+    server worker-{{ i }} {{ ansible_default_ipv4.address }}:80 check
+    {% endfor %}
+
+# OCP HTTPS Ingress
+frontend ocp_https_ingress_frontend
+    bind :443
+    default_backend ocp_https_ingress_backend
+    mode tcp
+    log global
+
+backend ocp_https_ingress_backend
+    mode tcp
+    log global
+    balance source
+    {% for i in range(2) %}
+    server worker-{{ i }} {{ ansible_default_ipv4.address }}:443 check
+    {% endfor %}

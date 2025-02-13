@@ -1,0 +1,202 @@
+---
+# Generate SSH Key Pair
+- name: Ensure SSH key pair exists
+  command: ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+  args:
+    creates: ~/.ssh/id_rsa
+
+- name: Read SSH public key without encoding
+  command: cat /root/.ssh/id_rsa.pub
+  register: ssh_public_key
+  changed_when: false
+
+- name: Set SSH key fact
+  set_fact:
+    ssh_key: "{{ ssh_public_key.stdout_lines[0] | trim }}"
+
+# Gather Network Information
+- name: Gather network facts
+  setup:
+  tags: always
+
+- name: Debug network details (Optional)
+  debug:
+    msg:
+      - "Detected IP: {{ ansible_default_ipv4.address }}"
+      - "Network CIDR: {{ ansible_default_ipv4.network }}"
+
+# Extract Default Network Interface
+- name: Gather default network interface
+  command: ip route show default
+  register: default_route
+  changed_when: false
+
+- name: Extract network interface name
+  set_fact:
+    default_interface: "{{ (default_route.stdout | regex_search('dev\\s(\\S+)', '\\1')) | first | default('') }}"
+
+- name: Debug extracted network interface
+  debug:
+    msg: "Extracted network interface: {{ default_interface }}"
+
+- name: Validate extracted network interface
+  shell: ip link show {{ default_interface }}
+  register: interface_validation
+  changed_when: false
+  failed_when: "'state UP' not in interface_validation.stdout"
+
+# Ensure OpenShift install directory exists
+- name: Ensure OpenShift install directory exists
+  file:
+    path: /root/ocp-install
+    state: directory
+    mode: '0770'
+
+# Extract Default Network Interface CIDR
+- name: Get default interface CIDR
+  shell: ip -o -f inet addr show {{ default_interface }} | awk '{print $4}'
+  register: default_cidr
+  changed_when: false
+
+- name: Validate extracted CIDR
+  fail:
+    msg: "Error: Invalid CIDR format detected."
+  when: default_cidr.stdout is not match("^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$")
+
+# --- Dynamic Network Calculation ---
+
+# Split the host IP (e.g. "192.168.64.11") into octets.
+- name: Split host IP into octets
+  set_fact:
+    host_ip_octets: "{{ ansible_default_ipv4.address.split('.') }}"
+
+# Calculate the service network base using the first two octets.
+- name: Calculate service network base (dynamic)
+  set_fact:
+    service_network_base: "{{ host_ip_octets[0] }}.{{ host_ip_octets[1] }}.0.0"
+
+# Calculate a cluster network base by aligning the second octet to the next multiple of 4.
+- name: Calculate cluster network second octet (aligned to /14 boundary)
+  set_fact:
+    cluster_second_octet: "{{ (((host_ip_octets[1]|int) // 4) + 1) * 4 }}"
+
+- name: Calculate cluster network base (dynamic)
+  set_fact:
+    cluster_network_base: "{{ host_ip_octets[0] }}.{{ cluster_second_octet }}.0.0"
+
+# Set the dynamic network ranges:
+# - Service Network: the service_network_base with a /16 mask.
+# - Cluster Network: the cluster_network_base with a /14 mask.
+- name: Set valid cluster and service network ranges dynamically
+  set_fact:
+    service_network_cidr: "{{ service_network_base }}/16"
+    cluster_network_cidr: "{{ cluster_network_base }}/14"
+
+# (Optional) Validate that the calculated CIDRs do not overlap.
+- name: Validate calculated CIDRs (optional)
+  fail:
+    msg: "Error: Cluster and Service networks overlap or are invalid."
+  when: 
+    - cluster_network_cidr == service_network_cidr
+    - cluster_network_cidr is not defined or service_network_cidr is not defined
+
+# Debug the dynamic network values.
+- name: Debug extracted network values
+  debug:
+    msg:
+      - "Service Network CIDR: {{ service_network_cidr }}"
+      - "Cluster Network CIDR: {{ cluster_network_cidr }}"
+
+# Ensure OpenShift install directory exists (again)
+- name: Ensure OpenShift install directory exists (again)
+  file:
+    path: /root/ocp-install
+    state: directory
+    mode: '0770'
+
+# Generate OpenShift Install Config using Jinja2 template
+- name: Deploy install-config.yaml
+  template:
+    src: install-config.yaml.j2
+    dest: ~/ocp-install/install-config.yaml
+    mode: '0644'
+
+# Validate install-config.yaml before proceeding
+- name: Validate install-config.yaml before proceeding
+  command: cat /root/ocp-install/install-config.yaml
+  register: install_config_content
+  changed_when: false
+
+- name: Debug install-config.yaml content
+  debug:
+    var: install_config_content.stdout_lines
+
+# Ensure OpenShift Install Binary is Available
+- name: Check if openshift-install is available
+  stat:
+    path: /usr/local/bin/openshift-install
+  register: openshift_binary
+
+# Generate OpenShift Kubernetes manifest files
+- name: Generate Kubernetes manifest files
+  command: /usr/local/bin/openshift-install create manifests --dir /root/ocp-install
+  args:
+    chdir: /root/ocp-install
+
+# Generate Ignition config and Kubernetes auth files
+- name: Generate Ignition config and Kubernetes auth files
+  command: /usr/local/bin/openshift-install create ignition-configs --dir /root/ocp-install
+  args:
+    chdir: /root/ocp-install
+
+# Ensure Web Server Directory Exists
+- name: Create OpenShift web hosting directory
+  file:
+    path: /var/www/html/ocp4
+    state: directory
+    mode: '0770'
+
+# Copy Generated Install Files to Web Server Directory
+- name: Copy OpenShift install files to web server directory
+  copy:
+    src: /root/ocp-install/
+    dest: /var/www/html/ocp4
+    remote_src: yes
+    mode: '0770'
+
+- name: Check if CoreOS image exists
+  stat:
+    path: /opt/openshift/rhcos-4.17.0-x86_64-metal.x86_64.raw.gz
+  register: coreos_image
+
+- name: Move CoreOS Image to Web Server Directory
+  command: mv /opt/openshift/rhcos-4.17.0-x86_64-metal.x86_64.raw.gz /var/www/html/ocp4/rhcos
+  when: coreos_image.stat.exists
+
+# Configure SELinux, Ownership, and Permissions for Apache
+- name: Set SELinux context for OpenShift web files
+  command: chcon -R -t httpd_sys_content_t /var/www/html/ocp4/
+
+- name: Change ownership of OpenShift web files to Apache
+  file:
+    path: /var/www/html/ocp4/
+    owner: apache
+    group: apache
+    recurse: yes
+    mode: '0770'
+
+- name: Set correct permissions for OpenShift web files
+  file:
+    path: /var/www/html/ocp4/
+    mode: '0770'
+    recurse: yes
+
+# Validate OpenShift
+- name: Validate that OpenShift web server is accessible
+  command: curl -I localhost:8080/ocp4/
+  register: curl_result
+  changed_when: false
+
+- name: Debug Web Hosting Validation
+  debug:
+    msg: "Apache Web Server Response: {{ curl_result.stdout_lines }}"

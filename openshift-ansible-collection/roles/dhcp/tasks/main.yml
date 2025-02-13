@@ -1,0 +1,61 @@
+# Install the DHCP server package
+- name: Install DHCP server
+  dnf:
+    name: 
+      - dhcp-server
+      - dhclient
+    state: present
+
+# Ensure /etc/dhcp directory exists
+- name: Ensure /etc/dhcp directory exists
+  file:
+    path: /etc/dhcp
+    state: directory
+    owner: root
+    group: root
+    mode: '0770'
+
+# Configure dhcpd.conf using a template
+- name: Configure dhcpd.conf
+  template:
+    src: dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+# Restore SELinux context for dhcpd.conf
+- name: Restore SELinux context for dhcpd.conf
+  command: restorecon -v /etc/dhcp/dhcpd.conf
+
+# Enable DHCP service
+- name: Enable DHCP service
+  service:
+    name: dhcpd
+    enabled: yes
+
+# Start DHCP service
+- name: Start DHCP service
+  service:
+    name: dhcpd
+    state: started
+
+# Validate the DHCP configuration
+- name: Validate dhcpd.conf syntax
+  shell: dhcpd -t -cf /etc/dhcp/dhcpd.conf
+  register: dhcpd_check
+  failed_when: dhcpd_check.rc != 0
+  changed_when: false
+
+# Verify DHCP service is running
+- name: Check if dhcpd is running
+  shell: systemctl is-active dhcpd
+  register: dhcpd_status
+  failed_when: dhcpd_status.stdout.strip() != "active"
+  changed_when: false
+
+# Restart DHCP service to ensure new config is applied
+- name: Restart DHCP service to apply new configuration
+  service:
+    name: dhcpd
+    state: restarted

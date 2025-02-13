@@ -1,0 +1,159 @@
+---
+# Install HAProxy
+- name: Install HAProxy package
+  dnf:
+    name: haproxy
+    state: present
+
+- name: Ensure /etc/selinux/custom directory exists
+  file:
+    path: /etc/selinux/custom
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+
+# Ensure rsyslog is installed and running
+- name: Ensure rsyslog is installed and running
+  block:
+    - name: Install rsyslog
+      dnf:
+        name: rsyslog
+        state: present
+
+    - name: Configure rsyslog for HAProxy
+      blockinfile:
+        path: /etc/rsyslog.conf
+        insertafter: '^#### MODULES ####'
+        block: |
+          module(load="imuxsock" SysSock.Name="/var/run/rsyslog/dev-log")
+          module(load="imjournal" StateFile="imjournal.state" FileCreateMode="0644")
+          include(file="/etc/rsyslog.d/*.conf" mode="optional")
+      notify: Restart rsyslog
+
+    - name: Enable and start rsyslog service
+      service:
+        name: rsyslog
+        state: started
+        enabled: yes
+
+# Ensure logging directory exists
+- name: Ensure logging directory exists
+  file:
+    path: /var/log/haproxy
+    state: directory
+    owner: haproxy
+    group: haproxy
+    mode: '0777'
+
+# Ensure HAProxy log files exist
+- name: Ensure haproxy.log exists
+  file:
+    path: /var/log/haproxy/haproxy.log
+    state: touch
+    owner: haproxy
+    group: haproxy
+    mode: '0644'
+
+- name: Ensure haproxy-errors.log exists
+  file:
+    path: /var/log/haproxy/haproxy-errors.log
+    state: touch
+    owner: haproxy
+    group: haproxy
+    mode: '0644'
+
+# Add HAProxy logging configuration to rsyslog
+- name: Add HAProxy logging configuration to rsyslog
+  copy:
+    dest: /etc/rsyslog.d/haproxy.conf
+    content: |
+      local0.*    /var/log/haproxy/haproxy.log
+      local1.*    /var/log/haproxy/haproxy-errors.log
+  notify:
+    - Restart rsyslog
+
+# Ensure HAProxy chroot environment is configured
+- name: Ensure HAProxy chroot directory exists
+  file:
+    path: /var/lib/haproxy/dev
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+
+# Check if custom socket exists
+- name: Check if custom socket exists
+  stat:
+    path: /var/run/rsyslog/dev-log
+  register: custom_socket_status
+
+# Bind mount rsyslog socket into HAProxy chroot
+- name: Bind mount rsyslog socket into HAProxy chroot
+  command: mount --bind /var/run/rsyslog/dev-log /var/lib/haproxy/dev/log
+  args:
+    creates: /var/lib/haproxy/dev/log
+  when: custom_socket_status.stat.exists
+
+- name: Add bind mount to fstab for persistence
+  lineinfile:
+    path: /etc/fstab
+    line: "/var/run/rsyslog/dev-log /var/lib/haproxy/dev/log none bind 0 0"
+    state: present
+
+# Ensure /dev/log points to systemd's journal socket if necessary
+- name: Verify and fix /dev/log symlink (conditionally)
+  file:
+    path: /dev/log
+    src: /run/systemd/journal/dev-log
+    state: link
+    force: yes
+  when: not custom_socket_status.stat.exists
+
+# Ensure /etc/haproxy directory exists
+- name: Ensure /etc/haproxy directory exists
+  file:
+    path: /etc/haproxy
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+
+# Configure haproxy.cfg using the template
+- name: Configure haproxy.cfg
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Restart HAProxy
+
+# Validate HAProxy configuration
+- name: Validate HAProxy configuration syntax
+  shell: haproxy -c -f /etc/haproxy/haproxy.cfg
+  register: haproxy_check
+  failed_when: haproxy_check.rc != 0
+  changed_when: false
+
+# Debug HAProxy log creation
+- name: Check HAProxy log file content
+  shell: tail -n 10 /var/log/haproxy/haproxy.log
+  register: haproxy_log_output
+  changed_when: false
+
+- name: Debug HAProxy log output
+  debug:
+    msg: "HAProxy log content: {{ haproxy_log_output.stdout }}"
+
+# Verify HAProxy is active and running
+- name: Verify HAProxy service status
+  shell: systemctl is-active haproxy
+  register: haproxy_status_check
+  changed_when: false
+  failed_when: haproxy_status_check.stdout.strip() != "active"
+
+- name: Debug HAProxy service status
+  debug:
+    msg: "HAProxy service status: {{ haproxy_status_check.stdout.strip() }}"

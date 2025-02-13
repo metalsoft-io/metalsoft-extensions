@@ -1,0 +1,32 @@
+authoritative;
+ddns-update-style none;
+allow booting;
+allow bootp;
+allow unknown-clients;
+ignore client-updates;
+default-lease-time 14400;
+max-lease-time 14400;
+
+# Subnet declaration for the network
+subnet {{ ansible_default_ipv4.network }} netmask {{ ansible_default_ipv4.netmask }} {
+  option routers {{ ansible_default_ipv4.address }};  # Use the server's IP as the gateway
+  option subnet-mask {{ ansible_default_ipv4.netmask }};
+  option domain-name "{{ base_domain }}";  # Advertise the domain, e.g., "ocp.lan"
+  option domain-name-servers {{ ansible_default_ipv4.address }};  # Use the server for DNS
+  range {{ ansible_default_ipv4.network.split('.')[0:3] | join('.') }}.100 {{ ansible_default_ipv4.network.split('.')[0:3] | join('.') }}.150;
+}
+
+# Static Host Assignments
+{% for host in [
+  {'name': 'ocp-bootstrap', 'mac': '00:0c:29:83:df:be', 'ip': '200'},
+  {'name': 'ocp-cp-1', 'mac': '00:0c:29:65:d5:0f', 'ip': '201'},
+  {'name': 'ocp-cp-2', 'mac': '00:0c:29:8e:91:c2', 'ip': '202'},
+  {'name': 'ocp-cp-3', 'mac': '00:0c:29:4e:e6:77', 'ip': '203'},
+  {'name': 'ocp-w-1', 'mac': '00:0c:29:da:35:11', 'ip': '211'},
+  {'name': 'ocp-w-2', 'mac': '00:0c:29:3d:ea:c4', 'ip': '212'}
+] %}
+host {{ host.name }} {
+  hardware ethernet {{ host.mac }};
+  fixed-address {{ ansible_default_ipv4.network.split('.')[0:3] | join('.') }}.{{ host.ip }};
+}
+{% endfor %}

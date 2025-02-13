@@ -1,0 +1,15 @@
+all:
+  hosts:
+    {{ host_name }}:
+
+  children:
+    admin_machine:
+      hosts:
+        {{ host_name }}:
+          ansible_host: "{{ host_ip }}"
+          ansible_port: "{{ host_port }}"
+          ansible_user: "{{ host_user }}"
+          ansible_password: "{{ host_password }}"
+          ansible_python_interpreter: "{{ python_interpreter }}"
+    oc_cluster:
+      hosts:

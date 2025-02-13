@@ -1,0 +1,8 @@
+*.tar.gz
+.ssh_key/*
+.venv/*
+
+.envrc
+
+*.code-workspace
+tmp/

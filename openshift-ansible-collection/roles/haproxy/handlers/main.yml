@@ -1,0 +1,12 @@
+---
+# Handlers for HAProxy role
+
+- name: Restart rsyslog
+  service:
+    name: rsyslog
+    state: restarted
+
+- name: Restart HAProxy
+  service:
+    name: haproxy
+    state: restarted

@@ -1,0 +1,18 @@
+- name: Configure OpenShift Environment
+  hosts: admin_machine
+  become: true
+  vars:
+    base_domain: ocp.lan
+    pull_secret: "{{ auth }}"
+    openshift_version: "4.17.9"
+    rhcos_version: "4.17.0"
+    rhcos_arch: "x86_64"
+
+  roles:
+    - pre-setup
+    - dns
+    - dhcp
+    - apache
+    - haproxy
+    - nfs
+    - post-setup

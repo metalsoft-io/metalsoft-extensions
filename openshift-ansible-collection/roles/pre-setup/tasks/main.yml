@@ -1,0 +1,218 @@
+---
+# =====================================================
+# Section 1: System Preparation and Package Updates
+# =====================================================
+
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: Ensure 'dnf-plugins-core' is installed (for config-manager)
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+
+- name: Enable CRB repository
+  ansible.builtin.command: dnf config-manager --set-enabled crb
+  changed_when: false
+
+- name: Refresh package cache
+  ansible.builtin.command: dnf makecache
+  changed_when: false
+
+- name: Update system packages (optional but recommended)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  ignore_errors: yes
+  register: system_update
+
+- name: Debug system update result
+  ansible.builtin.debug:
+    msg: "{{ 'System updated successfully' if system_update.rc == 0 else 'System update failed, continuing...' }}"
+
+- name: Install system dependencies
+  ansible.builtin.dnf:
+    name:
+      - python3
+      - python3-pip
+      - python3-wheel
+      - python3-setuptools
+      - git
+      - python3-libselinux
+    state: present
+  register: system_packages
+  retries: 3
+  delay: 5
+  ignore_errors: yes
+
+- name: Debug installed system packages
+  ansible.builtin.debug:
+    msg: "{{ 'Required system packages installed successfully' if system_packages.rc == 0 else 'Error installing system packages' }}"
+
+- name: Upgrade pip globally
+  ansible.builtin.command: python3 -m pip install --upgrade pip
+  changed_when: false
+
+- name: Install Ansible via pip
+  ansible.builtin.pip:
+    name: ansible
+    state: present
+    executable: pip3
+
+- name: Install required Python libraries globally
+  ansible.builtin.pip:
+    name:
+      - Jinja2>=3.0
+      - ansible-lint>=6.0
+      - PyYAML>=5.4
+      - netaddr>=0.8
+      - jmespath>=0.10
+      - ansible-navigator>=1.0
+      - ansible-runner>=2.0
+    state: present
+    executable: pip3
+
+- name: Check if Ansible is installed
+  ansible.builtin.command: ansible --version
+  register: ansible_check
+  changed_when: false
+  ignore_errors: yes
+
+- name: Debug Ansible version
+  ansible.builtin.debug:
+    msg: "{{ ansible_check.stdout_lines | default(['Error: Ansible check failed']) }}"
+
+- name: Install Ansible Community Collection globally
+  ansible.builtin.command: ansible-galaxy collection install community.general
+  retries: 3
+  delay: 5
+  register: ansible_collections_install
+  changed_when: false
+  ignore_errors: yes
+
+- name: Debug Ansible collection installation result
+  ansible.builtin.debug:
+    msg: "{{ 'Ansible collections installed successfully' if ansible_collections_install.rc == 0 else 'Error installing Ansible collections' }}"
+
+- name: List installed Ansible collections
+  ansible.builtin.command: ansible-galaxy collection list
+  register: ansible_collections_list
+  changed_when: false
+
+- name: Debug installed Ansible collections
+  ansible.builtin.debug:
+    msg: "{{ ansible_collections_list.stdout_lines | default(['Error: No Ansible collections found']) }}"
+
+# =====================================================
+# Section 2: OpenShift, Helm, and Download Setup
+# =====================================================
+
+- name: Ensure necessary packages for downloading and unarchiving are installed
+  dnf:
+    name:
+      - wget
+      - tar
+      - gzip
+      - curl
+      - git
+      - vim
+      - coreutils
+    state: latest
+
+- name: Ensure the OpenShift download directory exists
+  file:
+    path: "{{ download_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure ~/.vimrc exists with correct settings
+  blockinfile:
+    path: ~/.vimrc
+    create: yes
+    block: |
+      syntax on
+      set nu et ai sts=0 ts=2 sw=2 list hls
+    mode: '0644'
+  tags: vim_setup
+
+- name: Export OC_EDITOR and KUBE_EDITOR to vim
+  lineinfile:
+    path: /etc/profile.d/oc_kube_editor.sh
+    line: "{{ item }}"
+    create: yes
+    mode: '0755'
+  loop:
+    - 'export OC_EDITOR="vim"'
+    - 'export KUBE_EDITOR="vim"'
+
+- name: Define downloads variable
+  set_fact:
+    downloads:
+      - name: OpenShift Client
+        url: "{{ openshift_client_url }}"
+        dest: "{{ download_dir }}/openshift-client-linux.tar.gz"
+        extract_to: /usr/local/bin
+      - name: OpenShift Installer
+        url: "{{ openshift_installer_url }}"
+        dest: "{{ download_dir }}/openshift-install-linux.tar.gz"
+        extract_to: /usr/local/bin
+
+- name: Download archives
+  get_url:
+    url: "{{ item.url }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+  loop: "{{ downloads }}"
+  loop_control:
+    loop_var: item
+
+- name: Unarchive downloads
+  unarchive:
+    src: "{{ item.dest }}"
+    dest: "{{ item.extract_to }}"
+    remote_src: yes
+  loop: "{{ downloads }}"
+  loop_control:
+    loop_var: item
+
+- name: Remove downloaded archives
+  file:
+    path: "{{ item.dest }}"
+    state: absent
+  loop: "{{ downloads }}"
+  loop_control:
+    loop_var: item
+
+- name: Verify OpenShift CLI (oc) installation
+  command: oc version --client
+  register: oc_output
+
+- name: Debug OpenShift CLI (oc) version
+  debug:
+    msg: "OpenShift CLI (oc) installed successfully: {{ oc_output.stdout }}"
+
+- name: Download and install the latest version of Helm
+  block:
+    - name: Fetch and install Helm
+      shell: |
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Verify Helm installation
+      command: helm version
+      register: helm_output
+
+    - name: Debug Helm version
+      debug:
+        msg: "Helm installed successfully: {{ helm_output.stdout }}"
+
+- name: Download RHCOS Metal Image
+  get_url:
+    url: "{{ rhcos_metal_image_url }}"
+    dest: "{{ download_dir }}/rhcos-4.17.0-x86_64-metal.x86_64.raw.gz"
+    mode: '0644'

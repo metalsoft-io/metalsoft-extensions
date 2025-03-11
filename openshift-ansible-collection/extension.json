@@ -1,161 +1,148 @@
 {
-    "name": "OpenShift extension",
-    "label": "openshift-deploy",
-    "description": "Extension description",
+    "name": "OpenShift v9",
+    "label": "openshift-v9",
+    "description": "OpenShift Extension using Fedora CoreOS and same server type for all instances",
     "definition": {
-        "kind": "ExtensionDefinition",
-        "schemaVersion": "1.1",
-        "name": "OpenShift Platform",
-        "label": "openshift",
-        "vendor": "MetalSoft",
-        "extensionVersion": "1.0",
-        "description": "Enables the automatic deployment of openshift clusters. Supported version is from 6.4.",
-        "icon": "none",
-        "extensionType": "openshift-app",
-        "dependencies": {
-            "controllerVersion": "6.4+",
-            "osTemplates": [
-                "centos-9"
-            ]
+      "kind": "ExtensionDefinition",
+      "schemaVersion": "1.1",
+      "name": "OpenShift Platform",
+      "label": "openshift",
+      "extensionType": "openshift-app",
+      "vendor": "MetalSoft",
+      "extensionVersion": "1.0",
+      "description": "Enables the automatic deployment of openshift clusters. Supported version is from 6.4.",
+      "icon": "none",
+      "dependencies": {
+        "controllerVersion": "6.4+",
+        "osTemplates": [
+          "centos-9-ocp",
+          "rhcos-4-17"
+        ]
+      },
+      "inputs": [
+        {
+          "label": "admin_node_type",
+          "name": "Admin/services node type",
+          "inputType": "ExtensionInputServerType",
+          "options": {}
         },
-        "inputs": [
-            {
-                "label": "compute_nodes",
-                "name": "Compute nodes count",
-                "inputType": "ExtensionInputInteger",
-                "options": {
-                    "minValue": 1,
-                    "maxValue": 100,
-                    "deniedValues": [
-                            2,
-                            4
-                    ]
-                }
-            },
-            {
-                "label": "compute_nodes_type",
-                "name": "Compute nodes type",
-                "inputType": "ExtensionInputServerType",
-                "options": {}
-            },
-            {
-                "label": "instance_array_name",
-                "name": "Name of the Incus instance array",
-                "inputType": "ExtensionInputString",
-                "options": {}
-            },
-            {
-                "label": "compute_nodes_os_template",
-                "name": "Compute nodes OS template",
-                "inputType": "ExtensionInputOsTemplate",
-                "options": {
-                    "osFamily": "Linux"
-                }
-            },
-            {
-                "label": "vars_debugging_enabled",
-                "name": "Variables debugging enabled",
-                "inputType": "ExtensionInputBoolean",
-                "options": {}
-            },
-            {
-                "label": "cluster_enabled",
-                "name": "Cluster enabled",
-                "inputType": "ExtensionInputBoolean",
-                "options": {}
-            },
-            {
-                "label": "branch_release",
-                "name": "Name of the release branch",
-                "inputType": "ExtensionInputString",
-                "options": {}
-            },
-            {
-                "label": "ui_installing",
-                "name": "UI installing",
-                "inputType": "ExtensionInputBoolean",
-                "options": {}
-            },
-            {
-                "label": "storage_driver",
-                "name": "Name of the storage driver",
-                "inputType": "ExtensionInputString",
-                "options": {}
-            },
-            {
-                "label": "separate_api_and_cluster_traffic",
-                "name": "Separate the API and cluster traffic",
-                "inputType": "ExtensionInputBoolean",
-                "options": {}
-            },
-            {
-                "label": "images_auto_update_interval",
-                "name": "The interval to auto update the images",
-                "inputType": "ExtensionInputInteger",
-                "options": {}
-            }
-        ],
-        "outputs": [],
-        "infrastructure": {
-            "instanceArrays": [
-                {
-                    "label": "#/input/instance_array_name",
-                    "instanceCount": "#/input/compute_nodes",
-                    "serverType": "#/input/compute_nodes_type",
-                    "osTemplate": "#/input/compute_nodes_os_template",
-                    "customVariables": [
-                        {
-                            "name": "vars_debugging_enabled",
-                            "value": "#/input/vars_debugging_enabled"
-                        },
-                        {
-                            "name": "cluster_enabled",
-                            "value": "#/input/cluster_enabled"
-                        },
-                        {
-                            "name": "branch_release",
-                            "value": "#/input/branch_release"
-                        },
-                        {
-                            "name": "ui_installing",
-                            "value": "#/input/ui_installing"
-                        },
-                        {
-                            "name": "storage_driver",
-                            "value": "#/input/storage_driver"
-                        },
-                        {
-                            "name": "separate_api_and_cluster_traffic",
-                            "value": "#/input/separate_api_and_cluster_traffic"
-                        },
-                        {
-                            "name": "images_auto_update_interval",
-                            "value": "#/input/images_auto_update_interval"
-                        }
-                    ]
-
-                }
-            ]
+        {
+          "label": "bootstrap_node_type",
+          "name": "Bootstrap node type",
+          "inputType": "ExtensionInputServerType",
+          "options": {}
         },
-        "assets": [
-            {
-                "label": "my_ansible_bundle",
-                "name": "The OpenShift Ansible bundle",
-                "url": "https://repo.metalsoft.io/.extensions_ms/openshift-v2.zip",
-                "assetType": "AnsibleBundle"
-            }
-        ],
-        "onCreate": {
-            "postDeploy": [
-                {
-                    "label": "createStep",
-                    "taskType": "ExtensionTaskAnsible",
-                    "options": {
-                        "asset": "my_ansible_bundle",
-                        "playbook": "deploy.yaml"
-                    }
-                }
-            ]
+        {
+          "label": "master_node_type",
+          "name": "Master nodes type",
+          "inputType": "ExtensionInputServerType",
+          "options": {}
+        },
+        {
+          "label": "worker_node_type",
+          "name": "Worker nodes type",
+          "inputType": "ExtensionInputServerType",
+          "options": {}
+        },
+        {
+          "label": "worker_node_count",
+          "name": "Worker nodes count",
+          "inputType": "ExtensionInputInteger",
+          "options": {
+            "minValue": 2,
+            "maxValue": 100,
+            "deniedValues": []
+          }
+        },
+        {
+          "label": "ansible_resolver_ips",
+          "name": "External DNS resolver",
+          "inputType": "ExtensionInputString",
+          "options": {}
+        },
+        {
+          "label": "vars_debugging_enabled",
+          "name": "Variables debugging enabled",
+          "inputType": "ExtensionInputBoolean",
+          "options": {}
         }
+      ],
+      "outputs": [],
+      "infrastructure": {
+        "instanceArrays": [
+          {
+            "label": "openshift-admin",
+            "instanceCount": "1",
+            "serverType": "#/input/admin_node_type",
+            "osTemplate": "centos-9-ocp",
+            "customVariables": [
+              {
+                "name": "vars_debugging_enabled",
+                "value": "#/input/vars_debugging_enabled"
+              },
+              {
+                "name": "ansible_resolver_ips",
+                "value": "#/input/ansible_resolver_ips"
+              }
+            ]
+          },
+          {
+            "label": "openshift-bootstrap",
+            "instanceCount": "1",
+            "serverType": "#/input/bootstrap_node_type",
+            "osTemplate": "rhcos-4-17",
+            "customVariables": [
+              {
+                "name": "vars_debugging_enabled",
+                "value": "#/input/vars_debugging_enabled"
+              }
+            ]
+          },
+          {
+            "label": "openshift-master",
+            "instanceCount": "3",
+            "serverType": "#/input/master_node_type",
+            "osTemplate": "rhcos-4-17",
+            "customVariables": [
+              {
+                "name": "vars_debugging_enabled",
+                "value": "#/input/vars_debugging_enabled"
+              }
+            ]
+          },
+          {
+            "label": "openshift-worker",
+            "instanceCount": "#/input/worker_node_count",
+            "serverType": "#/input/worker_node_type",
+            "osTemplate": "rhcos-4-17",
+            "customVariables": [
+              {
+                "name": "vars_debugging_enabled",
+                "value": "#/input/vars_debugging_enabled"
+              }
+            ]
+          }
+        ]
+      },
+      "assets": [
+        {
+          "label": "my-ansible-bundle",
+          "name": "The OpenShift Ansible bundle",
+          "assetType": "AnsibleBundle",
+          "url": "https://repo.metalsoft.io/.extensions_ms/openshift.zip"
+        }
+      ],
+      "onCreate": {
+        "postDeploy": [
+          {
+            "label": "createStep",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "my-ansible-bundle",
+              "playbook": "deploy.yaml"
+            }
+          }
+        ]
+      }
     }
-}
+  }

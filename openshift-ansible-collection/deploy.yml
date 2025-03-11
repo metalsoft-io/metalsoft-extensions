@@ -1,12 +1,12 @@
 - name: Configure OpenShift Environment
-  hosts: admin_machine
+  hosts: "{{ groups['openshift_cluster'][0] }}"
   become: true
   vars:
-    base_domain: ocp.lan
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     pull_secret: "{{ auth }}"
     openshift_version: "4.17.9"
     rhcos_version: "4.17.0"
-    rhcos_arch: "x86_64"
+    # rhcos_arch: "x86_64"
 
   roles:
     - pre-setup

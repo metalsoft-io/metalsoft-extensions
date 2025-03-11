@@ -2,3 +2,4 @@
 # Handler to reload NFS Exports
 - name: Reload NFS Exports
   command: exportfs -rv
+  become: yes

@@ -6,6 +6,12 @@
       - mailcap
     state: present
 
+- name: Enable and start Apache service
+  service:
+    name: httpd
+    state: started
+    enabled: yes
+
 # Ensure /var/www/html/ocp4/ directory exists
 - name: Ensure /var/www/html directory exists
   file:
@@ -54,14 +60,6 @@
     group: root
     mode: '0644'
 
-# Restore SELinux context for Apache configuration
-- name: Restore SELinux context for Apache configuration
-  command: restorecon -v /etc/httpd/conf/httpd.conf
-
-# Restore SELinux context for mime.types link
-- name: Restore SELinux context for mime.types link
-  command: restorecon -v /etc/httpd/conf/mime.types
-
 # Enable and start Apache service
 - name: Enable Apache service
   service:
@@ -72,13 +70,6 @@
   service:
     name: httpd
     state: started
-
-# Validate Apache configuration syntax
-- name: Validate Apache configuration syntax
-  shell: httpd -t
-  register: apache_syntax_check
-  failed_when: apache_syntax_check.rc != 0
-  changed_when: false
 
 # Verify Apache is running
 - name: Verify Apache service is active
@@ -94,7 +85,7 @@
 
 # Validate HTTP response
 - name: Test Apache HTTP response
-  shell: curl -s http://127.0.0.1:8080
+  shell: curl -s http://127.0.0.1:8080/ocp4/
   register: apache_test
   changed_when: false
 

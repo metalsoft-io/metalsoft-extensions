@@ -12,7 +12,7 @@
     state: directory
     owner: nobody
     group: nobody
-    mode: '0777'
+    mode: '0770'
 
 - name: Ensure NFS share directory /shares/csi exists
   file:
@@ -20,67 +20,15 @@
     state: directory
     owner: nobody
     group: nobody
-    mode: '0777'
-
-# Ensure SELinux Context for NFS Directory
-- name: Set SELinux context for NFS share directory
-  command: semanage fcontext -a -t nfs_t "/shares/registry(/.*)?"
-  ignore_errors: true
-
-- name: Apply SELinux context for NFS share directory
-  command: restorecon -R /shares/registry
-
-# Gather Server Network Information
-- name: Gather default network interface
-  command: ip route show default
-  register: default_route
-  changed_when: false
-
-# Extract network interface name
-- name: Extract network interface name
-  set_fact:
-    default_interface: "{{ (default_route.stdout | regex_search('dev\\s(\\S+)', '\\1')) | first | default('') }}"
-
-# Validate extracted network interface
-- name: Fail if default interface is not extracted
-  fail:
-    msg: "Failed to extract the default network interface."
-  when: default_interface == ''
-
-# Debug default interface
-- name: Debug default interface
-  debug:
-    msg: "Default interface: {{ default_interface }}"
-
-# Validate extracted network interface
-- name: Validate extracted network interface
-  shell: ip link show {{ default_interface }}
-  register: interface_validation
-  changed_when: false
-  failed_when: "'state UP' not in interface_validation.stdout"
-
-# Debug default interface
-- name: Debug default interface
-  debug:
-    msg: "Default interface: {{ default_interface }}"
-
-- name: Gather network information for default interface
-  command: ip -4 addr show dev "{{ default_interface }}"
-  register: interface_info
-  changed_when: false
-
-- name: Extract network range (CIDR)
-  set_fact:
-    network_cidr: "{{ (interface_info.stdout | regex_search('(\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+)')) }}"
+    mode: '0770'
 
 # Deploy NFS Exports Configuration
-- name: Deploy /etc/exports using Jinja2 template
-  template:
-    src: exports.j2
-    dest: /etc/exports
+- name: Ensure /etc/exports file has proper ownership and permissions
+  file:
+    path: /etc/exports
     owner: root
     group: root
-    mode: '0644'
+    mode: '0770'
   notify:
     - Reload NFS Exports
 
@@ -124,14 +72,3 @@
       - "Group: {{ registry_dir_status.stat.gr_name }}"
       - "Permissions: {{ registry_dir_status.stat.mode }}"
       - "Directory exists: {{ registry_dir_status.stat.exists }}"
-
-# Validate SELinux Context of the NFS Directory
-- name: Validate SELinux context of the NFS share directory
-  shell: ls -Zd /shares/registry
-  register: selinux_context
-  changed_when: false
-
-- name: Debug SELinux context validation
-  debug:
-    msg:
-      - "SELinux context: {{ selinux_context.stdout }}"

@@ -15,19 +15,6 @@
     group: root
     mode: '0770'
 
-# Configure dhcpd.conf using a template
-- name: Configure dhcpd.conf
-  template:
-    src: dhcpd.conf.j2
-    dest: /etc/dhcp/dhcpd.conf
-    owner: root
-    group: root
-    mode: '0644'
-
-# Restore SELinux context for dhcpd.conf
-- name: Restore SELinux context for dhcpd.conf
-  command: restorecon -v /etc/dhcp/dhcpd.conf
-
 # Enable DHCP service
 - name: Enable DHCP service
   service:

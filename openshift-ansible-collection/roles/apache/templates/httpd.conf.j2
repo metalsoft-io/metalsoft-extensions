@@ -16,6 +16,7 @@ DocumentRoot "/var/www/html"
 </Directory>
 
 ErrorLog "logs/error_log"
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
 CustomLog "logs/access_log" common
 
 <IfModule dir_module>

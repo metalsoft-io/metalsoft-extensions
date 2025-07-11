@@ -1,0 +1,43 @@
+{
+  "name": "testExtensionType",
+  "label": "test",
+  "description": "My App Description",
+  "kind": "workflow",
+  "definition": {
+    "kind": "ExtensionDefinition",
+    "schemaVersion": "1.1",
+    "name": "string",
+    "label": "string",
+    "extensionType": "string",
+    "vendor": "string",
+    "extensionVersion": "string",
+    "description": "string",
+    "icon": "string",
+    "dependencies": {
+      "controllerVersion": "string"
+      
+    },
+    "inputs": [
+    ],
+    "outputs": [
+    ],
+    "assets": [
+    ],
+    "onAssetChange": [
+      {
+        "stage": "server Registered",
+        "tasks": [
+          {
+            "label": "testInitial",
+            "taskType": "ExtensionTaskWebhook",
+            "options": {
+             "endpoint":"www.google.com",
+"method":"GET",
+"requestTemplate":"test"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

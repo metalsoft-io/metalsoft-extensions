@@ -34,7 +34,7 @@ zip -r power_dns.zip .
 
 ### 3. Register Extension
 
-Use the complete `pdns-workflow-template.json` file provided above.
+Use the complete `pdns-workflow-full-template.json` file provided above.
 
 ## Supported Events
 

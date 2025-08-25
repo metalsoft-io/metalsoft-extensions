@@ -1,0 +1,97 @@
+{
+  "name": "Power DNS Extensions",
+  "label": "powerdns-extensions-ansible",
+  "description": "Automated DNS management for server provisioning",
+  "kind": "workflow",
+  "definition": {
+    "kind": "ExtensionDefinition",
+    "schemaVersion": "1.1",
+    "name": "powerdns-automation",
+    "label": "PowerDNS Automation",
+    "extensionType": "workflow",
+    "vendor": "MetalSoft",
+    "extensionVersion": "1.0.0",
+    "description": "Manages DNS records via PowerDNS API during server lifecycle",
+    "icon": "dns",
+    "dependencies": {
+      "controllerVersion": "string"
+    },
+    "inputs": [],
+    "outputs": [],
+    "assets": [
+      {
+        "label": "PowerDNS Configuration Bundle",
+        "name": "power-dns-configuration",
+        "assetType": "Bundle",
+        "url": "https://repo.metalsoft.io/.extensions_ms/workflows/power_dns.zip"
+      }
+    ],
+    "onAssetChange": [
+      {
+        "stage": "ServerInstanceGroupCreateDNS",
+        "tasks": [
+          {
+            "label": "Create DNS records for instance group",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "power-dns-configuration",
+              "playbook": "deploy_dns_flexible.yaml"
+            }
+          }
+        ]
+      },
+      {
+        "stage": "ServerInstanceGroupUpdateDNS",
+        "tasks": [
+          {
+            "label": "Update DNS records for instance group",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "power-dns-configuration",
+              "playbook": "deploy_dns_flexible.yaml"
+            }
+          }
+        ]
+      },
+      {
+        "stage": "ServerInstanceGroupDeleteDNS",
+        "tasks": [
+          {
+            "label": "Delete DNS records for instance group",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "power-dns-configuration",
+              "playbook": "deploy_dns_flexible.yaml"
+            }
+          }
+        ]
+      },
+      {
+        "stage": "ServerInstanceUpdateDNS",
+        "tasks": [
+          {
+            "label": "Create/Update DNS and PTR records for instance",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "power-dns-configuration",
+              "playbook": "deploy_dns_flexible.yaml"
+            }
+          }
+        ]
+      },
+      {
+        "stage": "ServerInstanceDeleteDNS",
+        "tasks": [
+          {
+            "label": "Delete DNS and PTR records for instance",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "power-dns-configuration",
+              "playbook": "deploy_dns_flexible.yaml"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

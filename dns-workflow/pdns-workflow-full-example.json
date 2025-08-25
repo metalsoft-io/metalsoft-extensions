@@ -20,7 +20,7 @@
     "outputs": [],
     "assets": [
       {
-        "label": "PowerDNS Configuration Bundle",
+        "label": "power-dns-configuration",
         "name": "power-dns-configuration",
         "assetType": "Bundle",
         "url": "https://repo.metalsoft.io/.extensions_ms/workflows/power_dns.zip"
@@ -28,7 +28,7 @@
     ],
     "onAssetChange": [
       {
-        "stage": "ServerInstanceGroupCreateDNS",
+        "stage": "serverInstanceGroupCreateDNS",
         "tasks": [
           {
             "label": "Create DNS records for instance group",
@@ -41,7 +41,7 @@
         ]
       },
       {
-        "stage": "ServerInstanceGroupUpdateDNS",
+        "stage": "serverInstanceGroupUpdateDNS",
         "tasks": [
           {
             "label": "Update DNS records for instance group",
@@ -54,7 +54,7 @@
         ]
       },
       {
-        "stage": "ServerInstanceGroupDeleteDNS",
+        "stage": "serverInstanceGroupDeleteDNS",
         "tasks": [
           {
             "label": "Delete DNS records for instance group",
@@ -67,7 +67,7 @@
         ]
       },
       {
-        "stage": "ServerInstanceUpdateDNS",
+        "stage": "serverInstanceUpdateDNS",
         "tasks": [
           {
             "label": "Create/Update DNS and PTR records for instance",
@@ -80,7 +80,7 @@
         ]
       },
       {
-        "stage": "ServerInstanceDeleteDNS",
+        "stage": "serverInstanceDeleteDNS",
         "tasks": [
           {
             "label": "Delete DNS and PTR records for instance",

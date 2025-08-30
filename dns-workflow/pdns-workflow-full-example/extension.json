@@ -34,7 +34,6 @@
             "label": "create-dns-records-for-instance-group",
             "taskType": "ExtensionTaskAnsible",
             "options": {
-              "taskType": "ExtensionTaskAnsible",
               "asset": "power-dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }
@@ -48,7 +47,6 @@
             "label": "update-dns-records-for-instance-group",
             "taskType": "ExtensionTaskAnsible",
             "options": {
-              "taskType": "ExtensionTaskAnsible",
               "asset": "power-dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }
@@ -62,7 +60,6 @@
             "label": "delete-dns-records-for-instance-group",
             "taskType": "ExtensionTaskAnsible",
             "options": {
-              "taskType": "ExtensionTaskAnsible",
               "asset": "power-dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }
@@ -76,7 +73,6 @@
             "label": "create-or-update-dns-and-ptr-records-for-instance",
             "taskType": "ExtensionTaskAnsible",
             "options": {
-              "taskType": "ExtensionTaskAnsible",
               "asset": "power-dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }
@@ -90,7 +86,6 @@
             "label": "delete-dns-and-ptr-records-for-instance",
             "taskType": "ExtensionTaskAnsible",
             "options": {
-              "taskType": "ExtensionTaskAnsible",
               "asset": "power-dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }

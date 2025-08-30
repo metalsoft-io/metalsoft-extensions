@@ -34,6 +34,7 @@
             "label": "basicInitial",
             "taskType": "ExtensionTaskAnsible",
             "options": {
+              "taskType": "ExtensionTaskAnsible",
               "asset": "dns-configuration",
               "playbook": "deploy_dns_flexible.yaml"
             }

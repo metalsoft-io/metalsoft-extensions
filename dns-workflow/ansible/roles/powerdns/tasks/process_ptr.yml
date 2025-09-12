@@ -1,0 +1,42 @@
+---
+- name: Calculate PTR zone
+  ansible.builtin.set_fact:
+    ip_parts: "{{ item.split('.') }}"
+
+- name: Set PTR zone and record names
+  ansible.builtin.set_fact:
+    ptr_zone: "{{ ip_parts[2] }}.{{ ip_parts[1] }}.{{ ip_parts[0] }}.in-addr.arpa."
+    ptr_record: "{{ ip_parts[3] }}.{{ ip_parts[2] }}.{{ ip_parts[1] }}.{{ ip_parts[0] }}.in-addr.arpa."
+
+- name: Create PTR zone if needed
+  ansible.builtin.uri:
+    url: "{{ powerdns_base_url }}/zones"
+    method: POST
+    headers:
+      X-API-Key: "{{ powerdns_api_key }}"
+    body_format: json
+    body:
+      name: "{{ ptr_zone }}"
+      kind: "Native"
+      nameservers:
+      - "ns1.{{ zone_name }}"
+      - "ns2.{{ zone_name }}"
+    status_code: [ 201, 409 ]
+
+- name: Add PTR record
+  ansible.builtin.uri:
+    url: "{{ powerdns_base_url }}/zones/{{ ptr_zone }}"
+    method: PATCH
+    headers:
+      X-API-Key: "{{ powerdns_api_key }}"
+    body_format: json
+    body:
+      rrsets:
+      - name: "{{ ptr_record }}"
+        type: "PTR"
+        changetype: "REPLACE"
+        ttl: "{{ default_ttl }}"
+        records:
+        - content: "{{ a_record.name }}.{{ zone_name }}"
+          disabled: false
+    status_code: 204

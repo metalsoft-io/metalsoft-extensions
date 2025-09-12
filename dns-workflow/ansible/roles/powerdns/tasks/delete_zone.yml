@@ -1,0 +1,8 @@
+---
+- name: Delete zone {{ zone_name }}
+  ansible.builtin.uri:
+    url: "{{ powerdns_base_url }}/zones/{{ zone_id }}"
+    method: DELETE
+    headers:
+      X-API-Key: "{{ powerdns_api_key }}"
+    status_code: [ 204, 404 ]

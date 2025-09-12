@@ -1,0 +1,10 @@
+---
+- name: Add records to zone
+  ansible.builtin.uri:
+    url: "{{ powerdns_base_url }}/zones/{{ zone_id }}"
+    method: PATCH
+    headers:
+      X-API-Key: "{{ powerdns_api_key }}"
+    body_format: json
+    body: "{{ lookup('template', 'create_records.j2') }}"
+    status_code: 204

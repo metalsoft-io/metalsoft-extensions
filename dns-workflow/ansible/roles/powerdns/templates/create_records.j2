@@ -1,0 +1,45 @@
+{
+  "rrsets": [
+    {% for record in working_operation.records %}
+    {% set record_name = record.name | default('@') %}
+    {% if record_name == '@' %}
+      {% set full_name = zone_name %}
+    {% elif record_name.endswith('.') %}
+      {% set full_name = record_name %}
+    {% else %}
+      {% set full_name = record_name + '.' + zone_name %}
+    {% endif %}
+    {
+      "name": "{{ full_name }}",
+      "type": "{{ record.type | default('A') | upper }}",
+      "changetype": "REPLACE",
+      "ttl": {{ record.ttl | default(default_ttl) }},
+      "records": [
+        {% if record.type | default('A') | upper in ['A', 'AAAA'] %}
+          {% for ip in record.ips | default([]) %}
+          {
+            "content": "{{ ip }}",
+            "disabled": false
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        {% elif record.type | upper == 'CNAME' %}
+          {% set target = record.target | default('') %}
+          {% if target %}
+          {
+            "content": "{{ target }}{{ '.' if not target.endswith('.') else '' }}",
+            "disabled": false
+          }
+          {% endif %}
+        {% elif record.type | upper == 'TXT' %}
+          {% for txt in record.values | default([]) %}
+          {
+            "content": "\"{{ txt | replace('\"', '\\\"') }}\"",
+            "disabled": false
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        {% endif %}
+      ]
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+}

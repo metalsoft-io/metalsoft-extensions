@@ -8,128 +8,44 @@ Automatically manages DNS records during server lifecycle events in MetalSoft.
 
 **Features:**
 
-- A and PTR record management for single servers
+- A and PTR record management for servers and server instances
 - Multiple IP support for load-balanced instance groups  
 - Automatic zone creation with SOA/NS records
 - Idempotent operations (safe to run multiple times)
 
 ## Quick Start
 
-### 1. Configure PowerDNS API
+1. Clone or download the zip of this directory
 
-```yaml
-# ansible/roles/powerdns/defaults/main.yml
-powerdns_api_host: "localhost"
-powerdns_api_port: 8081
-powerdns_api_key: "your-api-key"
-```
+  ```
+  git clone git@github.com:metalsoft-io/metalsoft-extensions.git
+  cd dns-workflow
+  ```
 
-### 2. Create Bundle
+2. Update  PowerDNS API credentials to match your environment (see [MetalSoft Docs](https://docs.metalsoft.io/en/latest/content/configuration/integrations/external_dns_integration.html) for more details.
 
-```bash
-cd ansible/
-zip -r power_dns.zip .
-# Upload to repository
-```
+  ```yaml
+  # ansible/roles/powerdns/defaults/main.yml
+  powerdns_api_host: "localhost"
+  powerdns_api_port: 8081
+  powerdns_api_key: "your-api-key"
+  ```
 
-### 3. Register Extension
+3. Create the Ansible Bundle zip file
 
-Use the complete `pdns-workflow-full-template.json` file provided above.
+  ```bash
+  cd ansible/
+  zip -r power_dns.zip .
+  # Upload to repository
+  ```
+4. Register and activate the Extension
 
-## Supported Events
-
-| Event | Action | PTR Records |
-|-------|--------|-------------|
-| `ServerInstanceGroupCreateDNS` | Create A records for new group | ❌ |
-| `ServerInstanceGroupUpdateDNS` | Update A records for existing group | ❌ |
-| `ServerInstanceGroupDeleteDNS` | Delete A records | ❌ |
-| `ServerInstanceUpdateDNS` | Create/Update A + PTR records | ✅ |
-| `ServerInstanceDeleteDNS` | Delete A + PTR records | ✅ |
-
-## Bundle Structure
-
-```text
-power_dns.zip
-├── deploy_dns_flexible.yaml
-├── roles/powerdns/
-│   ├── defaults/main.yml
-│   ├── tasks/*.yml
-│   └── templates/*.j2
-└── variables.json (auto-generated)
-```
-
-## JSON Formats
-
-The system automatically generates `variables.json` based on the server event type. The JSON structure determines:
-
-- **Which DNS records** are created (A records only vs A + PTR records)
-- **What operation** is performed (`create`, `edit`, or `delete`)
-- **Target type** (single instance or instance group)
-
-### Single Instance Format
-
-```json
-{
-  "serverInstanceDNSRecordSet": {
-    "hostname": "web01",
-    "ip": {"ip": "10.0.1.100", "status": "allocated"},
-    "zone": {
-      "zoneName": "example.com",
-      "nameServers": ["ns1.example.com"],
-      "soaEmail": "admin.example.com"
-    },
-    "operation": "create"  // Options: "create", "edit", "delete"
-  }
-}
-```
-
-**Results in:**
-
-- A record: `web01.example.com → 10.0.1.100`
-- PTR record: `100.1.0.10.in-addr.arpa → web01.example.com`
-
-### Instance Group Format
-
-```json
-{
-  "serverInstanceGroupDNSRecordSet": {
-    "hostname": "webcluster",
-    "ips": [
-      {"ip": "10.0.1.101", "status": "allocated"},
-      {"ip": "10.0.1.102", "status": "allocated"},
-      {"ip": "10.0.1.103", "status": "unallocated"}  // Ignored
-    ],
-    "zone": {
-      "zoneName": "example.com",
-      "nameServers": ["ns1.example.com"],
-      "soaEmail": "admin.example.com"
-    },
-    "operation": "create"
-  }
-}
-```
-
-**Results in:**
-
-- A records: `webcluster.example.com → 10.0.1.101, 10.0.1.102`
-- No PTR records created for groups
-
-### Operation Types
-
-| Operation | Action | Note |
-|-----------|--------|------|
-| `create` | Add new DNS records | Zone created if doesn't exist |
-| `edit` | Update existing records | Replaces all IPs for hostname |
-| `delete` | Remove DNS records | Zone remains if other records exist |
-
-### Key Technical Details
-
-1. **IP Filtering**: Only IPs with `"status": "allocated"` are used
-2. **Format Detection**: The playbook automatically detects format based on:
-   - Presence of `serverInstanceDNSRecordSet` (single) vs `serverInstanceGroupDNSRecordSet` (group)
-   - Single `ip` object vs array of `ips`
-3. **Idempotent**: Same JSON can be applied multiple times safely
-4. **Zone Management**: Zones are created automatically with SOA and NS records
+  ```
+  metalcloud-cli extension create test-dns workflow "Dns workflow" --definition-source pdns-workflow-example/extension.json --format json
+  #note the id of the extension and use to replace the '1' in the follow-up commands
+  metalcloud-cli extension publish 1
+  metalcloud-cli extension make-public 1
+  ```
 
 ## Troubleshooting
 

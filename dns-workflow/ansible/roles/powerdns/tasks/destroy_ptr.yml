@@ -1,0 +1,7 @@
+---
+- name: Delete PTR records for each IP
+  include_tasks: delete_ptr_for_ip.yml
+  loop: "{{ a_record.ips | default([]) }}"
+  loop_control:
+    loop_var: ip_address
+  when: ip_address is ansible.utils.ipv4

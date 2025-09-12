@@ -1,0 +1,19 @@
+{
+  "rrsets": [
+    {% for record in working_operation.records %}
+    {% set record_name = record.name | default('@') %}
+    {% if record_name == '@' %}
+      {% set full_name = zone_name %}
+    {% elif record_name.endswith('.') %}
+      {% set full_name = record_name %}
+    {% else %}
+      {% set full_name = record_name + '.' + zone_name %}
+    {% endif %}
+    {
+      "name": "{{ full_name }}",
+      "type": "{{ record.type | default('A') | upper }}",
+      "changetype": "DELETE"
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+}

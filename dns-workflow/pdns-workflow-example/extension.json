@@ -23,19 +23,6 @@
   ],
   "onAssetChange": [
     {
-      "stage": "serverInstanceGroupCreateDNS",
-      "tasks": [
-        {
-          "label": "create-dns-records-for-instance-group",
-          "taskType": "ExtensionTaskAnsible",
-          "options": {
-            "asset": "power-dns-configuration",
-            "playbook": "deploy_dns_flexible.yaml"
-          }
-        }
-      ]
-    },
-    {
       "stage": "serverInstanceGroupUpdateDNS",
       "tasks": [
         {
@@ -49,23 +36,10 @@
       ]
     },
     {
-      "stage": "serverInstanceGroupDeleteDNS",
-      "tasks": [
-        {
-          "label": "delete-dns-records-for-instance-group",
-          "taskType": "ExtensionTaskAnsible",
-          "options": {
-            "asset": "power-dns-configuration",
-            "playbook": "deploy_dns_flexible.yaml"
-          }
-        }
-      ]
-    },
-    {
       "stage": "serverInstanceUpdateDNS",
       "tasks": [
         {
-          "label": "create-or-update-dns-and-ptr-records-for-instance",
+          "label": "update-dns-records-for-instance",
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "power-dns-configuration",
@@ -75,10 +49,10 @@
       ]
     },
     {
-      "stage": "serverInstanceDeleteDNS",
+      "stage": "clusterUpdateDNS",
       "tasks": [
         {
-          "label": "delete-dns-and-ptr-records-for-instance",
+          "label": "update-dns-records-for-cluster",
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "power-dns-configuration",
@@ -105,6 +79,32 @@
       "tasks": [
         {
           "label": "delete-dns-and-ptr-records-for-server",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "power-dns-configuration",
+            "playbook": "deploy_dns_flexible.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "switchCreateDNS",
+      "tasks": [
+        {
+          "label": "create-dns-and-ptr-records-for-switch",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "power-dns-configuration",
+            "playbook": "deploy_dns_flexible.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "switchDeleteDNS",
+      "tasks": [
+        {
+          "label": "delete-dns-and-ptr-records-for-switch",
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "power-dns-configuration",

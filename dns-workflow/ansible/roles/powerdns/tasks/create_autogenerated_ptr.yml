@@ -1,0 +1,9 @@
+---
+- name: Process IPs for A record to create corresponding PTR records
+  ansible.builtin.include_tasks: process_ptr.yml
+  include_tasks: create_ptr.yml
+  vars:
+    ip_address: "{{ item }}"
+    ptr_record_value: "{{ a_record.name }}.{{ zone_name }}"
+  loop: "{{ a_record.records | default([]) }}"
+  when: item is regex('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')

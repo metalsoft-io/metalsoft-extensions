@@ -1,6 +1,6 @@
 {
   "rrsets": [
-    {% for record in working_operation.records %}
+    {% for record in working_operation.records if record.type | upper in ['A', 'AAAA', 'CNAME', 'TXT'] %}
     {% set record_name = record.name | default('@') %}
     {% if record_name == '@' %}
       {% set full_name = zone_name %}
@@ -11,19 +11,19 @@
     {% endif %}
     {
       "name": "{{ full_name }}",
-      "type": "{{ record.type | default('A') | upper }}",
+      "type": "{{ record.type | upper }}",
       "changetype": "REPLACE",
       "ttl": {{ record.ttl | default(default_ttl) }},
       "records": [
-        {% if record.type | default('A') | upper in ['A', 'AAAA'] %}
-          {% for ip in record.ips | default([]) %}
+        {% if record.type | upper in ['A', 'AAAA'] %}
+          {% for ip in record.records | default([]) %}
           {
             "content": "{{ ip }}",
             "disabled": false
           }{% if not loop.last %},{% endif %}
           {% endfor %}
         {% elif record.type | upper == 'CNAME' %}
-          {% set target = record.target | default('') %}
+          {% set target = record.records[0] | default('') %}
           {% if target %}
           {
             "content": "{{ target }}{{ '.' if not target.endswith('.') else '' }}",
@@ -31,7 +31,7 @@
           }
           {% endif %}
         {% elif record.type | upper == 'TXT' %}
-          {% for txt in record.values | default([]) %}
+          {% for txt in record.records | default([]) %}
           {
             "content": "\"{{ txt | replace('\"', '\\\"') }}\"",
             "disabled": false

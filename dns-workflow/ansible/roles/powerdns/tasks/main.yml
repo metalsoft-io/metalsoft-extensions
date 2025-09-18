@@ -4,16 +4,37 @@
 # Detect which JSON format
 - name: Detect JSON format type
   ansible.builtin.set_fact:
-    # Check if it's instance group format (has 'ips' array)
-    is_instance_group: "{{ dns_operation.serverInstanceGroupDNSRecordSet is defined and dns_operation.serverInstanceGroupDNSRecordSet.ips is defined }}"
-    # Check if it's single instance format (has 'ip' object)
-    is_instance: "{{ dns_operation.serverInstanceDNSRecordSet is defined and dns_operation.serverInstanceDNSRecordSet.ip is defined }}"
+    # Check if it's instance group format
+    is_instance_group: >-
+      {{
+      (
+        dns_operation.serverInstanceGroupDNSRecordSet is defined
+        and dns_operation.serverInstanceGroupDNSRecordSet.records is defined
+        and (dns_operation.serverInstanceGroupDNSRecordSet.records | length > 0)
+      )
+      }}
+    # Check if it's single instance format
+    is_instance: >-
+      {{
+      (
+        dns_operation.serverInstanceDNSRecordSet is defined
+        and dns_operation.serverInstanceDNSRecordSet.records is defined
+        and (dns_operation.serverInstanceDNSRecordSet.records | length > 0)
+      )
+      }}
+    # Check if it's cluster format
+    is_cluster: >-
+      {{
+      (
+        dns_operation.clusterDNSRecordSet is defined
+        and dns_operation.clusterDNSRecordSet.records is defined
+        and (dns_operation.clusterDNSRecordSet.records | length > 0)
+      )
+      }}
     # Check if it's server format (physical server management)
     is_server: "{{ dns_operation.serverDNSRecordSet is defined }}"
     # Check if it's switch format (network switch management)
     is_switch: "{{ dns_operation.switchDNSRecordSet is defined }}"
-    # Legacy format check remains the same
-    is_legacy: "{{ dns_operation.records is defined }}"
 
 # Detect management address type for servers
 - name: Analyze management address type for servers
@@ -37,14 +58,8 @@
   ansible.builtin.set_fact:
     transformed_operation:
       zone: "{{ dns_operation.serverInstanceGroupDNSRecordSet.zone.zoneName }}"
-      operation: "{{ 'server_instance_group_dns_deprovisioning' if dns_operation.serverInstanceGroupDNSRecordSet.operation == 'delete' else 'server_instance_group_dns_provisioning' }}"
       nameservers: "{{ dns_operation.serverInstanceGroupDNSRecordSet.zone.nameServers }}"
-      records:
-      - name: "{{ dns_operation.serverInstanceGroupDNSRecordSet.hostname }}"
-        type: "A"
-        ips: "{{ [] if dns_operation.serverInstanceGroupDNSRecordSet.operation == 'delete' else dns_operation.serverInstanceGroupDNSRecordSet.ips | selectattr('status', 'equalto', 'allocated') | map(attribute='ip') | list }}"
-        ttl: "{{ dns_operation.serverInstanceGroupDNSRecordSet.zone.ttl | default(3600) }}"
-      infrastructure_id: "{{ dns_operation.serverInstanceGroupDNSRecordSet.infrastructureId }}"
+      records: "{{ dns_operation.serverInstanceGroupDNSRecordSet.records }}"
       soa_email: "{{ dns_operation.serverInstanceGroupDNSRecordSet.zone.soaEmail }}"
 
 # Transform instance format
@@ -53,16 +68,19 @@
   ansible.builtin.set_fact:
     transformed_operation:
       zone: "{{ dns_operation.serverInstanceDNSRecordSet.zone.zoneName }}"
-      operation: "{{ 'server_instance_dns_deprovisioning' if dns_operation.serverInstanceDNSRecordSet.operation == 'delete' else 'server_instance_dns_provisioning' }}"
       nameservers: "{{ dns_operation.serverInstanceDNSRecordSet.zone.nameServers }}"
-      records: >-
-        {%- if dns_operation.serverInstanceDNSRecordSet.operation == 'delete' -%}
-          {{ [{'name': dns_operation.serverInstanceDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.serverInstanceDNSRecordSet.ip.ip] if dns_operation.serverInstanceDNSRecordSet.ip.ip is defined else []}] }}
-        {%- else -%}
-          {{ [{'name': dns_operation.serverInstanceDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.serverInstanceDNSRecordSet.ip.ip] if dns_operation.serverInstanceDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.serverInstanceDNSRecordSet.zone.ttl | default(3600)}] }}
-        {%- endif -%}
-      infrastructure_id: "{{ dns_operation.serverInstanceDNSRecordSet.infrastructureId }}"
+      records: "{{ dns_operation.serverInstanceDNSRecordSet.records }}"
       soa_email: "{{ dns_operation.serverInstanceDNSRecordSet.zone.soaEmail }}"
+
+# Transform instance format
+- name: Transform cluster format
+  when: is_cluster
+  ansible.builtin.set_fact:
+    transformed_operation:
+      zone: "{{ dns_operation.clusterDNSRecordSet.zone.zoneName }}"
+      nameservers: "{{ dns_operation.clusterDNSRecordSet.zone.nameServers }}"
+      records: "{{ dns_operation.clusterDNSRecordSet.records }}"
+      soa_email: "{{ dns_operation.clusterDNSRecordSet.zone.soaEmail }}"
 
 # Transform server format (physical servers)
 - name: Transform server format
@@ -70,22 +88,21 @@
   ansible.builtin.set_fact:
     transformed_operation:
       zone: "{{ dns_operation.serverDNSRecordSet.zone.zoneName }}"
-      operation: "{{ 'server_dns_deprovisioning' if dns_operation.serverDNSRecordSet.operation == 'delete' else 'server_dns_provisioning' }}"
       nameservers: "{{ dns_operation.serverDNSRecordSet.zone.nameServers }}"
       records: >-
         {%- if dns_operation.serverDNSRecordSet.operation == 'delete' -%}
           {{ [
-            {'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.serverDNSRecordSet.ip.ip] if dns_operation.serverDNSRecordSet.ip.ip is defined else []},
-            {'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'AAAA'},
-            {'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'CNAME'}
+            {'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': [dns_operation.serverDNSRecordSet.ip.ip] if dns_operation.serverDNSRecordSet.ip.ip is defined else []},
+            {'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'deleting', 'type': 'AAAA'},
+            {'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'deleting', 'type': 'CNAME'}
           ] }}
         {%- else -%}
           {%- if mgmt_is_ipv6 -%}
-            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'AAAA', 'ips': [dns_operation.serverDNSRecordSet.managementAddress] if dns_operation.serverDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'active', 'type': 'AAAA', 'records': [dns_operation.serverDNSRecordSet.managementAddress] if dns_operation.serverDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- elif mgmt_is_ipv4 -%}
-            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.serverDNSRecordSet.managementAddress] if dns_operation.serverDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'active', 'type': 'A', 'ptr': 'enabled', 'records': [dns_operation.serverDNSRecordSet.managementAddress] if dns_operation.serverDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- else -%}
-            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'type': 'CNAME', 'target': dns_operation.serverDNSRecordSet.managementAddress, 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.serverDNSRecordSet.hostname, 'status': 'active', 'type': 'CNAME', 'records': [dns_operation.serverDNSRecordSet.managementAddress], 'ttl': dns_operation.serverDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- endif -%}
         {%- endif -%}
       infrastructure_id: "{{ dns_operation.serverDNSRecordSet.serverId }}"
@@ -97,22 +114,21 @@
   ansible.builtin.set_fact:
     transformed_operation:
       zone: "{{ dns_operation.switchDNSRecordSet.zone.zoneName }}"
-      operation: "{{ 'switch_dns_deprovisioning' if dns_operation.switchDNSRecordSet.operation == 'delete' else 'switch_dns_provisioning' }}"
       nameservers: "{{ dns_operation.switchDNSRecordSet.zone.nameServers }}"
       records: >-
         {%- if dns_operation.switchDNSRecordSet.operation == 'delete' -%}
           {{ [
-            {'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.switchDNSRecordSet.ip.ip] if dns_operation.switchDNSRecordSet.ip.ip is defined else []},
-            {'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'AAAA'},
-            {'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'CNAME'}
+            {'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': [dns_operation.switchDNSRecordSet.ip.ip] if dns_operation.switchDNSRecordSet.ip.ip is defined else []},
+            {'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'deleting', 'type': 'AAAA'},
+            {'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'deleting', 'type': 'CNAME'}
           ] }}
         {%- else -%}
           {%- if mgmt_is_ipv6 -%}
-            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'AAAA', 'ips': [dns_operation.switchDNSRecordSet.managementAddress] if dns_operation.switchDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'active', 'type': 'AAAA', 'records': [dns_operation.switchDNSRecordSet.managementAddress] if dns_operation.switchDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- elif mgmt_is_ipv4 -%}
-            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'A', 'ips': [dns_operation.switchDNSRecordSet.managementAddress] if dns_operation.switchDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'active', 'type': 'A', 'ptr': 'enabled', 'records': [dns_operation.switchDNSRecordSet.managementAddress] if dns_operation.switchDNSRecordSet.ip.status == 'allocated' else [], 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- else -%}
-            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'type': 'CNAME', 'target': dns_operation.switchDNSRecordSet.managementAddress, 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
+            {{ [{'name': dns_operation.switchDNSRecordSet.hostname, 'status': 'active', 'type': 'CNAME', 'records': [dns_operation.switchDNSRecordSet.managementAddress], 'ttl': dns_operation.switchDNSRecordSet.zone.ttl | default(3600)}] }}
           {%- endif -%}
         {%- endif -%}
       infrastructure_id: "{{ dns_operation.switchDNSRecordSet.switchId }}"
@@ -121,33 +137,45 @@
 # Updated to include is_server and is_switch
 - name: Set working operation
   ansible.builtin.set_fact:
-    working_operation: "{{ transformed_operation if (is_instance_group or is_instance or is_server or is_switch) else dns_operation }}"
+    working_operation: "{{ transformed_operation if (is_instance_group or is_instance or is_cluster or is_server or is_switch) else dns_operation }}"
 
 # Helper to check if record has content
-- name: Check if record has content
+- name: Check if there are records to process
   ansible.builtin.set_fact:
-    has_record_content: "{{ (working_operation.records[0].ips | default([]) | length > 0) or (working_operation.records[0].target | default('') | length > 0) }}"
+    has_records_to_set: >-
+      {{
+      (
+        working_operation.records is defined
+        and (working_operation.records | length > 0)
+        and (working_operation.records | selectattr('status', 'equalto', 'active') | list | length > 0)
+      )
+      }}
+    has_records_to_delete: >-
+      {{
+      (
+        working_operation.records is defined
+        and (working_operation.records | length > 0)
+        and (working_operation.records | selectattr('status', 'equalto', 'deleting') | list | length > 0)
+      )
+      }}
+
+- name: Skip if there are no records to process
+  ansible.builtin.meta: end_play
+  when:
+  - not has_records_to_set
+  - not has_records_to_delete
 
 # Using working_operation for all subsequent tasks
 - name: Parse zone name
   ansible.builtin.set_fact:
     zone_name: "{{ working_operation.zone }}{{ '.' if not working_operation.zone.endswith('.') else '' }}"
-    is_destroy: "{{ working_operation.operation is search('deprovision') }}"
-
-- name: Skip if no content for create/edit
-  ansible.builtin.meta: end_play
-  when:
-  - not is_destroy
-  - not has_record_content
 
 - name: Display operation details
   ansible.builtin.debug:
     msg:
-    - "Format: {{ 'Switch' if is_switch else 'Server' if is_server else 'Instance Group' if is_instance_group else 'Instance' if is_instance else 'Legacy' }}"
-    - "Operation: {{ working_operation.operation }}"
+    - "Format: {{ 'Switch' if is_switch else 'Server' if is_server else 'Instance Group' if is_instance_group else 'Instance' if is_instance else 'Cluster' if is_cluster else 'Legacy' }}"
     - "Zone: {{ zone_name }}"
     - "Records: {{ working_operation.records | default([]) }}"
-    - "Action: {{ 'Destroying' if is_destroy else 'Creating/Updating' }}"
 
 - name: Validate PowerDNS API connectivity
   ansible.builtin.uri:
@@ -175,7 +203,7 @@
 
 # CREATE/EDIT Operations
 - name: Handle CREATE/EDIT operations
-  when: not is_destroy
+  when: has_records_to_set
   block:
   - name: Create zone if needed
     ansible.builtin.include_tasks: create_zone.yml
@@ -184,43 +212,54 @@
   - name: Add/Update records in zone
     ansible.builtin.include_tasks: create_records.yml
     when:
-    - working_operation.records is defined
-    - working_operation.records | length > 0
-    - has_record_content
     - zone_exists or zone_created | default(false)
+    - working_operation.records | selectattr('status', 'equalto', 'active') | selectattr('type', 'ne', 'PTR') | list | length > 0
 
-  - name: Handle PTR records only for IPv4 addresses (type 'A')
-    ansible.builtin.include_tasks: create_ptr.yml
-    when:
-    - working_operation.operation is search("server_instance_dns_provisioning|server_dns_provisioning|switch_dns_provisioning")
-    - working_operation.records is defined
-    loop: "{{ working_operation.records | selectattr('type', 'equalto', 'A') | list }}"
+  - name: Handle auto-generated PTR records
+    ansible.builtin.include_tasks: create_autogenerated_ptr.yml
+    when: working_operation.records | selectattr('status', 'equalto', 'active') | selectattr('type', 'equalto', 'A') | selectattr('ptr', 'defined') | selectattr('ptr', 'equalto', 'enabled') | list | length > 0
+    loop: "{{ working_operation.records | selectattr('status', 'equalto', 'active') | selectattr('type', 'equalto', 'A') | selectattr('ptr', 'defined') | list }}"
     loop_control:
       loop_var: a_record
 
+  - name: Handle PTR records
+    ansible.builtin.include_tasks: create_ptr.yml
+    vars:
+      ip_address: "{{ item.name | regex_replace('\\.in-addr\\.arpa\\.$', '') | split('.') | reverse() | join('.') }}"
+      ptr_record_value: "{{ item.records[0] }}"
+    when: working_operation.records | selectattr('status', 'equalto', 'active') | selectattr('type', 'equalto', 'PTR') | list | length > 0
+    loop: "{{ working_operation.records | selectattr('status', 'equalto', 'active') | selectattr('type', 'equalto', 'PTR') | list }}"
+
 # DELETE Operations
 - name: Handle DELETE operations
-  when: is_destroy
+  when: has_records_to_delete
   block:
   - name: Remove records from zone
     ansible.builtin.include_tasks: destroy_records.yml
     when:
     - zone_exists
     - working_operation.records is defined
-    - working_operation.records | length > 0
+    - working_operation.records | selectattr('status', 'equalto', 'deleting') | selectattr('type', 'ne', 'PTR') | list | length > 0
 
-  # Clean up PTR records during deletion
-  - name: Handle PTR cleanup for deleted servers/switches
-    ansible.builtin.include_tasks: destroy_ptr.yml
-    when:
-    - working_operation.operation is search("server_instance_dns_deprovisioning|server_dns_deprovisioning|switch_dns_deprovisioning")
-    - working_operation.records is defined
-    loop: "{{ working_operation.records | selectattr('type', 'equalto', 'A') | selectattr('ips', 'defined') | list }}"
+  # Clean up auto-generated PTR records
+  - name: Cleanup auto-generated PTR records
+    ansible.builtin.include_tasks: destroy_autogenerated_ptr.yml
+    when: working_operation.records | selectattr('status', 'equalto', 'deleting') | selectattr('ptr', 'defined') | selectattr('ptr', 'equalto', 'enabled') | list | length > 0
+    loop: "{{ working_operation.records | selectattr('status', 'equalto', 'deleting') | selectattr('ptr', 'defined') | selectattr('ptr', 'equalto', 'enabled') | list }}"
     loop_control:
       loop_var: a_record
+
+  # Clean up PTR records
+  - name: Cleanup PTR records
+    ansible.builtin.include_tasks: delete_ptr_for_ip.yml
+    vars:
+      ip_address: "{{ item.name | regex_replace('\\.in-addr\\.arpa\\.?$', '') | split('.') | reverse() | join('.') }}"
+    when: working_operation.records | selectattr('status', 'equalto', 'deleting') | selectattr('type', 'equalto', 'PTR') | selectattr('name', 'search', 'in-addr\\.arpa') | list | length > 0
+    loop: "{{ working_operation.records | selectattr('status', 'equalto', 'deleting') | selectattr('type', 'equalto', 'PTR') | selectattr('name', 'search', 'in-addr\\.arpa') | list }}"
 
   - name: Delete zone completely
     ansible.builtin.include_tasks: delete_zone.yml
     when:
     - zone_exists
+    - working_operation.operation is defined
     - working_operation.operation == "dns_zone_deprovisioning"

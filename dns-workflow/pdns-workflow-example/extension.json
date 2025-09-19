@@ -5,7 +5,7 @@
   "label": "powerdnsautomation",
   "extensionType": "workflow",
   "vendor": "MetalSoft",
-  "extensionVersion": "1.0.0",
+  "extensionVersion": "3.0.0",
   "description": "Manages DNS records via PowerDNS API during server lifecycle",
   "icon": "dns",
   "dependencies": {
@@ -18,7 +18,7 @@
       "label": "power-dns-configuration",
       "name": "power-dns-configuration",
       "assetType": "Bundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/power_dns.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/power_dns_v3.1.zip"
     }
   ],
   "onAssetChange": [

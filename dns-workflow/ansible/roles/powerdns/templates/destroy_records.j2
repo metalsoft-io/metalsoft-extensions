@@ -1,6 +1,6 @@
 {
   "rrsets": [
-    {% for record in working_operation.records %}
+    {% for record in working_operation.records if ((record.status == 'deleting') and (record.type != 'PTR')) %}
     {% set record_name = record.name | default('@') %}
     {% if record_name == '@' %}
       {% set full_name = zone_name %}

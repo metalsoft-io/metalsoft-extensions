@@ -1,6 +1,6 @@
 {
   "rrsets": [
-    {% for record in working_operation.records if record.type | upper in ['A', 'AAAA', 'CNAME', 'TXT'] %}
+    {% for record in working_operation.records if ((record.type | upper in ['A', 'AAAA', 'CNAME', 'TXT']) and (record.status == 'active')) %}
     {% set record_name = record.name | default('@') %}
     {% if record_name == '@' %}
       {% set full_name = zone_name %}

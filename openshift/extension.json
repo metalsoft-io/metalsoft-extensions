@@ -101,7 +101,7 @@
         "serverType": "#/input/master_server_type",
         "logicalNetworks": [
           {
-            "label": "#input/logical_network_label",
+            "label": "#/input/logical_network_label",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
@@ -123,7 +123,7 @@
         "serverType": "#/input/worker_server_type",
         "logicalNetworks": [
           {
-            "label": "#input/logical_network_label",
+            "label": "#/input/logical_network_label",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
@@ -142,8 +142,8 @@
     ],
     "logicalNetworks": [
       {
-        "label": "#input/logical_network_label",
-        "profileLabel": "#input/logical_network_profile_label",
+        "label": "#/input/logical_network_label",
+        "profileLabel": "#/input/logical_network_profile_label",
         "ipAllocations": [
           {
             "tags": {

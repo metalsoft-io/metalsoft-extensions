@@ -58,20 +58,6 @@
       "options": {}
     },
     {
-      "label": "logical_network_label",
-      "name": "logical_network_label",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "openshift-network",
-      "options": {}
-    },
-    {
-      "label": "logical_network_profile_label",
-      "name": "logical_network_profile_label",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "openshift-network-profile",
-      "options": {}
-    },
-    {
       "label": "cluster_network",
       "name": "cluster_network",
       "inputType": "ExtensionInputString",
@@ -101,11 +87,11 @@
         "serverType": "#/input/master_server_type",
         "logicalNetworks": [
           {
-            "label": "#/input/logical_network_label",
+            "label": "openshift-network",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
-              "mtu": 1500,
+              "mtu": 9216,
               "dns": {
                 "provisionInstanceDnsRecords": true,
                 "provisionLoadBalancingDnsRecord": true
@@ -123,11 +109,11 @@
         "serverType": "#/input/worker_server_type",
         "logicalNetworks": [
           {
-            "label": "#/input/logical_network_label",
+            "label": "openshift-network",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
-              "mtu": 1500,
+              "mtu": 9216,
               "dns": {
                 "provisionInstanceDnsRecords": true,
                 "provisionLoadBalancingDnsRecord": false
@@ -142,8 +128,8 @@
     ],
     "logicalNetworks": [
       {
-        "label": "#/input/logical_network_label",
-        "profileLabel": "#/input/logical_network_profile_label",
+        "label": "openshift-network",
+        "profileLabel": "openshift-network-profile",
         "ipAllocations": [
           {
             "tags": {

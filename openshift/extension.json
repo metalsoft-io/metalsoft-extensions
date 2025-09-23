@@ -76,6 +76,20 @@
       "name": "pull_secret",
       "inputType": "ExtensionInputString",
       "options": {}
+    },
+    {
+      "label": "Air-gapped Deployment",
+      "name": "airgapped_deployment",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "Mirror Registry URL",
+      "name": "mirror_registry",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "registry.metalsoft.dev/ocp4/openshift4",
+      "options": {}
     }
   ],
   "outputs": [],

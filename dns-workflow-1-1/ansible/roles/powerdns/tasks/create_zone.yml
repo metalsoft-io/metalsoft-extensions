@@ -1,0 +1,18 @@
+---
+- name: Create zone {{ zone_name }}
+  ansible.builtin.uri:
+    url: "{{ powerdns_base_url }}/zones"
+    method: POST
+    headers:
+      X-API-Key: "{{ powerdns_api_key }}"
+    body_format: json
+    body: "{{ lookup('template', 'zone_create.j2') }}"
+    status_code: [ 201, 409 ]
+  register: create_resp
+
+- name: Update zone existence flag
+  ansible.builtin.set_fact:
+    zone_exists: true
+    zone_created: true
+    zone_id: "{{ create_resp.json.id | default(zone_name) }}"
+  when: create_resp is not skipped

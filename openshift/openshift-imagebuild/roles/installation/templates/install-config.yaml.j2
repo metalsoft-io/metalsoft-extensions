@@ -54,3 +54,12 @@ platform:
 fips: false
 pullSecret: '{{ extensionInstanceVariables.pull_secret | to_json }}'
 sshKey: "{{ ssh_key }}"
+{% if extensionInstanceVariables.airgapped_deployment | default(false) | bool -%}
+imageContentSources:
+  - mirrors:
+      - {{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}
+    source: quay.io/openshift-release-dev/ocp-release
+  - mirrors:
+      - {{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}
+    source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+{% endif -%}

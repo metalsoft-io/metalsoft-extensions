@@ -1,0 +1,8 @@
+---
+- name: Monitor OpenShift installation
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  roles:
+  - monitor

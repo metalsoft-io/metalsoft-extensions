@@ -91,7 +91,7 @@
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
-              "mtu": 9216,
+              "mtu": 1500,
               "dns": {
                 "provisionInstanceDnsRecords": true,
                 "provisionLoadBalancingDnsRecord": true
@@ -113,7 +113,7 @@
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
-              "mtu": 9216,
+              "mtu": 1500,
               "dns": {
                 "provisionInstanceDnsRecords": true,
                 "provisionLoadBalancingDnsRecord": false

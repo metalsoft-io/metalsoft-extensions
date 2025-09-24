@@ -78,14 +78,14 @@
       "options": {}
     },
     {
-      "label": "Air-gapped Deployment",
+      "label": "airgapped_deployment",
       "name": "airgapped_deployment",
       "inputType": "ExtensionInputBoolean",
       "defaultValue": false,
       "options": {}
     },
     {
-      "label": "Mirror Registry URL",
+      "label": "mirror_registry",
       "name": "mirror_registry",
       "inputType": "ExtensionInputString",
       "defaultValue": "registry.metalsoft.dev/ocp4/openshift4",

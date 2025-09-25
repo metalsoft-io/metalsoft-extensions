@@ -1,0 +1,202 @@
+---
+# Handle SSH key - generate public from private if needed
+- name: Check if SSH private key exists
+  stat:
+    path: "{{ playbook_dir }}/ssh_key"
+  register: ssh_private_key_file
+
+- name: Fail if SSH private key doesn't exist
+  fail:
+    msg: "SSH private key not found at {{ playbook_dir }}/ssh_key"
+  when: not ssh_private_key_file.stat.exists
+
+- name: Check if SSH public key exists
+  stat:
+    path: "{{ playbook_dir }}/ssh_key.pub"
+  register: ssh_pub_key_file
+
+- name: Generate public key from private key if it doesn't exist
+  shell: ssh-keygen -y -f {{ playbook_dir }}/ssh_key > {{ playbook_dir }}/ssh_key.pub
+  when: not ssh_pub_key_file.stat.exists
+
+- name: Read SSH public key
+  slurp:
+    src: "{{ playbook_dir }}/ssh_key.pub"
+  register: ssh_public_key
+
+- name: Set SSH key fact
+  set_fact:
+    ssh_key: "{{ ssh_public_key.content | b64decode | trim }}"
+
+# Set variables for ISO naming and paths EARLY
+- name: Set ISO naming variables
+  set_fact:
+    deployment_id: "{{ extensionInstanceRecordSet.deploymentId }}"
+    instance_id: "{{ ocp_instance_id | default('0') }}"
+    image_name: "{{ cluster_name | default('ocp-agent') }}"
+    deployment_uuid: "ocp-{{ extensionInstanceRecordSet.deploymentId }}-{{ ocp_instance_id | default('0') }}"
+
+- name: Set ISO filename and paths
+  set_fact:
+    iso_filename: "ISO_{{ deployment_id }}_{{ instance_id }}_{{ image_name }}.iso"
+    iso_final_path: "/iso/{{ deployment_uuid }}/ISO_{{ deployment_id }}_{{ instance_id }}_{{ image_name }}.iso"
+    status_dir: "{{ playbook_dir }}/../logs"
+
+# Check if the final ISO already exists BEFORE doing any work
+- name: Check if ISO already exists in final location
+  stat:
+    path: "{{ iso_final_path }}"
+  register: iso_exists
+
+- name: Display ISO status
+  debug:
+    msg: "ISO already exists at {{ iso_final_path }}, skipping creation"
+  when: iso_exists.stat.exists
+
+# Set backup directory (needed for backup tasks that always run)
+- name: Set backup directory name
+  set_fact:
+    ocp_install_backup_dir: "~/ocp-agent-baremetal-install-{{ deployment_id }}.bak"
+
+# Set installation directory
+- name: Set installation directory name
+  set_fact:
+    ocp_install_dir: "~/ocp-agent-baremetal-install-{{ deployment_id }}"
+
+# Create directory structure with unique names
+- name: Create OpenShift installation directories
+  file:
+    path: "{{ ocp_install_dir }}"
+    state: directory
+    mode: '0770'
+
+# Always create backup directory for config storage
+- name: Create backup directory
+  file:
+    path: "{{ ocp_install_backup_dir }}"
+    state: directory
+    mode: '0770'
+
+# Copy SSH public key to installation directories
+- name: Copy SSH public key to installation directory
+  copy:
+    src: "{{ playbook_dir }}/ssh_key.pub"
+    dest: "{{ ocp_install_dir }}/ssh_key.pub"
+    mode: '0644'
+    remote_src: yes
+
+- name: Copy SSH public key to backup directory
+  copy:
+    src: "{{ playbook_dir }}/ssh_key.pub"
+    dest: "{{ ocp_install_backup_dir }}/ssh_key.pub"
+    mode: '0644'
+    remote_src: yes
+
+# Copy SSH private key to installation directory
+- name: Copy SSH private key to installation directory
+  copy:
+    src: "{{ playbook_dir }}/ssh_key"
+    dest: "{{ ocp_install_dir }}/ssh_key"
+    mode: '0600'
+    remote_src: yes
+
+# Generate configs
+- name: Deploy install-config.yaml to installation directory
+  template:
+    src: install-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/install-config.yaml"
+    mode: '0644'
+
+- name: Deploy agent-config.yaml to installation directory
+  template:
+    src: agent-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/agent-config.yaml"
+    mode: '0644'
+
+# Always deploy to backup for reference
+- name: Deploy install-config.yaml to backup directory
+  template:
+    src: install-config.yaml.j2
+    dest: "{{ ocp_install_backup_dir }}/install-config.yaml"
+    mode: '0644'
+
+- name: Deploy agent-config.yaml to backup directory
+  template:
+    src: agent-config.yaml.j2
+    dest: "{{ ocp_install_backup_dir }}/agent-config.yaml"
+    mode: '0644'
+
+# Air-gapped deployment configuration - MUST BE BEFORE ISO CREATION
+- name: Set release image override for air-gapped deployment
+  set_fact:
+    release_image_override: "{{ extensionInstanceVariables.mirror_registry }}:{{ extensionInstanceVariables.ocp_version }}"
+  when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+- name: Display air-gapped configuration
+  debug:
+    msg: "Air-gapped mode: Using release image {{ release_image_override }}"
+  when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+# Create the agent ISO directly on NFS (air-gapped)
+- name: Create agent installer image directly on NFS (air-gapped)
+  command: /usr/local/bin/openshift-install agent create image
+  args:
+    chdir: "{{ ocp_install_dir }}"
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE: "{{ release_image_override }}"
+  when:
+  - not iso_exists.stat.exists
+  - extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+# Create the agent ISO directly on NFS (normal)
+- name: Create agent installer image directly on NFS (normal)
+  command: /usr/local/bin/openshift-install agent create image
+  args:
+    chdir: "{{ ocp_install_dir }}"
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  when:
+  - not iso_exists.stat.exists
+  - not (extensionInstanceVariables.airgapped_deployment | default(false) | bool)
+
+# Create destination directory on NFS
+- name: Create ISO destination directory on NFS
+  file:
+    path: "/iso/{{ deployment_uuid }}"
+    state: directory
+    mode: '0755'
+  when: not iso_exists.stat.exists
+
+# Move ISO to final location (instant move within same filesystem)
+- name: Move ISO to final location
+  command: mv {{ ocp_install_dir }}/agent.x86_64.iso {{ iso_final_path }}
+  args:
+    removes: "{{ ocp_install_dir }}/agent.x86_64.iso"
+    creates: "{{ iso_final_path }}"
+  when: not iso_exists.stat.exists
+
+# Create logs directory for context file
+- name: Ensure logs directory exists
+  file:
+    path: "{{ status_dir }}"
+    state: directory
+    mode: '0755'
+
+# Save ISO path to the context.json file
+- name: Save ISO path to the context.json file
+  copy:
+    content: |
+      {
+        "mount-and-boot": {
+          "iso": {
+            "path": "{{ iso_final_path }}"
+          },
+          "options": {
+            "sendSuccessMessageAfterBoot": true
+          },
+          "application": "openshift"
+        }
+      }
+    dest: "{{ status_dir }}/context.json"
+    mode: '0644'

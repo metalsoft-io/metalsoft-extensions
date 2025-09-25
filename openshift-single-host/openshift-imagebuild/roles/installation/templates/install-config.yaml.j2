@@ -1,0 +1,65 @@
+apiVersion: v1
+baseDomain: {{ extensionInstanceVariables.base_domain }}
+compute:
+  - hyperthreading: Enabled
+    name: worker
+    replicas: {{ extensionInstanceVariables.number_workers }}
+controlPlane:
+  hyperthreading: Enabled
+  name: master
+  replicas: {{ extensionInstanceVariables.number_masters }}
+metadata:
+  name: {{ extensionInstanceRecordSet.extensionInstanceName }}
+{% set machine_network = namespace(networkAddress='', prefix=24) -%}
+{%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- for ip in instance.ipv4Ips -%}
+{%- if ip.isDefaultGateway and not machine_network.networkAddress -%}
+{%- set machine_network.networkAddress = ip.networkAddress -%}
+{%- set machine_network.prefix = ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor -%}
+{%- if not machine_network.networkAddress -%}
+{%- set machine_network.networkAddress = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].networkAddress -%}
+{%- set machine_network.prefix = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].maskBits -%}
+{%- endif -%}
+networking:
+  clusterNetwork:
+    - cidr: {{ extensionInstanceVariables.cluster_network }}
+      hostPrefix: 23
+  networkType: OVNKubernetes
+  serviceNetwork:
+    - {{ extensionInstanceVariables.service_network }}
+  machineNetwork:
+    - cidr: {{ machine_network.networkAddress }}/{{ machine_network.prefix }}
+{% if extensionInstanceVariables.number_masters == 1 and extensionInstanceVariables.number_workers == 0 -%}
+platform:
+  none: {}
+{% else -%}
+{%- set vips = namespace(api='', ingress='') -%}
+{%- for cluster_ip in extensionInstanceRecordSet.clusterIpv4Ips | default([]) -%}
+{%- if cluster_ip.tags and cluster_ip.tags.role == 'api-vip' -%}
+{%- set vips.api = cluster_ip.ip -%}
+{%- elif cluster_ip.tags and cluster_ip.tags.role == 'ingress-vip' -%}
+{%- set vips.ingress = cluster_ip.ip -%}
+{%- endif -%}
+{%- endfor -%}
+platform:
+  baremetal:
+    apiVIPs:
+      - {{ vips.api }}
+    ingressVIPs:
+      - {{ vips.ingress }}
+{% endif -%}
+fips: false
+pullSecret: '{{ extensionInstanceVariables.pull_secret }}'
+sshKey: "{{ ssh_key }}"
+{% if extensionInstanceVariables.airgapped_deployment | default(false) | bool -%}
+imageContentSources:
+  - mirrors:
+      - {{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}
+    source: quay.io/openshift-release-dev/ocp-release
+  - mirrors:
+      - {{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}
+    source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+{% endif -%}

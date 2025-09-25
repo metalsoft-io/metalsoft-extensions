@@ -1,0 +1,226 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "openshift",
+  "label": "openshift",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.1.0",
+  "description": "Openshift multi-node cluster deployment",
+  "icon": "openshift",
+  "dependencies": {
+    "controllerVersion": "string",
+    "osTemplates": []
+  },
+  "inputs": [
+    {
+      "label": "master_server_type",
+      "name": "master_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
+    },
+    {
+      "label": "worker_server_type",
+      "name": "worker_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
+    },
+    {
+      "label": "number_masters",
+      "name": "number_masters",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 1
+      }
+    },
+    {
+      "label": "number_workers",
+      "name": "number_workers",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 0,
+      "options": {
+        "minValue": 0,
+        "maxValue": 0
+      }
+    },
+    {
+      "label": "base_domain",
+      "name": "base_domain",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "metalcloud.local",
+      "options": {}
+    },
+    {
+      "label": "mtu",
+      "name": "mtu",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1500,
+      "options": {}
+    },
+    {
+      "label": "cluster_network",
+      "name": "cluster_network",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "10.128.0.0/14",
+      "options": {}
+    },
+    {
+      "label": "service_network",
+      "name": "service_network",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "172.30.0.0/16",
+      "options": {}
+    },
+    {
+      "label": "pull_secret",
+      "name": "pull_secret",
+      "inputType": "ExtensionInputString",
+      "options": {}
+    },
+    {
+      "label": "airgapped_deployment",
+      "name": "airgapped_deployment",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "mirror_registry",
+      "name": "mirror_registry",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "registry.metalsoft.dev/ocp4/openshift4",
+      "options": {}
+    },
+    {
+    "label": "OpenShift Version",
+    "name": "ocp_version",
+    "inputType": "ExtensionInputString",
+    "defaultValue": "4.19.0",
+    "options": {}
+    }
+  ],
+  "outputs": [],
+  "infrastructure": {
+    "instanceArrays": [
+      {
+        "label": "ocp-cp",
+        "instanceCount": "#/input/number_masters",
+        "serverType": "#/input/master_server_type",
+        "logicalNetworks": [
+          {
+            "label": "openshift-network",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "mtu": 1500,
+              "dns": {
+                "provisionInstanceDnsRecords": true,
+                "provisionLoadBalancingDnsRecord": true
+              }
+            }
+          }
+        ],
+        "tags": [
+          "master-node"
+        ]
+      },
+      {
+        "label": "ocp-worker",
+        "instanceCount": "#/input/number_workers",
+        "serverType": "#/input/worker_server_type",
+        "logicalNetworks": [
+          {
+            "label": "openshift-network",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "mtu": 1500,
+              "dns": {
+                "provisionInstanceDnsRecords": true,
+                "provisionLoadBalancingDnsRecord": false
+              }
+            }
+          }
+        ],
+        "tags": [
+          "worker-node"
+        ]
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "label": "openshift-network",
+        "profileLabel": "openshift-network-profile",
+        "ipAllocations": [
+          {
+            "tags": {
+              "role": "api-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "api.{{CLUSTER_NAME}}.metalcloud.local",
+                "recordType": "A",
+                "generatePtrRecord": true
+              },
+              {
+                "name": "*.apps.{{CLUSTER_NAME}}.metalcloud.local",
+                "recordType": "A",
+                "generatePtrRecord": false
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "install-openshift",
+      "name": "Install OpenShift",
+      "assetType": "Bundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-imagebuild-single-host-v1.0.zip"
+    },
+    {
+      "label": "monitor-installation",
+      "name": "Monitor OpenShift installation",
+      "assetType": "Bundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-monitor-v1.0.zip"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "installOpenshift",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "install-openshift",
+            "playbook": "deploy.yaml"
+          }
+        },
+        {
+          "label": "monitor-installation",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "monitor-installation",
+            "playbook": "deploy.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "preDeploy",
+      "tasks": []
+    }
+  ],
+  "onEdit": [],
+  "onDelete": [],
+  "actions": [],
+  "onAssetChange": []
+}

@@ -183,7 +183,7 @@
       "label": "install-openshift",
       "name": "Install OpenShift",
       "assetType": "Bundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-imagebuild-single-host-v1.2.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-imagebuild-single-host-v1.3.zip"
     },
     {
       "label": "monitor-installation",

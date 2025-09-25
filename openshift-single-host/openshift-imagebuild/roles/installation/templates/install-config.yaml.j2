@@ -57,7 +57,7 @@ platform:
       - {{ vips.ingress }}
 {% endif -%}
 fips: false
-pullSecret: '{{ extensionInstanceVariables.pull_secret }}'
+pullSecret: '{{ extensionInstanceVariables.pull_secret | to_json }}'
 sshKey: "{{ ssh_key }}"
 {% if extensionInstanceVariables.airgapped_deployment | default(false) | bool -%}
 imageContentSources:

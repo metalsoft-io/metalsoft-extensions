@@ -11,6 +11,14 @@ controlPlane:
 metadata:
   name: {{ extensionInstanceRecordSet.extensionInstanceName }}
 {% set machine_network = namespace(networkAddress='', prefix=24) -%}
+{%- if extensionInstanceVariables.number_masters == 1 and extensionInstanceVariables.number_workers == 0 -%}
+{%- for cluster_ip in extensionInstanceRecordSet.clusterIpv4Ips | default([]) -%}
+{%- if cluster_ip.tags and cluster_ip.tags.role == 'api-vip' -%}
+{%- set machine_network.networkAddress = cluster_ip.networkAddress -%}
+{%- set machine_network.prefix = cluster_ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- else -%}
 {%- for instance in extensionInstanceRecordSet.serverInstances -%}
 {%- for ip in instance.ipv4Ips -%}
 {%- if ip.isDefaultGateway and not machine_network.networkAddress -%}
@@ -19,9 +27,6 @@ metadata:
 {%- endif -%}
 {%- endfor -%}
 {%- endfor -%}
-{%- if not machine_network.networkAddress -%}
-{%- set machine_network.networkAddress = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].networkAddress -%}
-{%- set machine_network.prefix = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].maskBits -%}
 {%- endif -%}
 networking:
   clusterNetwork:

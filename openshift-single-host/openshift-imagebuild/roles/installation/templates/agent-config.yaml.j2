@@ -3,6 +3,15 @@ kind: AgentConfig
 metadata:
   name: {{ extensionInstanceRecordSet.extensionInstanceName }}
 {% set rendezvous = namespace(ip='', gateway='', prefix=24) -%}
+{%- if extensionInstanceVariables.number_masters == 1 and extensionInstanceVariables.number_workers == 0 -%}
+{%- for cluster_ip in extensionInstanceRecordSet.clusterIpv4Ips | default([]) -%}
+{%- if cluster_ip.tags and cluster_ip.tags.role == 'api-vip' -%}
+{%- set rendezvous.ip = cluster_ip.ip -%}
+{%- set rendezvous.gateway = cluster_ip.gateway -%}
+{%- set rendezvous.prefix = cluster_ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- else -%}
 {%- for instance in extensionInstanceRecordSet.serverInstances -%}
 {%- for ip in instance.ipv4Ips -%}
 {%- if ip.isDefaultGateway and not rendezvous.ip -%}
@@ -12,13 +21,16 @@ metadata:
 {%- endif -%}
 {%- endfor -%}
 {%- endfor -%}
-{%- if not rendezvous.ip -%}
-{%- set rendezvous.ip = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].ip -%}
 {%- endif -%}
 rendezvousIP: {{ rendezvous.ip }}
 hosts:
 {%- for instance in extensionInstanceRecordSet.serverInstances -%}
 {%- set inst_data = namespace(ip='', gateway='', prefix=24, interface_mac='') -%}
+{%- if extensionInstanceVariables.number_masters == 1 and extensionInstanceVariables.number_workers == 0 -%}
+{%- set inst_data.ip = rendezvous.ip -%}
+{%- set inst_data.gateway = rendezvous.gateway -%}
+{%- set inst_data.prefix = rendezvous.prefix -%}
+{%- else -%}
 {%- for ip in instance.ipv4Ips -%}
 {%- if ip.isDefaultGateway and not inst_data.ip -%}
 {%- set inst_data.ip = ip.ip -%}
@@ -26,17 +38,19 @@ hosts:
 {%- set inst_data.prefix = ip.maskBits -%}
 {%- endif -%}
 {%- endfor -%}
-{%- if not inst_data.ip -%}
-{%- set inst_data.ip = instance.ipv4Ips[0].ip -%}
-{%- set inst_data.gateway = instance.ipv4Ips[0].gateway -%}
-{%- set inst_data.prefix = instance.ipv4Ips[0].maskBits -%}
 {%- endif -%}
 {%- for physicalInterfaceNetworkConfig in instance.networkConfig.physicalInterfaceNetworkConfigs.values() -%}
+{%- if extensionInstanceVariables.number_masters == 1 and extensionInstanceVariables.number_workers == 0 -%}
+{%- if inst_data.interface_mac == '' -%}
+{%- set inst_data.interface_mac = physicalInterfaceNetworkConfig.macAddress -%}
+{%- endif -%}
+{%- else -%}
 {%- for interfaceIpv4Address in physicalInterfaceNetworkConfig.ipv4Addresses -%}
 {%- if interfaceIpv4Address.ip == inst_data.ip and inst_data.interface_mac == '' -%}
 {%- set inst_data.interface_mac = physicalInterfaceNetworkConfig.macAddress -%}
 {%- endif -%}
 {%- endfor -%}
+{%- endif -%}
 {%- endfor %}
 
   - hostname: instance-{{ instance.serverInstanceId }}

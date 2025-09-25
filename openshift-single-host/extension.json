@@ -1,12 +1,12 @@
 {
   "kind": "ExtensionDefinition",
   "schemaVersion": "1.1",
-  "name": "openshift",
-  "label": "openshift",
+  "name": "openshift-single-host",
+  "label": "openshift-single-host",
   "extensionType": "application",
   "vendor": "MetalSoft",
   "extensionVersion": "1.1.0",
-  "description": "Openshift multi-node cluster deployment",
+  "description": "Openshift single-host cluster deployment",
   "icon": "openshift",
   "dependencies": {
     "controllerVersion": "string",

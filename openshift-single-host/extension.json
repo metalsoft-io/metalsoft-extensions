@@ -94,7 +94,7 @@
       "options": {}
     },
     {
-    "label": "OpenShift Version",
+    "label": "ocp_version",
     "name": "ocp_version",
     "inputType": "ExtensionInputString",
     "defaultValue": "4.19.0",

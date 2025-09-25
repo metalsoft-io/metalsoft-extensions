@@ -90,6 +90,13 @@
       "inputType": "ExtensionInputString",
       "defaultValue": "registry.metalsoft.dev/ocp4/openshift4",
       "options": {}
+    },
+    {
+    "label": "OpenShift Version",
+    "name": "ocp_version",
+    "inputType": "ExtensionInputString",
+    "defaultValue": "4.19.0",
+    "options": {}
     }
   ],
   "outputs": [],

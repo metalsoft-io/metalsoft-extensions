@@ -126,14 +126,39 @@
     dest: "{{ ocp_install_backup_dir }}/agent-config.yaml"
     mode: '0644'
 
-# Create the agent ISO directly on NFS
-- name: Create agent installer image directly on NFS
+# Air-gapped deployment configuration - MUST BE BEFORE ISO CREATION
+- name: Set release image override for air-gapped deployment
+  set_fact:
+    release_image_override: "{{ extensionInstanceVariables.mirror_registry }}:{{ extensionInstanceVariables.ocp_version }}"
+  when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+- name: Display air-gapped configuration
+  debug:
+    msg: "Air-gapped mode: Using release image {{ release_image_override }}"
+  when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+# Create the agent ISO directly on NFS (air-gapped)
+- name: Create agent installer image directly on NFS (air-gapped)
   command: /usr/local/bin/openshift-install agent create image
   args:
     chdir: "{{ ocp_install_dir }}"
   environment:
     PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-  when: not iso_exists.stat.exists
+    OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE: "{{ release_image_override }}"
+  when:
+  - not iso_exists.stat.exists
+  - extensionInstanceVariables.airgapped_deployment | default(false) | bool
+
+# Create the agent ISO directly on NFS (normal)
+- name: Create agent installer image directly on NFS (normal)
+  command: /usr/local/bin/openshift-install agent create image
+  args:
+    chdir: "{{ ocp_install_dir }}"
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  when:
+  - not iso_exists.stat.exists
+  - not (extensionInstanceVariables.airgapped_deployment | default(false) | bool)
 
 # Create destination directory on NFS
 - name: Create ISO destination directory on NFS

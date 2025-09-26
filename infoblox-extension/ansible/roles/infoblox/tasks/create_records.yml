@@ -1,0 +1,69 @@
+---
+# Create/Update non-PTR records in Infoblox
+- name: Prepare active non-PTR records
+  ansible.builtin.set_fact:
+    _active_records: "{{ working_operation.records | selectattr('status','equalto','active') | selectattr('type','defined') | selectattr('type','ne','PTR') | list }}"
+- name: Create A/AAAA records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  when: item.type | upper in ['A','AAAA'] and item.records is defined and (item.records | length) > 0
+  loop: "{{ _active_records }}"
+  loop_control:
+    label: "{{ item.type }} {{ item.name }}"
+  ansible.builtin.include_tasks: _create_ip_record_task.yml
+
+- name: Ensure CNAME records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+    target: "{{ (item.records[0] | default('')) | trim }}"
+  when: item.type | upper == 'CNAME' and item.records is defined and (item.records | length) > 0
+  loop: "{{ _active_records }}"
+  loop_control:
+    label: "CNAME {{ item.name }}"
+  infoblox.nios_modules.nios_cname_record:
+    name: "{{ record_fqdn | trim }}"
+    canonical: "{{ target if target.endswith('.') else target + '.' }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ item.ttl | default(default_ttl) }}"
+    state: present
+    provider: "{{ nios_provider }}"
+
+- name: Ensure TXT records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  when: item.type | upper == 'TXT' and item.records is defined and (item.records | length) > 0
+  loop: "{{ _active_records }}"
+  loop_control:
+    label: "TXT {{ item.name }}"
+  infoblox.nios_modules.nios_txt_record:
+    name: "{{ record_fqdn | trim }}"
+    text: "{{ item.records | map('trim') | list }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ item.ttl | default(default_ttl) }}"
+    state: present
+    provider: "{{ nios_provider }}"
+

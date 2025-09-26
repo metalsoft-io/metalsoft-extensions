@@ -1,0 +1,65 @@
+---
+# Delete non-PTR records in Infoblox
+- name: Prepare deleting non-PTR records
+  ansible.builtin.set_fact:
+    _deleting_records: >-
+      {{ working_operation.records | selectattr('status','equalto','deleting') | selectattr('type','defined') | selectattr('type','ne','PTR') | list }}
+
+- name: Delete A/AAAA records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  when: item.type | upper in ['A','AAAA'] and item.records is defined and (item.records | length) > 0
+  loop: "{{ _deleting_records }}"
+  loop_control:
+    label: "{{ item.type }} {{ item.name }}"
+  ansible.builtin.include_tasks: _delete_ip_record_task.yml
+
+- name: Delete CNAME records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  when: item.type | upper == 'CNAME'
+  loop: "{{ _deleting_records }}"
+  loop_control:
+    label: "CNAME {{ item.name }}"
+  infoblox.nios_modules.nios_cname_record:
+    name: "{{ record_fqdn | trim }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"
+
+- name: Delete TXT records
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  when: item.type | upper == 'TXT'
+  loop: "{{ _deleting_records }}"
+  loop_control:
+    label: "TXT {{ item.name }}"
+  infoblox.nios_modules.nios_txt_record:
+    name: "{{ record_fqdn | trim }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"

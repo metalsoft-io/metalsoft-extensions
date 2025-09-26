@@ -1,0 +1,49 @@
+---
+- name: Create IP and DNS records in Infoblox
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    dns_config_file: "{{ playbook_dir }}/variables.json"
+    allocate_ipv4: true
+    allocation_ipv4_network: "10.0.0.0/24"
+    allocation_ipv4_method: "lookup"
+  # allocate_ipv4_method intentionally not overridden here (defaults to 'wapi' in role)
+  # To force lookup (may crash on macOS), run with: -e allocate_ipv4_method=lookup
+
+  pre_tasks:
+  - name: Display config file path
+    ansible.builtin.debug:
+      msg: "Loading DNS configuration from: {{ dns_config_file }}"
+    tags: [ always ]
+
+  - name: Verify variables.json exists
+    ansible.builtin.stat:
+      path: "{{ dns_config_file }}"
+    register: config_file
+
+  - name: Assert configuration file exists
+    ansible.builtin.assert:
+      that:
+      - config_file.stat.exists
+      fail_msg: "Configuration file not found at {{ dns_config_file }}"
+
+  - name: Load JSON configuration
+    ansible.builtin.include_vars:
+      file: "{{ dns_config_file }}"
+      name: dns_operation
+
+  # Ensure required collection is installed:
+  # ansible-galaxy collection install -r collections/requirements.yml
+
+  # Optionally override Infoblox credentials here or via extra vars / env vars
+  # infoblox_host: "grid.example.com"
+  # infoblox_username: "api-user"
+  # infoblox_password: "change-me"
+
+  roles:
+  - role: infoblox
+    tags: [infoblox]
+    environment:
+      OBJC_DISABLE_INITIALIZE_FORK_SAFETY: "YES"  # defensive; harmless for wapi path

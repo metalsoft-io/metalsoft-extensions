@@ -1,0 +1,13 @@
+---
+- name: Derive default ptrdname if not provided
+  ansible.builtin.set_fact:
+    _ptrdname_delete: >-
+      {{ (ptr_record_value | default('')) if (ptr_record_value is defined and (ptr_record_value | length) > 0) else '' }}
+
+- name: Delete PTR record for {{ ip_address }}
+  infoblox.nios_modules.nios_ptr_record:
+    ipv4addr: "{{ ip_address }}"
+    ptrdname: "{{ (_ptrdname_delete | trim).rstrip('.') if (_ptrdname_delete | length) > 0 else omit }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"

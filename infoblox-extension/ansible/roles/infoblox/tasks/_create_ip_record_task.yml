@@ -1,0 +1,372 @@
+---
+# Helper: create A and AAAA record values for current outer 'item'
+
+- name: Debug allocation variables for lookup method
+  ansible.builtin.debug:
+      msg:
+        item_type: "{{ item.type }}"
+        item_type_upper: "{{ item.type | upper }}"
+        allocate_ipv4: "{{ allocate_ipv4 }}"
+        allocation_ipv4_network: "{{ allocation_ipv4_network }}"
+        allocation_ipv4_method: "{{ allocate_ipv4_method }}"
+        item_records: "{{ item.records | default('undefined') }}"
+        auto_in_records: "{{ 'AUTO' in (item.records | default([])) }}"
+ # when: ansible_verbosity | int >= 1
+
+- name: Allocate and create IPv4 A record (auto lookup) for {{ record_fqdn }}
+  when:
+    - item.type | upper == 'A'
+    - allocate_ipv4 | bool
+    - allocation_ipv4_network | length > 0
+    - allocate_ipv4_method == 'lookup'
+    - item.records is not defined or (item.records | length == 0) or ('AUTO' in item.records)
+  block:
+    - name: Query existing A record (lookup method)
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr,view"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _existing_a_lookup
+      failed_when: false
+
+    - name: Extract existing IPv4 (lookup)
+      ansible.builtin.set_fact:
+        _existing_a_ip_lookup: "{{ (_existing_a_lookup.json[0].ipv4addr | default('')) if (_existing_a_lookup.json is sequence and (_existing_a_lookup.json | length) > 0) else '' }}"
+
+    - name: Reuse existing IPv4 (lookup) if present
+      when: _existing_a_ip_lookup | length > 0
+      ansible.builtin.set_fact:
+        _allocated_lookup_ipv4: "{{ _existing_a_ip_lookup }}"
+        allocated_auto_ips: "{{ (allocated_auto_ips | default([])) + [ _existing_a_ip_lookup ] }}"
+        allocated_auto_a_records: "{{ (allocated_auto_a_records | default([])) + [ { 'name': record_fqdn | trim, 'ip': _existing_a_ip_lookup, 'ptr_enabled': (item.ptr | default('disabled')) } ] }}"
+
+    - name: Debug reuse (lookup)
+      ansible.builtin.debug:
+        msg: "Reusing existing A record IP {{ _existing_a_ip_lookup }} for {{ record_fqdn }}"
+      when: _existing_a_ip_lookup | length > 0
+
+    # Allocation steps only run if no existing IP was found
+
+    # Moved debug allocation variables for lookup method to a separate task file for unconditional execution.
+    # Please include this in a separate task file and import it as needed.
+
+   
+
+    - name: Lookup next available IPv4 (controller)
+      when: _existing_a_ip_lookup | length == 0
+      ansible.builtin.set_fact:
+        _next_ipv4_list: "{{ lookup('infoblox.nios_modules.nios_next_ip', allocation_ipv4_network, 'num=1', provider=nios_provider, wantlist=True) }}"
+      environment:
+        OBJC_DISABLE_INITIALIZE_FORK_SAFETY: "YES"
+
+    - name: Normalize allocated IPv4 (lookup)
+      when: _existing_a_ip_lookup | length == 0
+      ansible.builtin.set_fact:
+        _allocated_lookup_ipv4_raw: "{{ _next_ipv4_list[0] if (_next_ipv4_list is sequence) else _next_ipv4_list }}"
+
+    - name: Sanitize allocated IPv4 (remove stray brackets/quotes)
+      when: _existing_a_ip_lookup | length == 0
+      ansible.builtin.set_fact:
+        _allocated_lookup_ipv4: >-
+          {{ (_allocated_lookup_ipv4_raw | string)
+             | regex_replace('^[\[\(]{1}', '')
+             | regex_replace('[\]\)]{1}$', '')
+             | regex_replace('^"', '')
+             | regex_replace('"$', '')
+             | regex_replace("^'", '')
+             | regex_replace("'$", '') }}
+
+    - name: Debug normalized IPv4 (lookup)
+      when: _existing_a_ip_lookup | length == 0 and ansible_verbosity | int >= 2
+      ansible.builtin.debug:
+        msg:
+          next_ipv4_list: "{{ _next_ipv4_list }}"
+          allocated_lookup_ipv4_raw: "{{ _allocated_lookup_ipv4_raw }}"
+          allocated_lookup_ipv4: "{{ _allocated_lookup_ipv4 }}"
+          is_sequence: "{{ _next_ipv4_list is sequence }}"
+
+    - name: Fail if no IP allocated
+      when:
+        - _existing_a_ip_lookup | length == 0
+        - _next_ipv4_list is not defined or (_next_ipv4_list | length) == 0 or (_allocated_lookup_ipv4 | default('') | length) == 0
+      ansible.builtin.fail:
+        msg: "Infoblox lookup did not return an IP for network {{ allocation_ipv4_network }} (list={{ _next_ipv4_list | default('undefined') }})"
+
+    - name: Show allocated IPv4 (lookup)
+      when: (_allocated_lookup_ipv4 is defined and (_allocated_lookup_ipv4 | length) > 0) and _existing_a_ip_lookup | length == 0
+      ansible.builtin.debug:
+        msg: "Allocated IPv4 (lookup method) for {{ record_fqdn }}: {{ _allocated_lookup_ipv4 }}"
+
+    - name: Create allocated A record (lookup) for {{ record_fqdn }}
+      when: _existing_a_ip_lookup | length == 0
+      infoblox.nios_modules.nios_a_record:
+        name: "{{ record_fqdn | trim }}"
+        ipv4addr: "{{ _allocated_lookup_ipv4 }}"
+        view: "{{ infoblox_view }}"
+        ttl: "{{ item.ttl | default(default_ttl) }}"
+        state: present
+        provider: "{{ nios_provider }}"
+      register: allocated_a_record_lookup
+
+    - name: Track allocated IPv4 (lookup)
+      when: _existing_a_ip_lookup | length == 0
+      ansible.builtin.set_fact:
+        allocated_auto_ips: "{{ (allocated_auto_ips | default([])) + [ _allocated_lookup_ipv4 ] }}"
+        allocated_auto_a_records: "{{ (allocated_auto_a_records | default([])) + [ { 'name': record_fqdn | trim, 'ip': _allocated_lookup_ipv4, 'ptr_enabled': (item.ptr | default('disabled')) } ] }}"
+
+- name: Allocate and create IPv4 A record (auto wapi) for {{ record_fqdn }}
+  when:
+    - item.type | upper == 'A'
+    - allocate_ipv4 | bool
+    - allocation_ipv4_network | length > 0
+    - allocate_ipv4_method == 'wapi'
+    - item.records is not defined or (item.records | length == 0) or ('AUTO' in item.records)
+  block:
+    - name: Query existing A record (wapi method)
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr,view"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _existing_a_wapi
+      failed_when: false
+
+    - name: Extract existing IPv4 (wapi)
+      ansible.builtin.set_fact:
+        _existing_a_ip_wapi: "{{ (_existing_a_wapi.json[0].ipv4addr | default('')) if (_existing_a_wapi.json is sequence and (_existing_a_wapi.json | length) > 0) else '' }}"
+
+    - name: Reuse existing IPv4 (wapi) if present
+      when: _existing_a_ip_wapi | length > 0
+      ansible.builtin.set_fact:
+        _allocated_wapi_ip: "{{ _existing_a_ip_wapi }}"
+        allocated_auto_ips: "{{ (allocated_auto_ips | default([])) + [ _existing_a_ip_wapi ] }}"
+        allocated_auto_a_records: "{{ (allocated_auto_a_records | default([])) + [ { 'name': record_fqdn | trim, 'ip': _existing_a_ip_wapi, 'ptr_enabled': (item.ptr | default('disabled')) } ] }}"
+
+    - name: Debug reuse (wapi)
+      ansible.builtin.debug:
+        msg: "Reusing existing A record IP {{ _existing_a_ip_wapi }} for {{ record_fqdn }}"
+      when: _existing_a_ip_wapi | length > 0
+
+    # Allocation steps only run if no existing IP was found (wapi)
+    - name: Derive network CIDR
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        _alloc_network_cidr: "{{ allocation_ipv4_network }}"
+
+    - name: Query network reference (primary form) (WAPI)
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network?network={{ _alloc_network_cidr | urlencode }}&_return_fields=network&_return_as_object=1"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _network_query
+      failed_when: false
+
+    - name: Fallback network query without _return_as_object (older WAPI)
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network?network={{ _alloc_network_cidr | urlencode }}&_return_fields=network"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _network_query_fallback
+      when: _network_query.status | default(0) != 200
+      failed_when: false
+      when: _existing_a_ip_wapi | length == 0 and _network_query.status | default(0) != 200
+
+    - name: Consolidate network query result
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        _network_query_effective: "{{ (_network_query.status == 200) | ternary(_network_query, _network_query_fallback) }}"
+
+    - name: Extract network reference list
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        _network_objects: >-
+          {{
+            (_network_query_effective.json.result
+              if (_network_query_effective.json is mapping and 'result' in _network_query_effective.json)
+              else (_network_query_effective.json
+                if _network_query_effective.json is sequence
+                else []))
+          }}
+
+    - name: Debug raw network query responses (verbosity 1)
+      when: _existing_a_ip_wapi | length == 0 and ansible_verbosity | int >= 1
+      ansible.builtin.debug:
+        msg:
+          primary_status: "{{ _network_query.status | default('n/a') }}"
+          primary_json: "{{ _network_query.json | default({}) }}"
+          fallback_status: "{{ _network_query_fallback.status | default('n/a') }}"
+          fallback_json: "{{ _network_query_fallback.json | default({}) }}"
+          parsed_objects: "{{ _network_objects }}"
+
+    - name: Broad search fallback (list all networks matching prefix) (WAPI)
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network?_return_fields=network&_max_results=1000"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _network_broad
+      failed_when: false
+
+    - name: Parse broad search result
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0 and _network_broad.json is defined
+      ansible.builtin.set_fact:
+        _network_objects: >-
+          {{ (_network_broad.json.result if (_network_broad.json is mapping and 'result' in _network_broad.json)
+              else (_network_broad.json if _network_broad.json is sequence else []))
+              | selectattr('network','defined')
+              | selectattr('network','equalto', _alloc_network_cidr)
+              | list }}
+
+    - name: Auto-create network if missing and allowed
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0 and auto_create_ipv4_network | bool
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network"
+        method: POST
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        headers:
+          Content-Type: application/json
+        body_format: json
+        body:
+          network: "{{ _alloc_network_cidr }}"
+        return_content: true
+      register: _network_create
+      failed_when: false
+
+    - name: Re-query network after creation (if created)
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0 and _network_create is defined and (_network_create.status | default(0)) in [200,201]
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network?network={{ _alloc_network_cidr | urlencode }}&_return_fields=network"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _network_requery_after_create
+      failed_when: false
+
+    - name: Parse requery result
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0 and _network_requery_after_create.json is defined
+      ansible.builtin.set_fact:
+        _network_objects: >-
+          {{ (_network_requery_after_create.json.result if (_network_requery_after_create.json is mapping and 'result' in _network_requery_after_create.json)
+              else (_network_requery_after_create.json if _network_requery_after_create.json is sequence else [])) }}
+
+    - name: Fail if network not found
+      when: _existing_a_ip_wapi | length == 0 and _network_objects | length == 0
+      ansible.builtin.fail:
+        msg: "Network {{ _alloc_network_cidr }} not found in Infoblox (response empty)"
+
+    - name: Extract network _ref
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        _network_ref: "{{ _network_objects[0]._ref | default('') }}"
+
+    - name: Fail if network ref missing
+      when: _existing_a_ip_wapi | length == 0 and ( _network_ref is not defined or (_network_ref | length) == 0 )
+      ansible.builtin.fail:
+        msg: "Unable to extract network reference for {{ _alloc_network_cidr }}"
+
+    - name: Request next available IP (WAPI)
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/{{ _network_ref }}/"  # trailing slash required
+        method: POST
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        headers:
+          Content-Type: application/json
+        body_format: json
+        body:
+          _function: next_available_ip
+          num: 1
+        return_content: true
+      register: _next_ip_wapi
+
+    - name: Extract allocated IP (wapi)
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        _allocated_wapi_ip: "{{ _next_ip_wapi.json.ips[0] | default('') }}"
+
+    - name: Fail if no IP allocated (wapi)
+      when: _existing_a_ip_wapi | length == 0 and _allocated_wapi_ip | length == 0
+      ansible.builtin.fail:
+        msg: "WAPI next_available_ip returned no IP for network {{ allocation_ipv4_network }}"
+
+    - name: Show allocated IPv4 (wapi)
+      when: _existing_a_ip_wapi | length == 0 and _allocated_wapi_ip is defined and (_allocated_wapi_ip | length) > 0
+      ansible.builtin.debug:
+        msg: "Allocated IPv4 (wapi method) for {{ record_fqdn }}: {{ _allocated_wapi_ip }}"
+
+    - name: Create allocated A record (wapi) for {{ record_fqdn }}
+      when: _existing_a_ip_wapi | length == 0
+      infoblox.nios_modules.nios_a_record:
+        name: "{{ record_fqdn | trim }}"
+        ipv4addr: "{{ _allocated_wapi_ip }}"
+        view: "{{ infoblox_view }}"
+        ttl: "{{ item.ttl | default(default_ttl) }}"
+        state: present
+        provider: "{{ nios_provider }}"
+      register: allocated_a_record_wapi
+
+    - name: Track allocated IPv4 (wapi)
+      when: _existing_a_ip_wapi | length == 0
+      ansible.builtin.set_fact:
+        allocated_auto_ips: "{{ (allocated_auto_ips | default([])) + [ _allocated_wapi_ip ] }}"
+        allocated_auto_a_records: "{{ (allocated_auto_a_records | default([])) + [ { 'name': record_fqdn | trim, 'ip': _allocated_wapi_ip, 'ptr_enabled': (item.ptr | default('disabled')) } ] }}"
+
+- name: Create A record values for {{ record_fqdn }}
+  loop: "{{ item.records | default([]) }}"
+  loop_control:
+    loop_var: record_ip
+  when:
+    - item.type | upper == 'A'
+    - not (allocate_ipv4 | bool and allocation_ipv4_network | length > 0 and (item.records is not defined or (item.records | length == 0) or ('AUTO' in item.records)))
+    - record_ip is ansible.utils.ipv4
+  infoblox.nios_modules.nios_a_record:
+    name: "{{ record_fqdn | trim }}"
+    ipv4addr: "{{ record_ip }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ item.ttl | default(default_ttl) }}"
+    state: present
+    provider: "{{ nios_provider }}"
+
+- name: Create AAAA record values for {{ record_fqdn }}
+  loop: "{{ item.records | default([]) }}"
+  loop_control:
+    loop_var: record_ip
+  when:
+    - item.type | upper == 'AAAA'
+    - record_ip is ansible.utils.ipv6
+  infoblox.nios_modules.nios_aaaa_record:
+    name: "{{ record_fqdn | trim }}"
+    ipv6addr: "{{ record_ip }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ item.ttl | default(default_ttl) }}"
+    state: present
+    provider: "{{ nios_provider }}"

@@ -1,0 +1,4 @@
+---
+collections:
+  - name: infoblox.nios_modules
+    version: ">=1.0.0"  # adjust to specific tested version if needed

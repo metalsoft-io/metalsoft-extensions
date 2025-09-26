@@ -1,0 +1,69 @@
+---
+# Helper: delete A and AAAA record values for current outer 'item'
+
+- name: Initialize deletion candidate IP list (raw from input)
+  ansible.builtin.set_fact:
+    _delete_candidate_ips: "{{ item.records | default([]) }}"
+  when: item.type | upper == 'A'
+
+- name: Query existing A record IPs for auto-allocated deletion fallback
+  when:
+    - item.type | upper == 'A'
+    - (_delete_candidate_ips | length == 0) or ('AUTO' in _delete_candidate_ips)
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _existing_a_for_delete
+  failed_when: false
+
+- name: Consolidate auto-allocated A record IPs for deletion
+  when:
+    - item.type | upper == 'A'
+    - _existing_a_for_delete.json is defined
+    - (_delete_candidate_ips | length == 0) or ('AUTO' in _delete_candidate_ips)
+  ansible.builtin.set_fact:
+    _delete_candidate_ips: >-
+      {{ (_existing_a_for_delete.json | map(attribute='ipv4addr') | list)
+          if (_existing_a_for_delete.json is sequence)
+          else [] }}
+
+- name: Debug deletion candidate IPs (A)
+  when: item.type | upper == 'A' and ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      record_fqdn: "{{ record_fqdn }}"
+      original_item_records: "{{ item.records | default([]) }}"
+      delete_candidate_ips: "{{ _delete_candidate_ips | default([]) }}"
+
+- name: Delete A record values for {{ record_fqdn }}
+  loop: "{{ _delete_candidate_ips | default([]) }}"
+  loop_control:
+    loop_var: record_ip
+  when:
+    - item.type | upper == 'A'
+    - record_ip is ansible.utils.ipv4
+  infoblox.nios_modules.nios_a_record:
+    name: "{{ record_fqdn | trim }}"
+    ipv4addr: "{{ record_ip }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"
+
+- name: Delete AAAA record values for {{ record_fqdn }}
+  loop: "{{ item.records | default([]) }}"
+  loop_control:
+    loop_var: record_ip
+  when:
+    - item.type | upper == 'AAAA'
+    - record_ip is ansible.utils.ipv6
+  infoblox.nios_modules.nios_aaaa_record:
+    name: "{{ record_fqdn | trim }}"
+    ipv6addr: "{{ record_ip }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"

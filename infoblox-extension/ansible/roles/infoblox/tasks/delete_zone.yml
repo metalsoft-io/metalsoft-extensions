@@ -1,0 +1,7 @@
+---
+- name: Remove zone {{ zone_name }}
+  infoblox.nios_modules.nios_zone:
+    name: "{{ zone_name.rstrip('.') }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"

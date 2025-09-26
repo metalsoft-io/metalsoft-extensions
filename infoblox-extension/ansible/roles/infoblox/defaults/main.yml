@@ -1,0 +1,32 @@
+---
+# Infoblox WAPI connection details
+# These should be overridden via extra vars or variables.json
+infoblox_host: "192.168.1.55"
+infoblox_username: "admin"
+infoblox_password: "infoblox"
+infoblox_validate_certs: false
+infoblox_wapi_version: "2.12"  # adjust if your grid uses a different version
+
+# Provider dict used by infoblox.nios_modules
+nios_provider:
+  host: "{{ infoblox_host }}"
+  username: "{{ infoblox_username }}"
+  password: "{{ infoblox_password }}"
+  validate_certs: "{{ infoblox_validate_certs }}"
+  wapi_version: "{{ infoblox_wapi_version }}"
+
+# DNS view (Infoblox default view usually 'default')
+infoblox_view: "default"
+
+# Default TTL
+default_ttl: 3600
+
+# Behavior flags
+create_reverse_zones: true   # create reverse zone automatically when creating PTR
+ptr_require_existing_zone: false  # if true, will not attempt to create reverse zone
+
+# IP Allocation (auto-assign from Infoblox IPAM when no IP provided or 'AUTO' token used)
+allocate_ipv4_method: "lookup"       # default 'wapi' avoids macOS fork crash; 'lookup' uses nios_next_ip lookup + A record. 'host_record' disabled for WAPI < 2.13
+auto_create_ipv4_network: false     # if true and network missing, attempt to create it (CIDR must not already exist)
+allocate_ipv4: true
+allocation_ipv4_network: "10.0.0.0/24"

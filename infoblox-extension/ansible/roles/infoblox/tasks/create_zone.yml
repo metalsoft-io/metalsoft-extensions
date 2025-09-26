@@ -1,0 +1,17 @@
+---
+# Create forward zone in Infoblox
+- name: Ensure zone {{ zone_name }} exists
+  infoblox.nios_modules.nios_zone:
+    name: "{{ zone_name.rstrip('.') }}"
+    view: "{{ infoblox_view }}"
+    state: present
+    comment: "Managed by Ansible (MetalSoft workflow)"
+    zone_format: FORWARD
+    provider: "{{ nios_provider }}"
+  register: zone_result
+
+- name: Update zone facts
+  ansible.builtin.set_fact:
+    zone_exists: true
+    zone_created: "{{ zone_result.changed }}"
+    zone_id: "{{ zone_name }}"

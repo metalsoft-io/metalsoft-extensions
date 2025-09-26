@@ -1,0 +1,27 @@
+---
+- name: Calculate IP parts
+  ansible.builtin.set_fact:
+    ip_parts: "{{ ip_address.split('.') }}"
+
+- name: Derive reverse zone & ptr target
+  ansible.builtin.set_fact:
+    ptr_zone: "{{ ip_parts[2] }}.{{ ip_parts[1] }}.{{ ip_parts[0] }}.in-addr.arpa"
+    ptr_fqdn: "{{ (ptr_record_value | trim) if (ptr_record_value | trim).endswith('.') else (ptr_record_value | trim) + '.' }}"
+
+- name: Ensure reverse zone exists (optional)
+  when: create_reverse_zones and not ptr_require_existing_zone
+  infoblox.nios_modules.nios_zone:
+    name: "{{ ptr_zone }}"
+    view: "{{ infoblox_view }}"
+    state: present
+    zone_format: IPV4
+    provider: "{{ nios_provider }}"
+
+- name: Create PTR record for {{ ip_address }} -> {{ ptr_fqdn }}
+  infoblox.nios_modules.nios_ptr_record:
+    ipv4addr: "{{ ip_address }}"
+    ptrdname: "{{ (ptr_fqdn | trim)[:-1] if (ptr_fqdn | trim).endswith('.') else (ptr_fqdn | trim) }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ default_ttl }}"
+    state: present
+    provider: "{{ nios_provider }}"

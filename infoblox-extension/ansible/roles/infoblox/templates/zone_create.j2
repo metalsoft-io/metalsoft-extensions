@@ -1,0 +1,29 @@
+{
+  "name": "{{ zone_name }}",
+  "kind": "{{ working_operation.zone_kind | default('Native') }}",
+  "api_rectify": true,
+  "rrsets": [
+    {
+      "name": "{{ zone_name }}",
+      "type": "SOA",
+      "ttl": 3600,
+      "records": [{
+        "content": "{{ working_operation.nameservers[0] | default('ns1.' + zone_name) }}{{ '.' if not (working_operation.nameservers[0] | default('ns1.' + zone_name)).endswith('.') else '' }} {{ working_operation.soa_email | default('hostmaster.' + zone_name) | replace('@', '.') }}{{ '.' if not (working_operation.soa_email | default('hostmaster.' + zone_name) | replace('@', '.')).endswith('.') else '' }} {{ '%Y%m%d01' | strftime }} 3600 1200 604800 300",
+        "disabled": false
+      }]
+    },
+    {
+      "name": "{{ zone_name }}",
+      "type": "NS",
+      "ttl": 3600,
+      "records": [
+        {% for ns in working_operation.nameservers | default(['ns1.' + zone_name, 'ns2.' + zone_name]) %}
+        {
+          "content": "{{ ns }}{{ '.' if not ns.endswith('.') else '' }}",
+          "disabled": false
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+---
+- name: Autogenerate PTR records for A record {{ a_record.name }}
+  include_tasks: create_ptr.yml
+  vars:
+    ip_address: "{{ item }}"
+    ptr_record_value: "{{ a_record.name }}.{{ zone_name.rstrip('.') }}"
+  loop: "{{ a_record.records | default([]) }}"
+  loop_control:
+    label: "PTR for {{ item }}"
+  when: item is ansible.utils.ipv4
+
+- name: Autogenerate PTR records for newly allocated A record {{ a_record.name }}
+  when:
+    - a_record.records is not defined or (a_record.records | length == 0) or ('AUTO' in a_record.records)
+    - allocate_ipv4 | bool
+    - allocation_ipv4_network | length > 0
+    - allocated_auto_a_records is defined
+  vars:
+    _matching_alloc: "{{ (allocated_auto_a_records | selectattr('name','equalto', (a_record.name + '.' + zone_name.rstrip('.')) | trim | regex_replace('\.$','')) | list) }}"
+  include_tasks: create_ptr.yml
+  loop: "{{ _matching_alloc | map(attribute='ip') | list }}"
+  loop_control:
+    label: "Allocated PTR for {{ item }}"
+  vars:
+    ip_address: "{{ item }}"
+    ptr_record_value: "{{ a_record.name }}.{{ zone_name.rstrip('.') }}"

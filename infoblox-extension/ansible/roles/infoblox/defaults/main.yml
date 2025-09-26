@@ -1,7 +1,7 @@
 ---
 # Infoblox WAPI connection details
 # These should be overridden via extra vars or variables.json
-infoblox_host: "192.168.1.55"
+infoblox_host: ""
 infoblox_username: "admin"
 infoblox_password: "infoblox"
 infoblox_validate_certs: false

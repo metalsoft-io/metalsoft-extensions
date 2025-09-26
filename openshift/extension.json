@@ -75,6 +75,7 @@
       "label": "pull_secret",
       "name": "pull_secret",
       "inputType": "ExtensionInputString",
+      "defaultValue": "eyJhdXRocyI6e319",
       "options": {}
     },
     {

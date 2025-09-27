@@ -16,7 +16,8 @@
     - allocation_ipv4_network | length > 0
     - allocated_auto_a_records is defined
   vars:
-    _matching_alloc: "{{ (allocated_auto_a_records | selectattr('name','equalto', (a_record.name + '.' + zone_name.rstrip('.')) | trim | regex_replace('\.$','')) | list) }}"
+    # Need to escape backslash for YAML; using double backslash before dot in regex
+    _matching_alloc: "{{ allocated_auto_a_records | selectattr('name','equalto', (a_record.name + '.' + zone_name.rstrip('.')) | trim | regex_replace('\\.$','')) | list }}"
   include_tasks: create_ptr.yml
   loop: "{{ _matching_alloc | map(attribute='ip') | list }}"
   loop_control:

@@ -1,0 +1,10 @@
+---
+# Helper include to append subnet desired state items (create or delete) based on logicalNetworks ipv4Subnets
+# Expects _ln variable = one logicalNetwork object
+- name: Append subnet state items for logical network {{ _ln.logicalNetworkId | default('unknown') }}
+  vars:
+    _subs: "{{ _ln.ipv4Subnets | default([]) }}"
+  ansible.builtin.set_fact:
+    ms_network_state_items: >-
+      {{ (ms_network_state_items | default([])) + (
+          _subs | map('community.general.json_query', '{cidr: join(`"/"`, [networkAddress, to_string(prefixLength)]), status: status, logicalNetworkId: `'+ (_ln.logicalNetworkId|string) +'` }') | list ) }}

@@ -1,0 +1,87 @@
+{
+  "serverInstanceRecordSet": {
+    "serverInstanceId": 4406,
+    "siteLabel": "eveng-qa02",
+    "deployType": "create",
+    "deployStatus": "finished",
+    "instanceIpv4Ips": [
+      {
+        "ip": "10.255.146.236",
+        "gateway": "10.255.146.225",
+        "cidr": "10.255.146.236/28",
+        "logicalNetworkId": 826,
+        "networkAddress": "10.255.146.224",
+        "maskBits": 28,
+        "netmask": "255.255.255.240",
+        "status": "allocated"
+      },
+      {
+        "ip": "10.255.146.249",
+        "gateway": "10.255.146.241",
+        "cidr": "10.255.146.249/28",
+        "logicalNetworkId": 827,
+        "networkAddress": "10.255.146.240",
+        "maskBits": 28,
+        "netmask": "255.255.255.240",
+        "status": "allocated"
+      },
+      {
+        "ip": "10.255.146.219",
+        "gateway": "10.255.146.209",
+        "cidr": "10.255.146.219/28",
+        "logicalNetworkId": 852,
+        "networkAddress": "10.255.146.208",
+        "maskBits": 28,
+        "netmask": "255.255.255.240",
+        "status": "allocated"
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "logicalNetworkId": 826,
+        "logicalNetworkName": "powerflex-san-ln1",
+        "logicalNetworkLabel": "powerflex-san-ln1",
+        "vlans": [
+          { "vlanId": 425, "id": 186, "status": "allocated", "scope": { "kind": "fabric", "resourceId": 1931 } }
+        ],
+        "ipv4Subnets": [
+          {"id":127, "networkAddress":"10.255.146.224", "prefixLength":28, "gateway":"10.255.146.225", "gatewayPlacement":"external", "status":"allocated", "scope": { "kind": "fabric", "resourceId": 1931 }}
+        ],
+        "interfaces": [
+          {"serverInterfaceId":507, "macAddress":"A0:36:9F:D1:EF:D4", "redundancyIndex":137, "tagged":true},
+          {"serverInterfaceId":508, "macAddress":"A0:36:9F:D1:EF:D6", "redundancyIndex":137, "tagged":true}
+        ]
+      },
+      {
+        "logicalNetworkId": 827,
+        "logicalNetworkName": "power-flex-storage-ln2",
+        "logicalNetworkLabel": "power-flex-storage-ln2",
+        "vlans": [
+          { "vlanId": 426, "id": 187, "status": "allocated", "scope": { "kind": "fabric", "resourceId": 1931 } }
+        ],
+        "ipv4Subnets": [
+          {"id":128, "networkAddress":"10.255.146.240", "prefixLength":28, "gateway":"10.255.146.241", "gatewayPlacement":"external", "status":"allocated", "scope": { "kind": "fabric", "resourceId": 1931 }}
+        ],
+        "interfaces": [
+          {"serverInterfaceId":507, "macAddress":"A0:36:9F:D1:EF:D4", "redundancyIndex":137, "tagged":true},
+          {"serverInterfaceId":508, "macAddress":"A0:36:9F:D1:EF:D6", "redundancyIndex":137, "tagged":true}
+        ]
+      },
+      {
+        "logicalNetworkId": 852,
+        "logicalNetworkName": "pflex-ln-wan",
+        "logicalNetworkLabel": "pflex-ln-wan",
+        "vlans": [
+          { "vlanId": 424, "id": 189, "status": "allocated", "scope": { "kind": "fabric", "resourceId": 1931 } }
+        ],
+        "ipv4Subnets": [
+          {"id":130, "networkAddress":"10.255.146.208", "prefixLength":28, "gateway":"10.255.146.209", "gatewayPlacement":"external", "status":"allocated", "scope": { "kind": "fabric", "resourceId": 1931 }}
+        ],
+        "interfaces": [
+          {"serverInterfaceId":509, "macAddress":"B8:CB:29:BA:C0:1F", "redundancyIndex":138, "tagged":false},
+          {"serverInterfaceId":510, "macAddress":"B8:CB:29:BA:C0:20", "redundancyIndex":138, "tagged":false}
+        ]
+      }
+    ]
+  }
+}

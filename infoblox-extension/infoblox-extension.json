@@ -9,7 +9,7 @@
   "description": "Manages DNS records and IPs via Infoblox API",
   "icon": "dns",
   "dependencies": {
-    "controllerVersion": "string"
+    "controllerVersion": "7.0.12"
   },
   "inputs": [],
   "outputs": [],
@@ -18,7 +18,7 @@
       "label": "infoblox-configuration",
       "name": "infoblox-configuration",
       "assetType": "Bundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/infoblox.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/.infoblox/infoblox.zip"
     }
   ],
   "onAssetChange": [

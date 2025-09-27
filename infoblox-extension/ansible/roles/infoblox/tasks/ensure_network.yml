@@ -1,0 +1,74 @@
+# Ensure single IPv4 network exists (target_cidr provided by caller loop)
+
+# Query using standard Infoblox WAPI object 'network'. (Do not attempt fallback; earlier fallback logic
+# caused the existing network result to be ignored because a skipped fallback still registers a variable.)
+- name: Query network {{ target_cidr }} (object 'network')
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network?network={{ target_cidr | urlencode }}&_return_fields=network"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _net_query
+  failed_when: false
+
+- name: Set query object marker
+  ansible.builtin.set_fact:
+    _net_query_object: "network"
+
+- name: Determine if network {{ target_cidr }} present
+  ansible.builtin.set_fact:
+    _net_present: >-
+      {{ (_net_query.status | default(0)) == 200 and (
+          (_net_query.json is mapping and ('network' in _net_query.json) )
+          or (
+            _net_query.json is sequence and (
+              _net_query.json | selectattr('network','defined') | selectattr('network','equalto', target_cidr) | list | length
+            ) > 0
+          )
+        ) }}
+
+- name: Create network {{ target_cidr }} if missing and allowed
+  when: (not _net_present) and autoCreateAndDeleteNetworks | bool
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network"
+    method: POST
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      network: "{{ target_cidr }}"
+      comment: "MetalSoft Logical Network ID: {{ ms_network_logical_id_map[target_cidr] | default('unknown') }}"
+    return_content: true
+  register: _net_create
+  failed_when: false
+
+- name: Record network ensure outcome {{ target_cidr }}
+  ansible.builtin.set_fact:
+    ms_network_results: >-
+      {{ (ms_network_results | default([])) + [ {
+          'cidr': target_cidr,
+          'query_object': _net_query_object,
+          'get_status': _net_query.status | default('n/a'),
+          'present_pre': _net_present,
+          'create_status': _net_create.status | default('n/a'),
+          'created': (_net_create.status | default(0)) in [200,201],
+          'final_status': (_net_present | bool) and 'present' or (((_net_create.status | default(0)) in [200,201]) and 'created' or 'missing')
+        } ] }}
+
+- name: Debug ensure network {{ target_cidr }} (verbosity >=2)
+  when: ansible_verbosity | int >= 2
+  ansible.builtin.debug:
+    msg:
+      cidr: "{{ target_cidr }}"
+      query_object: "{{ _net_query_object }}"
+      get_status: "{{ _net_query.status | default('n/a') }}"
+      get_json: "{{ _net_query.json | default({}) }}"
+      net_present_pre: "{{ _net_present }}"
+      create_status: "{{ _net_create.status | default('n/a') }}"

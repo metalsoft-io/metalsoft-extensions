@@ -1,0 +1,80 @@
+# Manage IPv6 subnet desired state (create/delete) based on status field
+
+- name: Query IPv6 network {{ item.cidr }}
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv6network?network={{ item.cidr | urlencode }}&_return_fields=network"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _mns6_query
+  failed_when: false
+
+- name: Determine if IPv6 subnet {{ item.cidr }} present
+  ansible.builtin.set_fact:
+    _mns6_present: >-
+      {{ (_mns6_query.status | default(0)) == 200 and (
+          (_mns6_query.json is mapping and ('network' in _mns6_query.json))
+          or (_mns6_query.json is sequence and (_mns6_query.json | selectattr('network','defined') | selectattr('network','equalto', item.cidr) | list | length) > 0)
+        ) }}
+
+- name: Create IPv6 subnet {{ item.cidr }} when status allocated and allowed
+  when: (item.status | lower) == 'allocated' and (not _mns6_present) and autoCreateAndDeleteNetworks | bool
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv6network"
+    method: POST
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      network: "{{ item.cidr }}"
+      comment: "MetalSoft Logical Network ID: {{ item.logicalNetworkId | default('unknown') }}"
+    return_content: true
+  register: _mns6_create
+  failed_when: false
+
+- name: Delete IPv6 subnet {{ item.cidr }} when status indicates removal and allowed
+  when: (item.status | lower) in ['released','deleting','deleted'] and _mns6_present and autoCreateAndDeleteNetworks | bool
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv6network/{{ item.cidr | urlencode }}"
+    method: DELETE
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _mns6_delete
+  failed_when: false
+
+- name: Record IPv6 subnet manage outcome {{ item.cidr }}
+  ansible.builtin.set_fact:
+    ms_network_manage_results_v6: >-
+      {{ (ms_network_manage_results_v6 | default([])) + [ {
+          'cidr': item.cidr,
+          'status_input': item.status | default('unknown'),
+          'present_pre': _mns6_present,
+          'create_status': _mns6_create.status | default('n/a'),
+          'delete_status': _mns6_delete.status | default('n/a'),
+          'final_state': (
+             (_mns6_present and (item.status | lower) == 'allocated') and 'present'
+             or (((item.status | lower) in ['released','deleting','deleted']) and autoCreateAndDeleteNetworks | bool) and 'removed'
+             or (_mns6_present and 'present' or 'missing')
+          )
+        } ] }}
+
+- name: Debug IPv6 subnet manage summary (verbosity >=1)
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      cidr: "{{ item.cidr }}"
+      status_input: "{{ item.status | default('unknown') }}"
+      present_pre: "{{ _mns6_present }}"
+      create_status: "{{ _mns6_create.status | default('n/a') }}"
+      delete_status: "{{ _mns6_delete.status | default('n/a') }}"
+      final_state: "{{ (ms_network_manage_results_v6 | last).final_state | default('n/a') }}"

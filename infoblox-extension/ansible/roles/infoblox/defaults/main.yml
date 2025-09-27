@@ -1,7 +1,7 @@
 ---
 # Infoblox WAPI connection details
 # These should be overridden via extra vars or variables.json
-infoblox_host: ""
+infoblox_host: "192.168.1.55"
 infoblox_username: "admin"
 infoblox_password: "infoblox"
 infoblox_validate_certs: false
@@ -30,3 +30,11 @@ allocate_ipv4_method: "lookup"       # default 'wapi' avoids macOS fork crash; '
 auto_create_ipv4_network: false     # if true and network missing, attempt to create it (CIDR must not already exist)
 allocate_ipv4: true
 allocation_ipv4_network: "10.0.0.0/24"
+
+# New: network auto-create/delete control for explicit IP ingestion (serverInstanceRecordSet)
+# When true: create missing required networks and delete networks whose status indicates removal.
+# When false: do not create or delete automatically (missing required causes failure; requested deletions are ignored).
+autoCreateAndDeleteNetworks: true
+
+# Comment templates for created IP records
+ip_record_comment_template: "MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}"

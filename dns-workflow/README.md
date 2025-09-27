@@ -36,9 +36,11 @@ Automatically manages DNS records during server lifecycle events in MetalSoft.
   ```bash
   cd ansible/
   zip -r power_dns.zip .
-  # Upload to repository
+  # Upload to repository, save the URL where the zip will be available during provisioning
   ```
-4. Register and activate the Extension
+
+4. Update the url of the zip in the `pdns-workflow-example/extension.json` file in the `assets.url` field.
+5. Register and activate the Extension
 
   ```
   metalcloud-cli extension create test-dns workflow "Dns workflow" --definition-source pdns-workflow-example/extension.json --format json

@@ -1,0 +1,276 @@
+{
+    "extensionInstanceRecordSet": {
+        "baseDomain": "metalcloud.local",
+        "clusterIpv4IpRanges": [],
+        "clusterIpv4Ips": [
+            {
+                "cidr": "192.168.64.7/28",
+                "fqdn": "api.openshift-multi-host.metalcloud.local.",
+                "gateway": "192.168.64.1",
+                "ip": "192.168.64.7",
+                "maskBits": 28,
+                "netmask": "255.255.255.240",
+                "networkAddress": "192.168.64.0",
+                "tags": {
+                    "role": "api-vip"
+                }
+            },
+            {
+                "cidr": "192.168.64.8/28",
+                "fqdn": "*.apps.openshift-multi-host.metalcloud.local.",
+                "gateway": "192.168.64.1",
+                "ip": "192.168.64.8",
+                "maskBits": 28,
+                "netmask": "255.255.255.240",
+                "networkAddress": "192.168.64.0",
+                "tags": {
+                    "role": "ingress-vip"
+                }
+            }
+        ],
+        "clusterIpv6IpRanges": [],
+        "clusterIpv6Ips": [],
+        "deploymentId": 272,
+        "dnsResolverIp": "172.18.38.14",
+        "extensionInstanceName": "openshift-multi-host",
+        "serverInstanceGroups": [
+            {
+                "serverInstanceGroupId": 275,
+                "serverInstanceGroupLabel": "ocp-worker",
+                "tags": [
+                    "worker-node"
+                ]
+            },
+            {
+                "serverInstanceGroupId": 274,
+                "serverInstanceGroupLabel": "ocp-cp",
+                "tags": [
+                    "master-node"
+                ]
+            }
+        ],
+        "serverInstances": [
+            {
+                "ipv4IpRanges": [],
+                "ipv4Ips": [
+                    {
+                        "cidr": "192.168.64.4/28",
+                        "fqdn": "instance-228.metalcloud.local.",
+                        "gateway": "192.168.64.1",
+                        "ip": "192.168.64.4",
+                        "isDefaultGateway": true,
+                        "maskBits": 28,
+                        "netmask": "255.255.255.240",
+                        "networkAddress": "192.168.64.0"
+                    }
+                ],
+                "ipv6IpRanges": [],
+                "ipv6Ips": [],
+                "networkConfig": {
+                    "bondNetworkConfigs": {},
+                    "physicalInterfaceNetworkConfigs": {
+                        "78": {
+                            "interfaceType": "physical",
+                            "ipv4Addresses": [
+                                {
+                                    "cidr": "192.168.64.4/28",
+                                    "gateway": "192.168.64.1",
+                                    "ip": "192.168.64.4",
+                                    "isDefaultGateway": true,
+                                    "maskBits": 28,
+                                    "netmask": "255.255.255.240"
+                                }
+                            ],
+                            "ipv6Addresses": [],
+                            "logicalNetworkId": 145,
+                            "logicalNetworkLabel": "openshift-network-_Sdxw]DPaH",
+                            "logicalNetworkName": "openshift-network",
+                            "macAddress": "4c:d9:8f:9a:76:4e",
+                            "routes": [
+                                {
+                                    "to": "0.0.0.0/0",
+                                    "via": "192.168.64.1"
+                                }
+                            ],
+                            "typeInterfaceId": 0
+                        }
+                    },
+                    "trunkNetworkConfigs": {}
+                },
+                "serverId": null,
+                "serverInstanceId": 228,
+                "serverInterfaces": [
+                    {
+                        "serverInterfaceId": 78,
+                        "serverInterfaceMacAddress": "4c:d9:8f:9a:76:4e"
+                    },
+                    {
+                        "serverInterfaceId": 79,
+                        "serverInterfaceMacAddress": "4c:d9:8f:9a:76:4f"
+                    }
+                ],
+                "tags": [
+                    "master-node"
+                ]
+            },
+            {
+                "ipv4IpRanges": [],
+                "ipv4Ips": [
+                    {
+                        "cidr": "192.168.64.5/28",
+                        "fqdn": "instance-229.metalcloud.local.",
+                        "gateway": "192.168.64.1",
+                        "ip": "192.168.64.5",
+                        "isDefaultGateway": true,
+                        "maskBits": 28,
+                        "netmask": "255.255.255.240",
+                        "networkAddress": "192.168.64.0"
+                    }
+                ],
+                "ipv6IpRanges": [],
+                "ipv6Ips": [],
+                "networkConfig": {
+                    "bondNetworkConfigs": {},
+                    "physicalInterfaceNetworkConfigs": {
+                        "58": {
+                            "interfaceType": "physical",
+                            "ipv4Addresses": [
+                                {
+                                    "cidr": "192.168.64.5/28",
+                                    "gateway": "192.168.64.1",
+                                    "ip": "192.168.64.5",
+                                    "isDefaultGateway": true,
+                                    "maskBits": 28,
+                                    "netmask": "255.255.255.240"
+                                }
+                            ],
+                            "ipv6Addresses": [],
+                            "logicalNetworkId": 145,
+                            "logicalNetworkLabel": "openshift-network-_Sdxw]DPaH",
+                            "logicalNetworkName": "openshift-network",
+                            "macAddress": "a0:36:9f:20:07:28",
+                            "routes": [
+                                {
+                                    "to": "0.0.0.0/0",
+                                    "via": "192.168.64.1"
+                                }
+                            ],
+                            "typeInterfaceId": 0
+                        }
+                    },
+                    "trunkNetworkConfigs": {}
+                },
+                "serverId": null,
+                "serverInstanceId": 229,
+                "serverInterfaces": [
+                    {
+                        "serverInterfaceId": 58,
+                        "serverInterfaceMacAddress": "a0:36:9f:20:07:28"
+                    },
+                    {
+                        "serverInterfaceId": 59,
+                        "serverInterfaceMacAddress": "a0:36:9f:20:07:2a"
+                    }
+                ],
+                "tags": [
+                    "master-node"
+                ]
+            },
+            {
+                "ipv4IpRanges": [],
+                "ipv4Ips": [
+                    {
+                        "cidr": "192.168.64.6/28",
+                        "fqdn": "instance-230.metalcloud.local.",
+                        "gateway": "192.168.64.1",
+                        "ip": "192.168.64.6",
+                        "isDefaultGateway": true,
+                        "maskBits": 28,
+                        "netmask": "255.255.255.240",
+                        "networkAddress": "192.168.64.0"
+                    }
+                ],
+                "ipv6IpRanges": [],
+                "ipv6Ips": [],
+                "networkConfig": {
+                    "bondNetworkConfigs": {},
+                    "physicalInterfaceNetworkConfigs": {
+                        "84": {
+                            "interfaceType": "physical",
+                            "ipv4Addresses": [
+                                {
+                                    "cidr": "192.168.64.6/28",
+                                    "gateway": "192.168.64.1",
+                                    "ip": "192.168.64.6",
+                                    "isDefaultGateway": true,
+                                    "maskBits": 28,
+                                    "netmask": "255.255.255.240"
+                                }
+                            ],
+                            "ipv6Addresses": [],
+                            "logicalNetworkId": 145,
+                            "logicalNetworkLabel": "openshift-network-_Sdxw]DPaH",
+                            "logicalNetworkName": "openshift-network",
+                            "macAddress": "b4:96:91:62:20:c8",
+                            "routes": [
+                                {
+                                    "to": "0.0.0.0/0",
+                                    "via": "192.168.64.1"
+                                }
+                            ],
+                            "typeInterfaceId": 0
+                        }
+                    },
+                    "trunkNetworkConfigs": {}
+                },
+                "serverId": null,
+                "serverInstanceId": 230,
+                "serverInterfaces": [
+                    {
+                        "serverInterfaceId": 84,
+                        "serverInterfaceMacAddress": "b4:96:91:62:20:c8"
+                    },
+                    {
+                        "serverInterfaceId": 85,
+                        "serverInterfaceMacAddress": "b4:96:91:62:20:ca"
+                    }
+                ],
+                "tags": [
+                    "master-node"
+                ]
+            }
+        ]
+    },
+    "extensionInstanceVariables": {
+        "base_domain": "metalcloud.local",
+        "cluster_network": "10.128.0.0/14",
+        "interface_name": "eno11",
+        "master_server_type": 6,
+        "number_masters": 3,
+        "number_workers": 0,
+        "pull_secret": {
+            "auths": {
+                "cloud.openshift.com": {
+                    "auth": "b3BlbnNoaWZ0LXJlbGVhc2UtZGV2K29jbV9hY2Nlc3NfNWE2MTgwNGMxNWFkNGYyNTg0ZDZmNzEyOWI3ODZkMGM6SFNQMkpRUlQyTzQwUE5MVzdQUFoxU1JMVVFBVlExUFBCQkhVN0FCMUtKUktaWE5VSFdPU0FPUkJQMzJQSTdKTg==",
+                    "email": "sysops@metalsoft.io"
+                },
+                "quay.io": {
+                    "auth": "b3BlbnNoaWZ0LXJlbGVhc2UtZGV2K29jbV9hY2Nlc3NfNWE2MTgwNGMxNWFkNGYyNTg0ZDZmNzEyOWI3ODZkMGM6SFNQMkpRUlQyTzQwUE5MVzdQUFoxU1JMVVFBVlExUFBCQkhVN0FCMUtKUktaWE5VSFdPU0FPUkJQMzJQSTdKTg==",
+                    "email": "sysops@metalsoft.io"
+                },
+                "registry.connect.redhat.com": {
+                    "auth": "fHVoYy1wb29sLWVhYWQxMGQ0LTMwNGQtNGY1MS04YzM0LWNjMDY2ZTI2YTM3MjpleUpoYkdjaU9pSlNVelV4TWlKOS5leUp6ZFdJaU9pSmlOR1U1TW1SaE5XUTJZVEUwTnpZM1lqWXdZV1JpTjJOa1kyRXpNR001TmlKOS5kTmFzTVFXVDB0RnNmVFozTVMzYVhyYk4zVTIwS0QxYmdST2h5SkN3a2hnN0lvMHJYeW9ZUlN6YlhWb3RDLXRPNnVCQ2otdFI4dzVWR2NmRm5iTEhSQUJGWXZwY0xwNVdHWTJWazlwZU5vaGxQV0xLY2JUeHE1YVNjbjRQM1U4dUFfOGxEVlVFVDA3OGhBTHFpcmdoeDVNUzdjQnBzZzRmaHE2VEl1MUVGN1dVYTFZYmo0bC00ME9hdG1qcXpwUFZzYVd6cm12Qm93WDN6NnI2WDA4eU9qWlZrZ3ZvcGhlLXh0OUI0enJfQ182Q2xyWk5NcjRxMzg0cVdBMDVhVFFqbklPcXJxcWJfLWs3cUc1N1hIZHlzaW1ZUjdFWjZka1B0Mzc3WDJVOXNUbjFPaW5HUnNqeWNtVkZYeV9ZRk82NGdVZ2labzFYTDV2SjRubWo2cGE3SUplOEM4OVVlejU5N25PRmpsdXB2V21DclpDR0luVi1ZNDM5bzRjUHkzcjZGUURZOXUtWFEteDRfMzE3N2w3eEczTTRjWFpuNjNTUE9hdjVoM2F4MW1ZRmZJeUtPN1hnczNqU3ZXdWFlRVhaWGdmZ2xjQWJlSGZpc19ZOGctVVZGVWlvWnpKOWJ2eW01X05pN2pFV3NvSFZYSFc4Nkx0bHJkZVdwTERVLU1vakV5VWR0R0NzOGNqUEVWNGI2RDdLXzYwZ28xeERDYUZKUDhCZ09qaHIxYzJVTzF0YnlreUlxUWZhYWQtN0NHUkRIUS0xbzNiTEl2QzFpci03SC1pdFNGdGpDZnNkRExzWWF5dGFELWpfWFlxMWJxUERXMkNOQzRZVnhiWUtFeXdCNzlSeWlsOW90ZF9ra1Z6ZVIyaEJQRW9VSmlwMmFyZnVIUUFVUnBvay1BZw==",
+                    "email": "sysops@metalsoft.io"
+                },
+                "registry.redhat.io": {
+                    "auth": "fHVoYy1wb29sLWVhYWQxMGQ0LTMwNGQtNGY1MS04YzM0LWNjMDY2ZTI2YTM3MjpleUpoYkdjaU9pSlNVelV4TWlKOS5leUp6ZFdJaU9pSmlOR1U1TW1SaE5XUTJZVEUwTnpZM1lqWXdZV1JpTjJOa1kyRXpNR001TmlKOS5kTmFzTVFXVDB0RnNmVFozTVMzYVhyYk4zVTIwS0QxYmdST2h5SkN3a2hnN0lvMHJYeW9ZUlN6YlhWb3RDLXRPNnVCQ2otdFI4dzVWR2NmRm5iTEhSQUJGWXZwY0xwNVdHWTJWazlwZU5vaGxQV0xLY2JUeHE1YVNjbjRQM1U4dUFfOGxEVlVFVDA3OGhBTHFpcmdoeDVNUzdjQnBzZzRmaHE2VEl1MUVGN1dVYTFZYmo0bC00ME9hdG1qcXpwUFZzYVd6cm12Qm93WDN6NnI2WDA4eU9qWlZrZ3ZvcGhlLXh0OUI0enJfQ182Q2xyWk5NcjRxMzg0cVdBMDVhVFFqbklPcXJxcWJfLWs3cUc1N1hIZHlzaW1ZUjdFWjZka1B0Mzc3WDJVOXNUbjFPaW5HUnNqeWNtVkZYeV9ZRk82NGdVZ2labzFYTDV2SjRubWo2cGE3SUplOEM4OVVlejU5N25PRmpsdXB2V21DclpDR0luVi1ZNDM5bzRjUHkzcjZGUURZOXUtWFEteDRfMzE3N2w3eEczTTRjWFpuNjNTUE9hdjVoM2F4MW1ZRmZJeUtPN1hnczNqU3ZXdWFlRVhaWGdmZ2xjQWJlSGZpc19ZOGctVVZGVWlvWnpKOWJ2eW01X05pN2pFV3NvSFZYSFc4Nkx0bHJkZVdwTERVLU1vakV5VWR0R0NzOGNqUEVWNGI2RDdLXzYwZ28xeERDYUZKUDhCZ09qaHIxYzJVTzF0YnlreUlxUWZhYWQtN0NHUkRIUS0xbzNiTEl2QzFpci03SC1pdFNGdGpDZnNkRExzWWF5dGFELWpfWFlxMWJxUERXMkNOQzRZVnhiWUtFeXdCNzlSeWlsOW90ZF9ra1Z6ZVIyaEJQRW9VSmlwMmFyZnVIUUFVUnBvay1BZw==",
+                    "email": "sysops@metalsoft.io"
+                }
+            }
+        },
+        "service_network": "172.30.0.0/16",
+        "worker_server_type": 6
+    },
+    "ocp_cp": {},
+    "ocp_worker": {}
+}

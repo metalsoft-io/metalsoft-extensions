@@ -108,6 +108,10 @@
         ipv4addr: "{{ _allocated_lookup_ipv4 }}"
         view: "{{ infoblox_view }}"
         ttl: "{{ item.ttl | default(default_ttl) }}"
+        comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
+              | replace('{{ server_id }}', ms_server_id | default(''))
+              | replace('{{ logical_network_id }}', (ms_ip_logical_map[_allocated_lookup_ipv4] | default((ms_logical_network_ids | first))) | string)
+          ) | trim }}"
         state: present
         provider: "{{ nios_provider }}"
       register: allocated_a_record_lookup
@@ -330,6 +334,10 @@
         ipv4addr: "{{ _allocated_wapi_ip }}"
         view: "{{ infoblox_view }}"
         ttl: "{{ item.ttl | default(default_ttl) }}"
+        comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
+              | replace('{{ server_id }}', ms_server_id | default(''))
+              | replace('{{ logical_network_id }}', (ms_ip_logical_map[_allocated_wapi_ip] | default((ms_logical_network_ids | first))) | string)
+          ) | trim }}"
         state: present
         provider: "{{ nios_provider }}"
       register: allocated_a_record_wapi
@@ -353,6 +361,10 @@
     ipv4addr: "{{ record_ip }}"
     view: "{{ infoblox_view }}"
     ttl: "{{ item.ttl | default(default_ttl) }}"
+    comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
+          | replace('{{ server_id }}', ms_server_id | default(''))
+          | replace('{{ logical_network_id }}', (ms_ip_logical_map[record_ip] | default((ms_logical_network_ids | first))) | string)
+        ) | trim }}"
     state: present
     provider: "{{ nios_provider }}"
 
@@ -368,5 +380,9 @@
     ipv6addr: "{{ record_ip }}"
     view: "{{ infoblox_view }}"
     ttl: "{{ item.ttl | default(default_ttl) }}"
+    comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
+          | replace('{{ server_id }}', ms_server_id | default(''))
+          | replace('{{ logical_network_id }}', (ms_ip_logical_map[record_ip] | default((ms_logical_network_ids | first))) | string)
+        ) | trim }}"
     state: present
     provider: "{{ nios_provider }}"

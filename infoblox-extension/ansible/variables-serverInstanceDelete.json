@@ -1,0 +1,180 @@
+{
+  "serverInstanceRecordSet": {
+    "deploymentId": null,
+    "serverInstanceId": 4406,
+    "serverId": 166,
+    "siteLabel": "dc-eveng-qa02",
+    "serviceStatus": "active",
+    "deployType": "delete",
+    "deployStatus": "ongoing",
+    "instanceIpv4Ips": [
+      {
+        "logicalNetworkId": 826,
+        "ip": "10.255.146.236",
+        "status": "allocated",
+        "cidr": "10.255.146.236/28",
+        "gateway": "10.255.146.225",
+        "networkAddress": "10.255.146.224",
+        "netmask": "255.255.255.240",
+        "maskBits": 28
+      },
+      {
+        "logicalNetworkId": 827,
+        "ip": "10.255.146.249",
+        "status": "allocated",
+        "cidr": "10.255.146.249/28",
+        "gateway": "10.255.146.241",
+        "networkAddress": "10.255.146.240",
+        "netmask": "255.255.255.240",
+        "maskBits": 28
+      },
+      {
+        "logicalNetworkId": 852,
+        "ip": "10.255.146.219",
+        "status": "allocated",
+        "cidr": "10.255.146.219/28",
+        "gateway": "10.255.146.209",
+        "networkAddress": "10.255.146.208",
+        "netmask": "255.255.255.240",
+        "maskBits": 28
+      }
+    ],
+    "instanceIpv4IpRanges": [],
+    "instanceIpv6Ips": [],
+    "instanceIpv6IpRanges": [],
+    "logicalNetworks": [
+      {
+        "logicalNetworkId": 826,
+        "logicalNetworkName": "powerflex-san-ln1",
+        "logicalNetworkLabel": "powerflex-san-ln1",
+        "vlans": [
+          {
+            "id": 186,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "allocated",
+            "vlanId": 425
+          }
+        ],
+        "ipv4Subnets": [
+          {
+            "id": 127,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "deleting",
+            "networkAddress": "10.255.146.224",
+            "prefixLength": 28,
+            "gateway": "10.255.146.225",
+            "gatewayPlacement": "external"
+          }
+        ],
+        "interfaces": [
+          {
+            "serverInterfaceId": 507,
+            "macAddress": "A0:36:9F:D1:EF:D4",
+            "tagged": true,
+            "redundancyIndex": 137
+          },
+          {
+            "serverInterfaceId": 508,
+            "macAddress": "A0:36:9F:D1:EF:D6",
+            "tagged": true,
+            "redundancyIndex": 137
+          }
+        ]
+      },
+      {
+        "logicalNetworkId": 827,
+        "logicalNetworkName": "power-flex-storage-ln2",
+        "logicalNetworkLabel": "power-flex-storage-ln2",
+        "vlans": [
+          {
+            "id": 187,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "allocated",
+            "vlanId": 426
+          }
+        ],
+        "ipv4Subnets": [
+          {
+            "id": 128,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "deleting",
+            "networkAddress": "10.255.146.240",
+            "prefixLength": 28,
+            "gateway": "10.255.146.241",
+            "gatewayPlacement": "external"
+          }
+        ],
+        "interfaces": [
+          {
+            "serverInterfaceId": 507,
+            "macAddress": "A0:36:9F:D1:EF:D4",
+            "tagged": true,
+            "redundancyIndex": 137
+          },
+          {
+            "serverInterfaceId": 508,
+            "macAddress": "A0:36:9F:D1:EF:D6",
+            "tagged": true,
+            "redundancyIndex": 137
+          }
+        ]
+      },
+      {
+        "logicalNetworkId": 852,
+        "logicalNetworkName": "pflex-ln-wan",
+        "logicalNetworkLabel": "pflex-ln-wan",
+        "vlans": [
+          {
+            "id": 189,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "allocated",
+            "vlanId": 424
+          }
+        ],
+        "ipv4Subnets": [
+          {
+            "id": 130,
+            "scope": {
+              "kind": "fabric",
+              "resourceId": 1931
+            },
+            "status": "deleting",
+            "networkAddress": "10.255.146.208",
+            "prefixLength": 28,
+            "gateway": "10.255.146.209",
+            "gatewayPlacement": "external"
+          }
+        ],
+        "interfaces": [
+          {
+            "serverInterfaceId": 509,
+            "macAddress": "B8:CB:29:BA:C0:1F",
+            "tagged": false,
+            "redundancyIndex": 138
+          },
+          {
+            "serverInterfaceId": 510,
+            "macAddress": "B8:CB:29:BA:C0:20",
+            "tagged": false,
+            "redundancyIndex": 138
+          }
+        ]
+      }
+    ]
+  }
+}

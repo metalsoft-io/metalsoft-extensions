@@ -35,6 +35,8 @@
     is_server: "{{ dns_operation.serverDNSRecordSet is defined }}"
     # Check if it's switch format (network switch management)
     is_switch: "{{ dns_operation.switchDNSRecordSet is defined }}"
+    # New: serverInstanceRecordSet format (multiple NIC IP inventory separate from DNS records)
+    is_server_instance_record: "{{ dns_operation.serverInstanceRecordSet is defined }}"
 
 # Detect management address type for servers
 - name: Analyze management address type for servers
@@ -134,10 +136,269 @@
       infrastructure_id: "{{ dns_operation.switchDNSRecordSet.switchId }}"
       soa_email: "{{ dns_operation.switchDNSRecordSet.zone.soaEmail }}"
 
-# Updated to include is_server and is_switch
+# Transform serverInstanceRecordSet format into DNS A records (and future AAAA)
+- name: Transform serverInstanceRecordSet format
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ {
+          'zone': (dns_operation.serverInstanceRecordSet.zone.zoneName if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.zoneName is defined) else dns_operation.serverInstanceRecordSet.siteLabel ~ '.example.invalid'),
+          'nameservers': (dns_operation.serverInstanceRecordSet.zone.nameServers if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.nameServers is defined) else []),
+          'soa_email': (dns_operation.serverInstanceRecordSet.zone.soaEmail if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.soaEmail is defined) else 'admin.' ~ (dns_operation.serverInstanceRecordSet.siteLabel | default('local')) ~ '.example.invalid'),
+          'records': (
+              (
+                dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map('extract', attribute='ip')
+              ) if false else []
+          )
+        } }}
+
+- name: Build DNS records from serverInstanceRecordSet IPs
+  when: is_server_instance_record
+  vars:
+    _ipv4_list: "{{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='ip') | list }}"
+    _ipv6_list: "{{ dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='ip') | list }}"
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ transformed_operation | combine({
+          'records': (
+              [
+                {
+                  'name': (dns_operation.serverInstanceRecordSet.hostname | default('host-' ~ dns_operation.serverInstanceRecordSet.serverInstanceId)),
+                  'status': 'active',
+                  'type': 'A',
+                  'ptr': 'enabled',
+                  'records': _ipv4_list
+                }
+              ] if (_ipv4_list | length) > 0 else []
+            )
+            + (
+              [
+                {
+                  'name': (dns_operation.serverInstanceRecordSet.hostname | default('host-' ~ dns_operation.serverInstanceRecordSet.serverInstanceId)),
+                  'status': 'active',
+                  'type': 'AAAA',
+                  'records': _ipv6_list
+                }
+              ] if (_ipv6_list | length) > 0 else []
+            )
+        }, recursive=True) }}
+  
+- name: Append gateway A records
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  block:
+    - name: Initialize gateway records list
+      ansible.builtin.set_fact:
+        _gateway_records: []
+
+    - name: Accumulate gateway gateway records per logical network
+      ansible.builtin.set_fact:
+        _gateway_records: >-
+          {{ _gateway_records + [ {
+              'name': 'gw-ln' ~ (item.logicalNetworkId | string),
+              'status': 'active',
+              'type': 'A',
+              'ptr': 'enabled',
+              'records': (item.ipv4Subnets | default([]) | selectattr('gateway','defined') | map(attribute='gateway') | list)
+            } ] }}
+      when: (item.ipv4Subnets | default([]) | selectattr('gateway','defined') | list | length) > 0
+      loop: "{{ dns_operation.serverInstanceRecordSet.logicalNetworks }}"
+      loop_control:
+        label: "ln-{{ item.logicalNetworkId }}"
+
+    - name: Append accumulated gateway records (excluding empty)
+      ansible.builtin.set_fact:
+        transformed_operation: >-
+          {{ transformed_operation | combine({'records': (transformed_operation.records | default([])) + (_gateway_records | rejectattr('records','equalto',[]) | list)}, recursive=True) }}
+
+- name: Extend ms_ip_logical_map with gateway IPs
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  block:
+    - name: Initialize gateway ip/lnid pairs
+      ansible.builtin.set_fact:
+        _gateway_ip_pairs: []
+
+    - name: Accumulate gateway ip/lnid pairs
+      ansible.builtin.set_fact:
+        _gateway_ip_pairs: >-
+          {{ _gateway_ip_pairs + ( item.ipv4Subnets | default([]) | selectattr('gateway','defined') | map(attribute='gateway') | list | zip( ([item.logicalNetworkId]|map('string')|list) * (item.ipv4Subnets | default([]) | selectattr('gateway','defined') | list | length) ) | list ) }}
+      loop: "{{ dns_operation.serverInstanceRecordSet.logicalNetworks }}"
+      loop_control:
+        label: "gw-ln-{{ item.logicalNetworkId }}"
+
+    - name: Merge gateway ip map into ms_ip_logical_map
+      ansible.builtin.set_fact:
+        ms_ip_logical_map: >-
+          {{ ms_ip_logical_map | default({}) | combine( dict(_gateway_ip_pairs) ) }}
+
+- name: Convert serverInstanceRecordSet records to deleting if deployType delete and status ongoing
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.deployType | default('') | lower) == 'delete' and (dns_operation.serverInstanceRecordSet.deployStatus | default('') | lower) == 'ongoing'
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ transformed_operation | combine({
+          'records': transformed_operation.records | map('combine', {'status': 'deleting'}) | list
+        }, recursive=True) }}
+
+- name: Capture server / logical network IDs for comment usage
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_server_id: "{{ dns_operation.serverInstanceRecordSet.serverId | default('') }}"
+    ms_logical_network_ids: "{{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list | unique }}"
+    ms_ip_logical_map: >-
+      {{ dict( dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='ip') | list
+            | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list) ) }}
+  
+# Build required network CIDRs (simplified)
+- name: Build required IPv4 CIDRs
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_required_ipv4_cidrs: >-
+      {{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='networkAddress') | list
+         | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='maskBits') | list)
+         | map('join','/') | list | unique }}
+
+- name: Build required IPv6 CIDRs
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | length) > 0
+  ansible.builtin.set_fact:
+    ms_required_ipv6_cidrs: >-
+      {{ dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='networkAddress') | list
+         | zip(dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='maskBits') | list)
+         | map('join','/') | list | unique }}
+
+- name: Build network logical ID map
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_network_logical_id_map: >-
+      {{ dict( dns_operation.serverInstanceRecordSet.instanceIpv4Ips
+                 | map(attribute='networkAddress') | list
+                 | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='maskBits') | list)
+                 | map('join','/') | list
+                 | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list)) }}
+
+- name: Build IPv6 network logical ID map
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | length) > 0
+  ansible.builtin.set_fact:
+    ms_network_logical_id_map_v6: >-
+      {{ dict( dns_operation.serverInstanceRecordSet.instanceIpv6Ips
+                 | map(attribute='networkAddress') | list
+                 | zip(dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='maskBits') | list)
+                 | map('join','/') | list
+                 | zip(dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='logicalNetworkId') | list)) }}
+
+# Build ms_network_state_items explicitly: one entry per ipv4Subnet with cidr, status, logicalNetworkId
+- name: Initialize ms_network_state_items
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  ansible.builtin.set_fact:
+    ms_network_state_items: []
+
+- name: Initialize ms_network_state_items_ipv6
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  ansible.builtin.set_fact:
+    ms_network_state_items_ipv6: []
+
+- name: Accumulate subnet state items
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  vars:
+    _ln: "{{ item }}"
+  loop: "{{ dns_operation.serverInstanceRecordSet.logicalNetworks }}"
+  loop_control:
+    label: "ln-{{ item.logicalNetworkId }}"
+  ansible.builtin.set_fact:
+    ms_network_state_items: >-
+      {{ (ms_network_state_items | default([])) + (
+          (_ln.ipv4Subnets | default([])) | map('community.general.json_query', '{cidr: join(`"/"`, [networkAddress, to_string(prefixLength)]), status: status, logicalNetworkId: `'+ (_ln.logicalNetworkId | string) +'`}') | list
+        ) }}
+
+- name: Accumulate IPv6 subnet state items
+  when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.logicalNetworks is defined)
+  vars:
+    _ln: "{{ item }}"
+  loop: "{{ dns_operation.serverInstanceRecordSet.logicalNetworks }}"
+  loop_control:
+    label: "ln6-{{ item.logicalNetworkId }}"
+  ansible.builtin.set_fact:
+    ms_network_state_items_ipv6: >-
+      {{ (ms_network_state_items_ipv6 | default([])) + (
+          (_ln.ipv6Subnets | default([])) | map('community.general.json_query', '{cidr: join(`"/"`, [networkAddress, to_string(prefixLength)]), status: status, logicalNetworkId: `'+ (_ln.logicalNetworkId | string) +'`}') | list
+        ) }}
+
+
+## Robust network ensure logic (per-CIDR):
+- name: Initialize network ensure accumulator
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_network_results: []
+
+- name: Initialize IPv6 network ensure accumulator
+  when: is_server_instance_record and (ms_required_ipv6_cidrs | default([]) | length) > 0
+  ansible.builtin.set_fact:
+    ms_network_results_v6: []
+
+- name: Ensure required IPv4 network {{ item }}
+  when: is_server_instance_record and (ms_required_ipv4_cidrs | length) > 0
+  vars:
+    target_cidr: "{{ item }}"
+  ansible.builtin.include_tasks: ensure_network.yml
+  loop: "{{ ms_required_ipv4_cidrs }}"
+  loop_control:
+    label: "net-ensure-{{ item }}"
+
+- name: Ensure required IPv6 network {{ item }}
+  when: is_server_instance_record and (ms_required_ipv6_cidrs | default([]) | length) > 0
+  vars:
+    target_cidr_v6: "{{ item }}"
+  ansible.builtin.include_tasks: ensure_network_ipv6.yml
+  loop: "{{ ms_required_ipv6_cidrs }}"
+  loop_control:
+    label: "net6-ensure-{{ item }}"
+
+# New: process create/delete for logicalNetworks ipv4Subnets (status governs action)
+- name: Process logical network subnet desired state (create/delete)
+  when: is_server_instance_record and (ms_network_state_items is defined) and (ms_network_state_items | length) > 0
+  block:
+    - name: Iterate subnet desired state entries
+      ansible.builtin.include_tasks: manage_network_state.yml
+      loop: "{{ ms_network_state_items }}"
+      loop_control:
+        label: "lnet-subnet-{{ item.cidr }}-{{ item.status | default('unknown') }}"
+
+- name: Process logical network IPv6 subnet desired state (create/delete)
+  when: is_server_instance_record and (ms_network_state_items_ipv6 is defined) and (ms_network_state_items_ipv6 | length) > 0
+  block:
+    - name: Iterate IPv6 subnet desired state entries
+      ansible.builtin.include_tasks: manage_network_state_ipv6.yml
+      loop: "{{ ms_network_state_items_ipv6 }}"
+      loop_control:
+        label: "lnet6-subnet-{{ item.cidr }}-{{ item.status | default('unknown') }}"
+
+- name: Derive missing networks list
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_missing_networks: "{{ ms_network_results | selectattr('final_status','equalto','missing') | map(attribute='cidr') | list }}"
+
+- name: Derive missing IPv6 networks list
+  when: is_server_instance_record and (ms_network_results_v6 is defined)
+  ansible.builtin.set_fact:
+    ms_missing_networks_v6: "{{ ms_network_results_v6 | selectattr('final_status','equalto','missing') | map(attribute='cidr') | list }}"
+
+- name: Fail if networks still missing and autoCreateAndDeleteNetworks disabled or creation not allowed
+  when: is_server_instance_record and (ms_missing_networks | length) > 0
+  ansible.builtin.fail:
+    msg: "Required networks missing in Infoblox: {{ ms_missing_networks }} (autoCreateAndDeleteNetworks={{ autoCreateAndDeleteNetworks }})"
+
+- name: Fail if IPv6 networks still missing and autoCreateAndDeleteNetworks disabled or creation not allowed
+  when: is_server_instance_record and (ms_missing_networks_v6 is defined) and (ms_missing_networks_v6 | length) > 0
+  ansible.builtin.fail:
+    msg: "Required IPv6 networks missing in Infoblox: {{ ms_missing_networks_v6 }} (autoCreateAndDeleteNetworks={{ autoCreateAndDeleteNetworks }})"
+
+- name: Debug network ensure summary
+  when: is_server_instance_record and ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg: "Network ensure results: {{ ms_network_results }}"
+
+# Now set working_operation after all transformations
 - name: Set working operation
   ansible.builtin.set_fact:
-    working_operation: "{{ transformed_operation if (is_instance_group or is_instance or is_cluster or is_server or is_switch) else dns_operation }}"
+    working_operation: "{{ transformed_operation if (is_instance_group or is_instance or is_cluster or is_server or is_switch or is_server_instance_record) else dns_operation }}"
 
 # Helper to check if record has content
 - name: Check if there are records to process

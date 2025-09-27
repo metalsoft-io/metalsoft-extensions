@@ -1,0 +1,94 @@
+---
+# Manage individual network state based on item.cidr and item.status
+# Expected item fields: cidr (e.g. 10.0.0.0/24), status ('allocated' => ensure present, 'released' or 'deleting' => ensure absent)
+# Uses autoCreateAndDeleteNetworks flag to allow creation and deletion; when false, creation fails (if required) and deletion is skipped.
+
+- name: Parse CIDR parts for {{ item.cidr }}
+  ansible.builtin.set_fact:
+    _mns_cidr: "{{ item.cidr }}"
+
+- name: Query existing network {{ item.cidr }}
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network?network={{ _mns_cidr | urlencode }}&_return_fields=network,comment"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _mns_get
+  failed_when: false
+
+- name: Determine presence for {{ item.cidr }}
+  ansible.builtin.set_fact:
+    _mns_present: >-
+      {{ (_mns_get.status | default(0)) == 200 and (_mns_get.json is sequence) and ((_mns_get.json | selectattr('network','defined') | selectattr('network','equalto', item.cidr) | list | length) > 0) }}
+
+- name: Create network {{ item.cidr }} if desired and allowed
+  when: (item.status | lower) == 'allocated' and (not _mns_present) and autoCreateAndDeleteNetworks | bool
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network"
+    method: POST
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      network: "{{ item.cidr }}"
+      comment: "MetalSoft Logical Network ID: {{ item.logicalNetworkId | default('unknown') }}"
+    return_content: true
+  register: _mns_create
+  failed_when: false
+
+- name: Fail if creation disallowed for missing required network {{ item.cidr }}
+  when: (item.status | lower) == 'allocated' and (not _mns_present) and (not autoCreateAndDeleteNetworks | bool)
+  ansible.builtin.fail:
+    msg: "Network {{ item.cidr }} required with status=allocated but missing and autoCreateAndDeleteNetworks is False"
+
+- name: Delete network {{ item.cidr }} if status indicates removal
+  when: _mns_present and ((item.status | lower) in ['released','deleting','deleted']) and autoCreateAndDeleteNetworks | bool
+  ansible.builtin.uri:
+    url: >-
+      {{ 'https://' ~ infoblox_host ~ '/wapi/v' ~ infoblox_wapi_version ~ '/' ~ (_mns_get.json | selectattr('network','equalto', item.cidr) | list | first)._ref }}
+    method: DELETE
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _mns_delete
+  failed_when: false
+
+- name: Record manage network state result {{ item.cidr }}
+  ansible.builtin.set_fact:
+    ms_network_manage_results: >-
+      {{ (ms_network_manage_results | default([])) + [ {
+          'cidr': item.cidr,
+          'desired_status': item.status,
+          'present_before': _mns_present,
+          'created': (_mns_create.status | default(0)) in [200,201],
+          'deleted': (_mns_delete.status | default(0)) in [200,204],
+          'final_state': (
+             ((item.status | lower) == 'allocated') and (
+                (_mns_present or ((_mns_create.status | default(0)) in [200,201])) and 'present' or 'missing'
+             )
+             or ((item.status | lower) in ['released','deleting','deleted']) and (
+                ((_mns_delete.status | default(0)) in [200,204]) and 'deleted' or (_mns_present and 'present' or 'missing')
+             )
+          )
+        } ] }}
+
+- name: Debug manage network state result {{ item.cidr }} (verbosity>=2)
+  when: ansible_verbosity | int >= 2
+  ansible.builtin.debug:
+    msg:
+      cidr: "{{ item.cidr }}"
+      desired_status: "{{ item.status }}"
+      present_before: "{{ _mns_present }}"
+      create_status: "{{ _mns_create.status | default('n/a') }}"
+      delete_status: "{{ _mns_delete.status | default('n/a') }}"
+      final_state: "{{ (ms_network_manage_results | last).final_state if ms_network_manage_results is defined else 'n/a' }}"
+      autoCreateAndDeleteNetworks: "{{ autoCreateAndDeleteNetworks }}"

@@ -55,7 +55,7 @@
     provider: "{{ nios_provider }}"
 
 - name: Delete AAAA record values for {{ record_fqdn }}
-  loop: "{{ item.records | default([]) }}"
+  loop: "{{ _delete_candidate_ips_v6 | default(item.records | default([])) }}"
   loop_control:
     loop_var: record_ip
   when:
@@ -67,3 +67,43 @@
     view: "{{ infoblox_view }}"
     state: absent
     provider: "{{ nios_provider }}"
+
+# --- Added IPv6 fallback similar to A record logic ---
+- name: Initialize deletion candidate IPv6 list (raw from input)
+  ansible.builtin.set_fact:
+    _delete_candidate_ips_v6: "{{ item.records | default([]) }}"
+  when: item.type | upper == 'AAAA'
+
+- name: Query existing AAAA record IPs for deletion fallback
+  when:
+    - item.type | upper == 'AAAA'
+    - (_delete_candidate_ips_v6 | length == 0) or ('AUTO' in _delete_candidate_ips_v6)
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:aaaa?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv6addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _existing_aaaa_for_delete
+  failed_when: false
+
+- name: Consolidate existing AAAA record IPs for deletion
+  when:
+    - item.type | upper == 'AAAA'
+    - _existing_aaaa_for_delete.json is defined
+    - (_delete_candidate_ips_v6 | length == 0) or ('AUTO' in _delete_candidate_ips_v6)
+  ansible.builtin.set_fact:
+    _delete_candidate_ips_v6: >-
+      {{ (_existing_aaaa_for_delete.json | map(attribute='ipv6addr') | list)
+          if (_existing_aaaa_for_delete.json is sequence)
+          else [] }}
+
+- name: Debug deletion candidate IPs (AAAA)
+  when: item.type | upper == 'AAAA' and ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      record_fqdn: "{{ record_fqdn }}"
+      original_item_records: "{{ item.records | default([]) }}"
+      delete_candidate_ips_v6: "{{ _delete_candidate_ips_v6 | default([]) }}"

@@ -187,9 +187,11 @@
         validate_certs: "{{ infoblox_validate_certs }}"
         return_content: true
       register: _network_query_fallback
-      when: _network_query.status | default(0) != 200
       failed_when: false
-      when: _existing_a_ip_wapi | length == 0 and _network_query.status | default(0) != 200
+      # Combined duplicate 'when' keys into a single list to avoid YAML duplicate key warning.
+      when:
+        - _existing_a_ip_wapi | length == 0
+        - _network_query.status | default(0) != 200
 
     - name: Consolidate network query result
       when: _existing_a_ip_wapi | length == 0
@@ -335,8 +337,11 @@
         view: "{{ infoblox_view }}"
         ttl: "{{ item.ttl | default(default_ttl) }}"
         comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
-              | replace('{{ server_id }}', ms_server_id | default(''))
-              | replace('{{ logical_network_id }}', (ms_ip_logical_map[_allocated_wapi_ip] | default((ms_logical_network_ids | first))) | string)
+              | replace('{{ server_id }}', (ms_server_id | default(''))) 
+              | replace('{{ logical_network_id }}', (
+                  ms_ip_logical_map[_allocated_wapi_ip]
+                    | default( (ms_logical_network_ids | default([]) | first) | default(''))
+                ) | string)
           ) | trim }}"
         state: present
         provider: "{{ nios_provider }}"
@@ -362,9 +367,12 @@
     view: "{{ infoblox_view }}"
     ttl: "{{ item.ttl | default(default_ttl) }}"
     comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
-          | replace('{{ server_id }}', ms_server_id | default(''))
-          | replace('{{ logical_network_id }}', (ms_ip_logical_map[record_ip] | default((ms_logical_network_ids | first))) | string)
-        ) | trim }}"
+        | replace('{{ server_id }}', (ms_server_id | default('')))
+        | replace('{{ logical_network_id }}', (
+            ms_ip_logical_map[record_ip]
+              | default( (ms_logical_network_ids | default([]) | first) | default('') )
+          ) | string)
+      ) | trim }}"
     state: present
     provider: "{{ nios_provider }}"
 
@@ -381,8 +389,11 @@
     view: "{{ infoblox_view }}"
     ttl: "{{ item.ttl | default(default_ttl) }}"
     comment: "{{ (ip_record_comment_template | default('MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}')
-          | replace('{{ server_id }}', ms_server_id | default(''))
-          | replace('{{ logical_network_id }}', (ms_ip_logical_map[record_ip] | default((ms_logical_network_ids | first))) | string)
+          | replace('{{ server_id }}', (ms_server_id | default('')))
+          | replace('{{ logical_network_id }}', (
+              ms_ip_logical_map[record_ip]
+                | default( (ms_logical_network_ids | default([]) | first) | default('') )
+            ) | string)
         ) | trim }}"
     state: present
     provider: "{{ nios_provider }}"

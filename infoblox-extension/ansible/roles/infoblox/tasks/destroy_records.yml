@@ -16,11 +16,162 @@
       {% else %}
       {{ base + '.' + zone_name.rstrip('.') }}
       {% endif %}
-  when: item.type | upper in ['A','AAAA'] and item.records is defined and (item.records | length) > 0
+  # Allow deletion even if records list missing/empty; helper task will query existing values.
+  when: item.type | upper in ['A','AAAA']
   loop: "{{ _deleting_records }}"
   loop_control:
     label: "{{ item.type }} {{ item.name }}"
   ansible.builtin.include_tasks: _delete_ip_record_task.yml
+
+# Requery any remaining A/AAAA records for diagnostics
+- name: Requery remaining A records (post-delete)
+  when: _deleting_records | selectattr('type','defined') | selectattr('type','in',['A','AAAA']) | list | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ ( (item.name if item.name.endswith('.') else item.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _post_delete_a_queries
+  loop: "{{ _deleting_records | selectattr('type','in',['A']) | list }}"
+  loop_control:
+    label: "A {{ item.name }}"
+  failed_when: false
+
+- name: Requery remaining AAAA records (post-delete)
+  when: _deleting_records | selectattr('type','defined') | selectattr('type','in',['A','AAAA']) | list | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:aaaa?name={{ ( (item.name if item.name.endswith('.') else item.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv6addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _post_delete_aaaa_queries
+  loop: "{{ _deleting_records | selectattr('type','in',['AAAA']) | list }}"
+  loop_control:
+    label: "AAAA {{ item.name }}"
+  failed_when: false
+
+- name: Summarize remaining IP record presence
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.set_fact:
+    ms_remaining_a_records: >-
+      {{ _post_delete_a_queries.results | map(attribute='json') | list if (_post_delete_a_queries is defined and _post_delete_a_queries.results is defined) else [] }}
+    ms_remaining_aaaa_records: >-
+      {{ _post_delete_aaaa_queries.results | map(attribute='json') | list if (_post_delete_aaaa_queries is defined and _post_delete_aaaa_queries.results is defined) else [] }}
+
+- name: Debug remaining IP records after module deletion
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      remaining_a: "{{ ms_remaining_a_records }}"
+      remaining_aaaa: "{{ ms_remaining_aaaa_records }}"
+
+# Direct WAPI deletion fallback (A records)
+- name: Fetch A record _refs for fallback delete
+  when: ms_direct_delete_fallback | bool and (ms_remaining_a_records | default([]) | length) > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ ( (item.0.name if item.0.name.endswith('.') else item.0.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr,_ref"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _fallback_a_refs
+  loop: "{{ _post_delete_a_queries.results | default([]) | zip(_post_delete_a_queries.results | default([])) | list }}"
+  loop_control:
+    label: "A-ref {{ item.0.item.name | default('unknown') }}"
+  failed_when: false
+
+- name: Delete remaining A records via direct WAPI
+  when: ms_direct_delete_fallback | bool and (_fallback_a_refs.results | default([]) | length) > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/{{ item.json[0]._ref }}"
+    method: DELETE
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  loop: "{{ _fallback_a_refs.results | rejectattr('json','undefined') | selectattr('json','defined') | selectattr('json','length') | list }}"
+  loop_control:
+    label: "A-del {{ (item.json[0].name | default('')) }}"
+  failed_when: false
+
+- name: Fetch AAAA record _refs for fallback delete
+  when: ms_direct_delete_fallback | bool and (ms_remaining_aaaa_records | default([]) | length) > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:aaaa?name={{ ( (item.0.name if item.0.name.endswith('.') else item.0.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv6addr,_ref"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _fallback_aaaa_refs
+  loop: "{{ _post_delete_aaaa_queries.results | default([]) | zip(_post_delete_aaaa_queries.results | default([])) | list }}"
+  loop_control:
+    label: "AAAA-ref {{ item.0.item.name | default('unknown') }}"
+  failed_when: false
+
+- name: Delete remaining AAAA records via direct WAPI
+  when: ms_direct_delete_fallback | bool and (_fallback_aaaa_refs.results | default([]) | length) > 0
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/{{ item.json[0]._ref }}"
+    method: DELETE
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  loop: "{{ _fallback_aaaa_refs.results | rejectattr('json','undefined') | selectattr('json','defined') | selectattr('json','length') | list }}"
+  loop_control:
+    label: "AAAA-del {{ (item.json[0].name | default('')) }}"
+  failed_when: false
+
+- name: Final requery A after fallback
+  when: ms_direct_delete_fallback | bool and ((ms_remaining_a_records | default([]) | length) > 0)
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ ( (item.name if item.name.endswith('.') else item.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _final_a_requery
+  loop: "{{ _deleting_records | selectattr('type','equalto','A') | list }}"
+  loop_control:
+    label: "A-final {{ item.name }}"
+  failed_when: false
+
+- name: Final requery AAAA after fallback
+  when: ms_direct_delete_fallback | bool and ((ms_remaining_aaaa_records | default([]) | length) > 0)
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:aaaa?name={{ ( (item.name if item.name.endswith('.') else item.name + '.' + zone_name.rstrip('.') ) | trim ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv6addr"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _final_aaaa_requery
+  loop: "{{ _deleting_records | selectattr('type','equalto','AAAA') | list }}"
+  loop_control:
+    label: "AAAA-final {{ item.name }}"
+  failed_when: false
+
+- name: Debug final presence after fallback
+  when: ansible_verbosity | int >= 1 and ms_direct_delete_fallback | bool
+  ansible.builtin.debug:
+    msg:
+      final_a_records: "{{ _final_a_requery.results | map(attribute='json') | list if (_final_a_requery is defined) else [] }}"
+      final_aaaa_records: "{{ _final_aaaa_requery.results | map(attribute='json') | list if (_final_aaaa_requery is defined) else [] }}"
 
 - name: Delete CNAME records
   vars:

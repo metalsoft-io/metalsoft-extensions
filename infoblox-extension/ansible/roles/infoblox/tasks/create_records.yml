@@ -20,6 +20,33 @@
     label: "{{ item.type }} {{ item.name }}"
   ansible.builtin.include_tasks: _create_ip_record_task.yml
 
+- name: Debug existing A records before potential deletion (verbosity 1)
+  when: ansible_verbosity | int >= 1
+  vars:
+    _del_names: "{{ working_operation.records | selectattr('status','equalto','deleting') | selectattr('type','equalto','A') | map(attribute='name') | list }}"
+  block:
+    - name: Query each A record candidate (pre-delete)
+      when: _del_names | length > 0
+      loop: "{{ _del_names }}"
+      loop_control:
+        loop_var: del_name
+        label: "pre-delete {{ del_name }}"
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:a?name={{ (del_name.rstrip('.') ) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addr&_max_results=20"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _predelete_a_results
+      failed_when: false
+
+    - name: Show pre-delete A record query results
+      when: _predelete_a_results is defined
+      ansible.builtin.debug:
+        var: _predelete_a_results.results | map(attribute='json') | list
+
 - name: Ensure CNAME records
   vars:
     record_fqdn: >-

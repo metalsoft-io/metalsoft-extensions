@@ -38,3 +38,14 @@ autoCreateAndDeleteNetworks: true
 
 # Comment templates for created IP records
 ip_record_comment_template: "MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}"
+
+# Manual deletion override controls
+ms_force_delete: false               # when true, all records in input coerced to deleting
+force_delete_names: []               # list of record names (FQDN) to coerce to deleting (exact match, trailing dot optional)
+delete_active: false                 # when true, treat all active records as deletion candidates (testing / emergency cleanup)
+
+# Role version (bump when making behavioral changes). Helps verify the correct role copy is executing.
+infoblox_role_version: "0.1.0-dev-20250927a"
+
+# Enable last-resort direct WAPI deletion if module-based deletion leaves records behind.
+ms_direct_delete_fallback: true

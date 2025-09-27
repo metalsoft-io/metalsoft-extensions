@@ -38,6 +38,26 @@
     # New: serverInstanceRecordSet format (multiple NIC IP inventory separate from DNS records)
     is_server_instance_record: "{{ dns_operation.serverInstanceRecordSet is defined }}"
 
+# Show role version early for troubleshooting (ensures correct role content loaded)
+- name: Debug role version
+  ansible.builtin.debug:
+    msg: "Infoblox role version: {{ infoblox_role_version }}"
+
+# Ensure core mapping variables exist to prevent undefined errors in record comment templates
+- name: Initialize safe defaults for logical network variables
+  ansible.builtin.set_fact:
+    ms_logical_network_ids: "{{ ms_logical_network_ids | default([]) }}"
+    ms_ip_logical_map: "{{ ms_ip_logical_map | default({}) }}"
+
+# Sentinel fail: if the role version variable is missing, this is almost certainly an OLD/STALE role copy.
+# (In the maintained repo, defaults/main.yml defines infoblox_role_version.)
+- name: Fail if role version variable missing (stale role copy?)
+  ansible.builtin.fail:
+    msg: >-
+      infoblox_role_version is undefined: this indicates a stale/old role copy is being executed.
+      Ensure you run the playbook from the updated repository directory (not /private/tmp) or sync the role.
+  when: infoblox_role_version is not defined
+
 # Detect management address type for servers
 - name: Analyze management address type for servers
   when: is_server
@@ -64,6 +84,12 @@
       records: "{{ dns_operation.serverInstanceGroupDNSRecordSet.records }}"
       soa_email: "{{ dns_operation.serverInstanceGroupDNSRecordSet.zone.soaEmail }}"
 
+- name: Convert instance group records to deleting when operation delete
+  when: is_instance_group and (dns_operation.serverInstanceGroupDNSRecordSet.operation | default('') | lower) == 'delete'
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ transformed_operation | combine({ 'records': (transformed_operation.records | map('combine', {'status': 'deleting'}) | list) }, recursive=True) }}
+
 # Transform instance format
 - name: Transform instance format
   when: is_instance
@@ -74,6 +100,12 @@
       records: "{{ dns_operation.serverInstanceDNSRecordSet.records }}"
       soa_email: "{{ dns_operation.serverInstanceDNSRecordSet.zone.soaEmail }}"
 
+- name: Convert instance records to deleting when operation delete
+  when: is_instance and (dns_operation.serverInstanceDNSRecordSet.operation | default('') | lower) == 'delete'
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ transformed_operation | combine({ 'records': (transformed_operation.records | map('combine', {'status': 'deleting'}) | list) }, recursive=True) }}
+
 # Transform instance format
 - name: Transform cluster format
   when: is_cluster
@@ -83,6 +115,12 @@
       nameservers: "{{ dns_operation.clusterDNSRecordSet.zone.nameServers }}"
       records: "{{ dns_operation.clusterDNSRecordSet.records }}"
       soa_email: "{{ dns_operation.clusterDNSRecordSet.zone.soaEmail }}"
+
+- name: Convert cluster records to deleting when operation delete
+  when: is_cluster and (dns_operation.clusterDNSRecordSet.operation | default('') | lower) == 'delete'
+  ansible.builtin.set_fact:
+    transformed_operation: >-
+      {{ transformed_operation | combine({ 'records': (transformed_operation.records | map('combine', {'status': 'deleting'}) | list) }, recursive=True) }}
 
 # Transform server format (physical servers)
 - name: Transform server format
@@ -155,8 +193,8 @@
 - name: Build DNS records from serverInstanceRecordSet IPs
   when: is_server_instance_record
   vars:
-    _ipv4_list: "{{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='ip') | list }}"
-    _ipv6_list: "{{ dns_operation.serverInstanceRecordSet.instanceIpv6Ips | map(attribute='ip') | list }}"
+    _ipv4_list: "{{ (dns_operation.serverInstanceRecordSet.instanceIpv4Ips | default([])) | map(attribute='ip') | list }}"
+    _ipv6_list: "{{ (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([])) | map(attribute='ip') | list }}"
   ansible.builtin.set_fact:
     transformed_operation: >-
       {{ transformed_operation | combine({
@@ -419,6 +457,80 @@
         and (working_operation.records | selectattr('status', 'equalto', 'deleting') | list | length > 0)
       )
       }}
+
+- name: "Sentinel debug - force delete requested but no records currently marked deleting"
+  when: ms_force_delete | bool and (not has_records_to_delete) and ansible_verbosity | int >= 0
+  ansible.builtin.debug:
+    msg:
+      warning: "ms_force_delete=true but no records have status=deleting yet (will attempt coercion later). If this persists after coercion step, role copy may be stale."
+      current_record_statuses: "{{ (working_operation.records | map(attribute='status') | list) if (working_operation.records is defined) else [] }}"
+      record_names: "{{ (working_operation.records | map(attribute='name') | list) if (working_operation.records is defined) else [] }}"
+
+- name: Debug deletion decision factors
+  when: ansible_verbosity | int >= 1
+  vars:
+    _op_instance_delete: "{{ (is_instance and (dns_operation.serverInstanceDNSRecordSet.operation | default('') | lower) == 'delete') }}"
+    _op_group_delete: "{{ (is_instance_group and (dns_operation.serverInstanceGroupDNSRecordSet.operation | default('') | lower) == 'delete') }}"
+    _op_cluster_delete: "{{ (is_cluster and (dns_operation.clusterDNSRecordSet.operation | default('') | lower) == 'delete') }}"
+    _op_server_delete: "{{ (is_server and (dns_operation.serverDNSRecordSet.operation | default('') | lower) == 'delete') }}"
+    _op_switch_delete: "{{ (is_switch and (dns_operation.switchDNSRecordSet.operation | default('') | lower) == 'delete') }}"
+  ansible.builtin.debug:
+    msg:
+      records_statuses: "{{ working_operation.records | map(attribute='status') | list }}"
+      record_names: "{{ working_operation.records | map(attribute='name') | list }}"
+      has_records_to_set: "{{ has_records_to_set }}"
+      has_records_to_delete: "{{ has_records_to_delete }}"
+      ms_force_delete: "{{ ms_force_delete }}"
+      force_delete_names: "{{ force_delete_names }}"
+      op_delete_flags:
+        instance: "{{ _op_instance_delete }}"
+        instance_group: "{{ _op_group_delete }}"
+        cluster: "{{ _op_cluster_delete }}"
+        server: "{{ _op_server_delete }}"
+        switch: "{{ _op_switch_delete }}"
+
+- name: Force convert to deleting if delete operation indicated but no deleting flags set
+  vars:
+    _op_delete: >-
+      {{ (is_instance and (dns_operation.serverInstanceDNSRecordSet.operation | default('') | lower) == 'delete')
+         or (is_instance_group and (dns_operation.serverInstanceGroupDNSRecordSet.operation | default('') | lower) == 'delete')
+         or (is_cluster and (dns_operation.clusterDNSRecordSet.operation | default('') | lower) == 'delete')
+         or (is_server and (dns_operation.serverDNSRecordSet.operation | default('') | lower) == 'delete')
+         or (is_switch and (dns_operation.switchDNSRecordSet.operation | default('') | lower) == 'delete') }}
+    _force_match_names: >-
+      {{ working_operation.records | selectattr('name','defined') | selectattr('name','in', (force_delete_names | map('regex_replace','\.$','') | list)) | list }}
+  when: not has_records_to_delete and (
+    _op_delete or ms_force_delete | bool or delete_active | bool or (force_delete_names | length > 0 and (_force_match_names | length) > 0)
+        )
+  ansible.builtin.set_fact:
+    working_operation: >-
+      {{ working_operation | combine({'records': (working_operation.records | map('combine', {'status': 'deleting'}) | list)}, recursive=True) }}
+
+- name: Debug coercion trigger
+  when: ansible_verbosity | int >= 1 and (not has_records_to_delete) and (
+          (working_operation.records | selectattr('status','equalto','deleting') | list | length) > 0)
+  ansible.builtin.debug:
+    msg: >-
+      Coerced records to deleting due to {{
+        'operation=delete' if _op_delete else (
+          'ms_force_delete=true' if (ms_force_delete | bool) else (
+            'delete_active=true' if (delete_active | bool) else 'force_delete_names match'
+          )
+        )
+      }}.
+
+- name: Re-evaluate deletion flag after coercion
+  when: not has_records_to_delete and (working_operation.records | selectattr('status','equalto','deleting') | list | length) > 0
+  ansible.builtin.set_fact:
+    has_records_to_delete: true
+
+- name: Debug record processing flags
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      has_records_to_set: "{{ has_records_to_set }}"
+      has_records_to_delete: "{{ has_records_to_delete }}"
+      deleting_records: "{{ working_operation.records | selectattr('status','equalto','deleting') | list | map(attribute='name') | list }}"
 
 - name: Skip if there are no records to process
   ansible.builtin.meta: end_play

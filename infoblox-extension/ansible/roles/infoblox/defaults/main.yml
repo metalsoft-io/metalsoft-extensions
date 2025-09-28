@@ -1,11 +1,11 @@
 ---
 # Infoblox WAPI connection details
 # These should be overridden via extra vars or variables.json
-infoblox_host: "10.255.146.53"
-#infoblox_host: "192.168.1.55"
+#infoblox_host: "10.255.146.53"
+infoblox_host: "192.168.1.55"
 infoblox_username: "admin"
-#infoblox_password: "infoblox"
-infoblox_password: "infoblox123"
+infoblox_password: "infoblox"
+#infoblox_password: "infoblox123"
 infoblox_validate_certs: false
 infoblox_wapi_version: "2.12"  # adjust if your grid uses a different version
 

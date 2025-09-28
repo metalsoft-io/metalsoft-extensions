@@ -280,10 +280,26 @@
   when: is_server_instance_record
   ansible.builtin.set_fact:
     ms_server_id: "{{ dns_operation.serverInstanceRecordSet.serverId | default('') }}"
-    ms_logical_network_ids: "{{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list | unique }}"
+    # Merge IPv4 and IPv6 logical network IDs (some servers may have only v6 or only v4)
+    ms_logical_network_ids: >-
+      {{ (
+          (dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list)
+          + (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | map(attribute='logicalNetworkId') | list)
+        ) | select('defined') | list | unique }}
+    # Build combined IP -> logicalNetworkId map for both protocol families
     ms_ip_logical_map: >-
-      {{ dict( dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='ip') | list
-            | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list) ) }}
+      {{ dict(
+          (
+            (dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='ip') | list)
+            + (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | map(attribute='ip') | list)
+          )
+          | zip(
+            (
+              (dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='logicalNetworkId') | list)
+              + (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | map(attribute='logicalNetworkId') | list)
+            )
+          )
+        ) }}
   
 # Build required network CIDRs (simplified)
 - name: Build required IPv4 CIDRs

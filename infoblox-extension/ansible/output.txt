@@ -1,0 +1,913 @@
+ansible-playbook [core 2.18.8]
+  config file = None
+  configured module search path = ['/Users/alexandrubordei/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
+  ansible python module location = /Users/alexandrubordei/code/metalsoft-ansible/venv/lib/python3.13/site-packages/ansible
+  ansible collection location = /Users/alexandrubordei/.ansible/collections:/usr/share/ansible/collections
+  executable location = /Users/alexandrubordei/code/metalsoft-ansible/venv/bin/ansible-playbook
+  python version = 3.13.7 (main, Aug 14 2025, 11:12:11) [Clang 17.0.0 (clang-1700.0.13.3)] (/Users/alexandrubordei/code/metalsoft-ansible/venv/bin/python3.13)
+  jinja version = 3.1.6
+  libyaml = True
+No config file found; using defaults
+Skipping callback 'default', as we already have a stdout callback.
+Skipping callback 'minimal', as we already have a stdout callback.
+Skipping callback 'oneline', as we already have a stdout callback.
+
+PLAYBOOK: sync_infoblox.yaml ***************************************************
+1 plays in sync_infoblox.yaml
+
+PLAY [Create IP and DNS records in Infoblox] ***********************************
+
+TASK [Display config file path] ************************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/sync_infoblox.yaml:16
+ok: [localhost] => {
+    "msg": "Loading DNS configuration from: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/variables.json"
+}
+
+TASK [Verify variables.json exists] ********************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/sync_infoblox.yaml:21
+ok: [localhost] => {"changed": false, "stat": {"atime": 1759095052.9191213, "attr_flags": "", "attributes": [], "birthtime": 1759095046.2418687, "block_size": 4096, "blocks": 8, "charset": "us-ascii", "checksum": "d3b3dc82e902f1106636cbf4e17351c010749cff", "ctime": 1759095055.9887412, "dev": 16777229, "device_type": 0, "executable": false, "exists": true, "flags": 0, "generation": 0, "gid": 20, "gr_name": "staff", "inode": 39419790, "isblk": false, "ischr": false, "isdir": false, "isfifo": false, "isgid": false, "islnk": false, "isreg": true, "issock": false, "isuid": false, "mimetype": "application/json", "mode": "0644", "mtime": 1759095052.9176974, "nlink": 1, "path": "/Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/variables.json", "pw_name": "alexandrubordei", "readable": true, "rgrp": true, "roth": true, "rusr": true, "size": 3919, "uid": 501, "version": null, "wgrp": false, "woth": false, "writeable": true, "wusr": true, "xgrp": false, "xoth": false, "xusr": false}}
+
+TASK [Assert configuration file exists] ****************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/sync_infoblox.yaml:26
+ok: [localhost] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+TASK [Load JSON configuration] *************************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/sync_infoblox.yaml:32
+ok: [localhost] => {"ansible_facts": {"dns_operation": {"serverInstanceRecordSet": {"deployStatus": "ongoing", "deployType": "delete", "deploymentId": 5394, "instanceIpv4IpRanges": [], "instanceIpv4Ips": [{"cidr": "10.0.0.5/24", "gateway": "10.0.0.1", "ip": "10.0.0.5", "logicalNetworkId": 1214, "maskBits": 24, "netmask": "255.255.255.0", "networkAddress": "10.0.0.0", "status": "deleting"}], "instanceIpv6IpRanges": [], "instanceIpv6Ips": [{"cidr": "2002:db8:abcf:12::4/64", "gateway": "2002:db8:abcf:12::1", "ip": "2002:db8:abcf:12::4", "logicalNetworkId": 1215, "maskBits": 64, "netmask": "ffff:ffff:ffff:ffff::", "networkAddress": "2002:db8:abcf:12::", "status": "deleting"}], "logicalNetworks": [{"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": false}], "ipv4Subnets": [{"gateway": "10.0.0.1", "gatewayPlacement": "default", "id": 237, "networkAddress": "10.0.0.0", "prefixLength": 24, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1214, "logicalNetworkLabel": "alex-private-net", "logicalNetworkName": "alex-private-net", "vlans": [{"id": 314, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 826}]}, {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": true}], "ipv6Subnets": [{"gateway": "2002:db8:abcf:12::1", "gatewayPlacement": "default", "networkAddress": "2002:db8:abcf:12::", "prefixLength": 64, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1215, "logicalNetworkLabel": "alex-ipv6", "logicalNetworkName": "alex-ipv6", "vlans": [{"id": 315, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 427}]}], "serverId": 211, "serverInstanceId": 4436, "serviceStatus": "active", "siteLabel": "dc-eveng-qa02"}}}, "ansible_included_var_files": ["/Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/variables.json"], "changed": false}
+
+TASK [infoblox : Detect JSON format type] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:5
+ok: [localhost] => {"ansible_facts": {"is_cluster": false, "is_instance": false, "is_instance_group": false, "is_server": false, "is_server_instance_record": true, "is_switch": false}, "changed": false}
+
+TASK [infoblox : Debug role version] *******************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:42
+ok: [localhost] => {
+    "msg": "Infoblox role version: 0.1.0-dev-20250927a"
+}
+
+TASK [infoblox : Initialize safe defaults for logical network variables] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:47
+ok: [localhost] => {"ansible_facts": {"ms_ip_logical_map": {}, "ms_logical_network_ids": []}, "changed": false}
+
+TASK [infoblox : Fail if role version variable missing (stale role copy?)] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:54
+skipping: [localhost] => {"changed": false, "false_condition": "infoblox_role_version is not defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Analyze management address type for servers] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:62
+skipping: [localhost] => {"changed": false, "false_condition": "is_server", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Analyze management address type for switches] *****************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:70
+skipping: [localhost] => {"changed": false, "false_condition": "is_switch", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform instance group format] ******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:78
+skipping: [localhost] => {"changed": false, "false_condition": "is_instance_group", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Convert instance group records to deleting when operation delete] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:87
+skipping: [localhost] => {"changed": false, "false_condition": "is_instance_group and (dns_operation.serverInstanceGroupDNSRecordSet.operation | default('') | lower) == 'delete'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform instance format] ************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:94
+skipping: [localhost] => {"changed": false, "false_condition": "is_instance", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Convert instance records to deleting when operation delete] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:103
+skipping: [localhost] => {"changed": false, "false_condition": "is_instance and (dns_operation.serverInstanceDNSRecordSet.operation | default('') | lower) == 'delete'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform cluster format] *************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:110
+skipping: [localhost] => {"changed": false, "false_condition": "is_cluster", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Convert cluster records to deleting when operation delete] ****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:119
+skipping: [localhost] => {"changed": false, "false_condition": "is_cluster and (dns_operation.clusterDNSRecordSet.operation | default('') | lower) == 'delete'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform server format] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:126
+skipping: [localhost] => {"changed": false, "false_condition": "is_server", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform switch format] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:152
+skipping: [localhost] => {"changed": false, "false_condition": "is_switch", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Transform serverInstanceRecordSet format] *********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:178
+ok: [localhost] => {"ansible_facts": {"transformed_operation": {"nameservers": [], "records": [], "soa_email": "admin.dc-eveng-qa02.example.invalid", "zone": "dc-eveng-qa02.example.invalid"}}, "changed": false}
+
+TASK [infoblox : Build DNS records from serverInstanceRecordSet IPs] ***********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:193
+ok: [localhost] => {"ansible_facts": {"transformed_operation": {"nameservers": [], "records": [{"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "active", "type": "A"}, {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "active", "type": "AAAA"}], "soa_email": "admin.dc-eveng-qa02.example.invalid", "zone": "dc-eveng-qa02.example.invalid"}}, "changed": false}
+
+TASK [infoblox : Initialize gateway records list] ******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:227
+ok: [localhost] => {"ansible_facts": {"_gateway_records": []}, "changed": false}
+
+TASK [infoblox : Accumulate gateway gateway records per logical network] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:231
+ok: [localhost] => (item=ln-1214) => {"ansible_facts": {"_gateway_records": [{"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "active", "type": "A"}]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": false}], "ipv4Subnets": [{"gateway": "10.0.0.1", "gatewayPlacement": "default", "id": 237, "networkAddress": "10.0.0.0", "prefixLength": 24, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1214, "logicalNetworkLabel": "alex-private-net", "logicalNetworkName": "alex-private-net", "vlans": [{"id": 314, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 826}]}}
+skipping: [localhost] => (item=ln-1215)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "(item.ipv4Subnets | default([]) | selectattr('gateway','defined') | list | length) > 0", "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": true}], "ipv6Subnets": [{"gateway": "2002:db8:abcf:12::1", "gatewayPlacement": "default", "networkAddress": "2002:db8:abcf:12::", "prefixLength": 64, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1215, "logicalNetworkLabel": "alex-ipv6", "logicalNetworkName": "alex-ipv6", "vlans": [{"id": 315, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 427}]}, "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Append accumulated gateway records (excluding empty)] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:246
+ok: [localhost] => {"ansible_facts": {"transformed_operation": {"nameservers": [], "records": [{"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "active", "type": "A"}, {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "active", "type": "AAAA"}, {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "active", "type": "A"}], "soa_email": "admin.dc-eveng-qa02.example.invalid", "zone": "dc-eveng-qa02.example.invalid"}}, "changed": false}
+
+TASK [infoblox : Initialize gateway ip/lnid pairs] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:254
+ok: [localhost] => {"ansible_facts": {"_gateway_ip_pairs": []}, "changed": false}
+
+TASK [infoblox : Accumulate gateway ip/lnid pairs] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:258
+ok: [localhost] => (item=gw-ln-1214) => {"ansible_facts": {"_gateway_ip_pairs": [["10.0.0.1", "1214"]]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": false}], "ipv4Subnets": [{"gateway": "10.0.0.1", "gatewayPlacement": "default", "id": 237, "networkAddress": "10.0.0.0", "prefixLength": 24, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1214, "logicalNetworkLabel": "alex-private-net", "logicalNetworkName": "alex-private-net", "vlans": [{"id": 314, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 826}]}}
+ok: [localhost] => (item=gw-ln-1215) => {"ansible_facts": {"_gateway_ip_pairs": [["10.0.0.1", "1214"]]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": true}], "ipv6Subnets": [{"gateway": "2002:db8:abcf:12::1", "gatewayPlacement": "default", "networkAddress": "2002:db8:abcf:12::", "prefixLength": 64, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1215, "logicalNetworkLabel": "alex-ipv6", "logicalNetworkName": "alex-ipv6", "vlans": [{"id": 315, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 427}]}}
+
+TASK [infoblox : Merge gateway ip map into ms_ip_logical_map] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:266
+ok: [localhost] => {"ansible_facts": {"ms_ip_logical_map": {"10.0.0.1": "1214"}}, "changed": false}
+
+TASK [infoblox : Convert serverInstanceRecordSet records to deleting if deployType delete and status ongoing] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:271
+ok: [localhost] => {"ansible_facts": {"transformed_operation": {"nameservers": [], "records": [{"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}], "soa_email": "admin.dc-eveng-qa02.example.invalid", "zone": "dc-eveng-qa02.example.invalid"}}, "changed": false}
+
+TASK [infoblox : Capture server / logical network IDs for comment usage] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:279
+ok: [localhost] => {"ansible_facts": {"ms_ip_logical_map": {"10.0.0.5": 1214, "2002:db8:abcf:12::4": 1215}, "ms_logical_network_ids": [1214, 1215], "ms_server_id": "211"}, "changed": false}
+
+TASK [infoblox : Build required IPv4 CIDRs] ************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:305
+ok: [localhost] => {"ansible_facts": {"ms_required_ipv4_cidrs": ["10.0.0.0/24"]}, "changed": false}
+
+TASK [infoblox : Preflight Infoblox connectivity check (serverInstanceRecordSet)] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:314
+ok: [localhost] => {"cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[\n    {\n        \"_ref\": \"network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default\", \n        \"network\": \"10.0.0.0/24\"\n    }\n]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104170,timeout=600,mtime=1759104170,su=1,auth=LOCAL,user=admin,gXU2XkLEeAIcqgbF1aRXkQpTuoj5R40lwdE\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104170,timeout=600,mtime=1759104170,su=1,auth=LOCAL,user=admin,gXU2XkLEeAIcqgbF1aRXkQpTuoj5R40lwdE\"", "date": "Mon, 29 Sep 2025 00:02:50 GMT", "elapsed": 0, "failed_when_result": false, "json": [{"_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default", "network": "10.0.0.0/24"}], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104170,timeout=600,mtime=1759104170,su=1,auth=LOCAL,user=admin,gXU2XkLEeAIcqgbF1aRXkQpTuoj5R40lwdE\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/network?_max_results=1&_return_fields=network", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Debug preflight connectivity (verbosity>=1)] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:327
+ok: [localhost] => {
+    "msg": {
+        "preflight_json": [
+            {
+                "_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default",
+                "network": "10.0.0.0/24"
+            }
+        ],
+        "preflight_msg": "OK (unknown bytes)",
+        "preflight_status": "200"
+    }
+}
+
+TASK [infoblox : Fail early if Infoblox unreachable (preflight status -1)] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:335
+skipping: [localhost] => {"changed": false, "false_condition": "is_server_instance_record and ((_infoblox_preflight.status | default(0)) == -1)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Build required IPv6 CIDRs] ************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:342
+ok: [localhost] => {"ansible_facts": {"ms_required_ipv6_cidrs": ["2002:db8:abcf:12::/64"]}, "changed": false}
+
+TASK [infoblox : Build network logical ID map] *********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:350
+ok: [localhost] => {"ansible_facts": {"ms_network_logical_id_map": {"10.0.0.0/24": 1214}}, "changed": false}
+
+TASK [infoblox : Build IPv6 network logical ID map] ****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:360
+ok: [localhost] => {"ansible_facts": {"ms_network_logical_id_map_v6": {"2002:db8:abcf:12::/64": 1215}}, "changed": false}
+
+TASK [infoblox : Initialize ms_network_state_items] ****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:371
+ok: [localhost] => {"ansible_facts": {"ms_network_state_items": []}, "changed": false}
+
+TASK [infoblox : Initialize ms_network_state_items_ipv6] ***********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:376
+ok: [localhost] => {"ansible_facts": {"ms_network_state_items_ipv6": []}, "changed": false}
+
+TASK [infoblox : Accumulate subnet state items] ********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:381
+ok: [localhost] => (item=ln-1214) => {"ansible_facts": {"ms_network_state_items": [{"cidr": "10.0.0.0/24", "logicalNetworkId": 1214, "status": "allocated"}]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": false}], "ipv4Subnets": [{"gateway": "10.0.0.1", "gatewayPlacement": "default", "id": 237, "networkAddress": "10.0.0.0", "prefixLength": 24, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1214, "logicalNetworkLabel": "alex-private-net", "logicalNetworkName": "alex-private-net", "vlans": [{"id": 314, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 826}]}}
+ok: [localhost] => (item=ln-1215) => {"ansible_facts": {"ms_network_state_items": [{"cidr": "10.0.0.0/24", "logicalNetworkId": 1214, "status": "allocated"}]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": true}], "ipv6Subnets": [{"gateway": "2002:db8:abcf:12::1", "gatewayPlacement": "default", "networkAddress": "2002:db8:abcf:12::", "prefixLength": 64, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1215, "logicalNetworkLabel": "alex-ipv6", "logicalNetworkName": "alex-ipv6", "vlans": [{"id": 315, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 427}]}}
+
+TASK [infoblox : Accumulate IPv6 subnet state items] ***************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:394
+ok: [localhost] => (item=ln6-1214) => {"ansible_facts": {"ms_network_state_items_ipv6": []}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": false}], "ipv4Subnets": [{"gateway": "10.0.0.1", "gatewayPlacement": "default", "id": 237, "networkAddress": "10.0.0.0", "prefixLength": 24, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1214, "logicalNetworkLabel": "alex-private-net", "logicalNetworkName": "alex-private-net", "vlans": [{"id": 314, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 826}]}}
+ok: [localhost] => (item=ln6-1215) => {"ansible_facts": {"ms_network_state_items_ipv6": [{"cidr": "2002:db8:abcf:12::/64", "logicalNetworkId": 1215, "status": "allocated"}]}, "ansible_loop_var": "item", "changed": false, "item": {"interfaces": [{"macAddress": "B8:CB:29:F3:9D:13", "redundancyIndex": null, "serverInterfaceId": 736, "tagged": true}], "ipv6Subnets": [{"gateway": "2002:db8:abcf:12::1", "gatewayPlacement": "default", "networkAddress": "2002:db8:abcf:12::", "prefixLength": 64, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated"}], "logicalNetworkId": 1215, "logicalNetworkLabel": "alex-ipv6", "logicalNetworkName": "alex-ipv6", "vlans": [{"id": 315, "scope": {"kind": "fabric", "resourceId": 1931}, "status": "allocated", "vlanId": 427}]}}
+
+TASK [infoblox : Initialize network ensure accumulator] ************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:409
+ok: [localhost] => {"ansible_facts": {"ms_network_results": []}, "changed": false}
+
+TASK [infoblox : Initialize IPv6 network ensure accumulator] *******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:414
+ok: [localhost] => {"ansible_facts": {"ms_network_results_v6": []}, "changed": false}
+
+TASK [infoblox : Ensure required IPv4 network {{ item }}] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:419
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml for localhost => (item=net-ensure-10.0.0.0/24)
+
+TASK [infoblox : Query network 10.0.0.0/24 (object 'network')] *****************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:5
+ok: [localhost] => {"cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[\n    {\n        \"_ref\": \"network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default\", \n        \"network\": \"10.0.0.0/24\"\n    }\n]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,z36j+YXITzZbNBWHkIggHp1+OmoIy2HyZls\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,z36j+YXITzZbNBWHkIggHp1+OmoIy2HyZls\"", "date": "Mon, 29 Sep 2025 00:02:51 GMT", "elapsed": 0, "failed_when_result": false, "json": [{"_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default", "network": "10.0.0.0/24"}], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,z36j+YXITzZbNBWHkIggHp1+OmoIy2HyZls\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/network?network=10.0.0.0/24&_return_fields=network", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Set query object marker] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:17
+ok: [localhost] => {"ansible_facts": {"_net_query_object": "network"}, "changed": false}
+
+TASK [infoblox : Determine if network 10.0.0.0/24 present] *********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:21
+ok: [localhost] => {"ansible_facts": {"_net_present": true}, "changed": false}
+
+TASK [infoblox : Debug primary network query (verbosity >=1)] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:33
+ok: [localhost] => {
+    "msg": {
+        "primary_json": [
+            {
+                "_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default",
+                "network": "10.0.0.0/24"
+            }
+        ],
+        "primary_present": true,
+        "primary_status": "200",
+        "target": "10.0.0.0/24"
+    }
+}
+
+TASK [infoblox : Fallback query ipv4network 10.0.0.0/24 when not detected] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:43
+skipping: [localhost] => {"changed": false, "false_condition": "not _net_present", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Re-evaluate presence after ipv4network query] *****************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:56
+skipping: [localhost] => {"changed": false, "false_condition": "not _net_present", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug ipv4network fallback query (verbosity >=1)] *************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:71
+skipping: [localhost] => {"false_condition": "ansible_verbosity | int >= 1 and (not _net_present) and (_net_query_v4 is defined)"}
+
+TASK [infoblox : Broad search all networks when still not present] *************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:81
+skipping: [localhost] => {"changed": false, "false_condition": "not _net_present", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Re-evaluate presence after broad search] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:94
+skipping: [localhost] => {"changed": false, "false_condition": "not _net_present", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug broad search fallback (verbosity >=1)] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:106
+ok: [localhost] => {
+    "msg": {
+        "broad_count": "n/a",
+        "broad_status": "n/a",
+        "matched_after_broad": true,
+        "target": "10.0.0.0/24"
+    }
+}
+
+TASK [infoblox : Create network 10.0.0.0/24 if missing and allowed] ************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:116
+skipping: [localhost] => {"changed": false, "false_condition": "(not _net_present) and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Derive final status for network 10.0.0.0/24] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:135
+ok: [localhost] => {"ansible_facts": {"_net_final_status": "present "}, "changed": false}
+
+TASK [infoblox : Record network ensure outcome 10.0.0.0/24] ********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:144
+ok: [localhost] => {"ansible_facts": {"ms_network_results": [{"cidr": "10.0.0.0/24", "create_status": "n/a", "created": false, "final_status": "present ", "get_status": 200, "present_pre": true, "query_object": "network"}]}, "changed": false}
+
+TASK [infoblox : Debug ensure network 10.0.0.0/24 (verbosity >=2)] *************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network.yml:157
+ok: [localhost] => {
+    "msg": {
+        "cidr": "10.0.0.0/24",
+        "create_status": "n/a",
+        "get_json": [
+            {
+                "_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default",
+                "network": "10.0.0.0/24"
+            }
+        ],
+        "get_status": "200",
+        "net_present_pre": true,
+        "query_object": "network"
+    }
+}
+
+TASK [infoblox : Ensure required IPv6 network {{ item }}] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:428
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml for localhost => (item=net6-ensure-2002:db8:abcf:12::/64)
+
+TASK [infoblox : Query IPv6 network 2002:db8:abcf:12::/64 (object 'ipv6network')] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml:3
+ok: [localhost] => {"cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[\n    {\n        \"_ref\": \"ipv6network/ZG5zLm5ldHdvcmskMjAwMjpkYjg6YWJjZjoxMjo6LzY0LzA:2002%3Adb8%3Aabcf%3A12%3A%3A/64/default\", \n        \"network\": \"2002:db8:abcf:12::/64\"\n    }\n]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,gHcsTMzFrUzT15JdWnmpT+OMzKg8Nr/MUDk\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,gHcsTMzFrUzT15JdWnmpT+OMzKg8Nr/MUDk\"", "date": "Mon, 29 Sep 2025 00:02:51 GMT", "elapsed": 0, "failed_when_result": false, "json": [{"_ref": "ipv6network/ZG5zLm5ldHdvcmskMjAwMjpkYjg6YWJjZjoxMjo6LzY0LzA:2002%3Adb8%3Aabcf%3A12%3A%3A/64/default", "network": "2002:db8:abcf:12::/64"}], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104171,timeout=600,mtime=1759104171,su=1,auth=LOCAL,user=admin,gHcsTMzFrUzT15JdWnmpT+OMzKg8Nr/MUDk\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/ipv6network?network=2002%3Adb8%3Aabcf%3A12%3A%3A/64&_return_fields=network", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Determine if IPv6 network 2002:db8:abcf:12::/64 present] ******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml:15
+ok: [localhost] => {"ansible_facts": {"_net6_present": true}, "changed": false}
+
+TASK [infoblox : Create IPv6 network 2002:db8:abcf:12::/64 if missing and allowed] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml:27
+skipping: [localhost] => {"changed": false, "false_condition": "(not _net6_present) and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Record IPv6 network ensure outcome 2002:db8:abcf:12::/64] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml:46
+ok: [localhost] => {"ansible_facts": {"ms_network_results_v6": [{"cidr": "2002:db8:abcf:12::/64", "create_status": "n/a", "created": false, "final_status": "present", "get_status": 200, "present_pre": true}]}, "changed": false}
+
+TASK [infoblox : Debug ensure IPv6 network 2002:db8:abcf:12::/64 (verbosity >=2)] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/ensure_network_ipv6.yml:58
+ok: [localhost] => {
+    "msg": {
+        "cidr": "2002:db8:abcf:12::/64",
+        "create_status": "n/a",
+        "get_json": [
+            {
+                "_ref": "ipv6network/ZG5zLm5ldHdvcmskMjAwMjpkYjg6YWJjZjoxMjo6LzY0LzA:2002%3Adb8%3Aabcf%3A12%3A%3A/64/default",
+                "network": "2002:db8:abcf:12::/64"
+            }
+        ],
+        "get_status": "200",
+        "net_present_pre": true
+    }
+}
+
+TASK [infoblox : Iterate subnet desired state entries] *************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:441
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml for localhost => (item=lnet-subnet-10.0.0.0/24-allocated)
+
+TASK [infoblox : Parse CIDR parts for 10.0.0.0/24] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:6
+ok: [localhost] => {"ansible_facts": {"_mns_cidr": "10.0.0.0/24"}, "changed": false}
+
+TASK [infoblox : Query existing network 10.0.0.0/24] ***************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:10
+ok: [localhost] => {"cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[\n    {\n        \"_ref\": \"network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default\", \n        \"network\": \"10.0.0.0/24\"\n    }\n]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,sVO5VaFCi0ffwLdxfdsrbj3t2+Qwt6GuEuU\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,sVO5VaFCi0ffwLdxfdsrbj3t2+Qwt6GuEuU\"", "date": "Mon, 29 Sep 2025 00:02:52 GMT", "elapsed": 1, "failed_when_result": false, "json": [{"_ref": "network/ZG5zLm5ldHdvcmskMTAuMC4wLjAvMjQvMA:10.0.0.0/24/default", "network": "10.0.0.0/24"}], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,sVO5VaFCi0ffwLdxfdsrbj3t2+Qwt6GuEuU\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/network?network=10.0.0.0/24&_return_fields=network,comment", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Determine presence for 10.0.0.0/24] ***************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:22
+ok: [localhost] => {"ansible_facts": {"_mns_present": true}, "changed": false}
+
+TASK [infoblox : Create network 10.0.0.0/24 if desired and allowed] ************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:27
+skipping: [localhost] => {"changed": false, "false_condition": "(item.status | lower) == 'allocated' and (not _mns_present) and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Fail if creation disallowed for missing required network 10.0.0.0/24] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:46
+skipping: [localhost] => {"changed": false, "false_condition": "(item.status | lower) == 'allocated' and (not _mns_present) and (not autoCreateAndDeleteNetworks | bool)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Delete network 10.0.0.0/24 if status indicates removal] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:51
+skipping: [localhost] => {"changed": false, "false_condition": "_mns_present and ((item.status | lower) in ['released','deleting','deleted']) and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Record manage network state result 10.0.0.0/24] ***************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:65
+ok: [localhost] => {"ansible_facts": {"ms_network_manage_results": [{"cidr": "10.0.0.0/24", "created": false, "deleted": false, "desired_status": "allocated", "final_state": "present", "present_before": true}]}, "changed": false}
+
+TASK [infoblox : Debug manage network state result 10.0.0.0/24 (verbosity>=2)] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state.yml:87
+ok: [localhost] => {
+    "msg": {
+        "autoCreateAndDeleteNetworks": true,
+        "cidr": "10.0.0.0/24",
+        "create_status": "n/a",
+        "delete_status": "n/a",
+        "desired_status": "allocated",
+        "final_state": "present",
+        "present_before": true
+    }
+}
+
+TASK [infoblox : Iterate IPv6 subnet desired state entries] ********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:450
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml for localhost => (item=lnet6-subnet-2002:db8:abcf:12::/64-allocated)
+
+TASK [infoblox : Query IPv6 network 2002:db8:abcf:12::/64] *********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:3
+ok: [localhost] => {"cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[\n    {\n        \"_ref\": \"ipv6network/ZG5zLm5ldHdvcmskMjAwMjpkYjg6YWJjZjoxMjo6LzY0LzA:2002%3Adb8%3Aabcf%3A12%3A%3A/64/default\", \n        \"network\": \"2002:db8:abcf:12::/64\"\n    }\n]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,DWZfFfnWD/KZ+lA1mJ5xDh6pxZX2AMR48OA\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,DWZfFfnWD/KZ+lA1mJ5xDh6pxZX2AMR48OA\"", "date": "Mon, 29 Sep 2025 00:02:53 GMT", "elapsed": 0, "failed_when_result": false, "json": [{"_ref": "ipv6network/ZG5zLm5ldHdvcmskMjAwMjpkYjg6YWJjZjoxMjo6LzY0LzA:2002%3Adb8%3Aabcf%3A12%3A%3A/64/default", "network": "2002:db8:abcf:12::/64"}], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104173,timeout=600,mtime=1759104173,su=1,auth=LOCAL,user=admin,DWZfFfnWD/KZ+lA1mJ5xDh6pxZX2AMR48OA\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/ipv6network?network=2002%3Adb8%3Aabcf%3A12%3A%3A/64&_return_fields=network", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Determine if IPv6 subnet 2002:db8:abcf:12::/64 present] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:15
+ok: [localhost] => {"ansible_facts": {"_mns6_present": true}, "changed": false}
+
+TASK [infoblox : Create IPv6 subnet 2002:db8:abcf:12::/64 when status allocated and allowed] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:23
+skipping: [localhost] => {"changed": false, "false_condition": "(item.status | lower) == 'allocated' and (not _mns6_present) and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Delete IPv6 subnet 2002:db8:abcf:12::/64 when status indicates removal and allowed] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:42
+skipping: [localhost] => {"changed": false, "false_condition": "(item.status | lower) in ['released','deleting','deleted'] and _mns6_present and autoCreateAndDeleteNetworks | bool", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Record IPv6 subnet manage outcome 2002:db8:abcf:12::/64] ******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:55
+ok: [localhost] => {"ansible_facts": {"ms_network_manage_results_v6": [{"cidr": "2002:db8:abcf:12::/64", "create_status": "n/a", "delete_status": "n/a", "final_state": "present", "present_pre": true, "status_input": "allocated"}]}, "changed": false}
+
+TASK [infoblox : Debug IPv6 subnet manage summary (verbosity >=1)] *************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/manage_network_state_ipv6.yml:71
+ok: [localhost] => {
+    "msg": {
+        "cidr": "2002:db8:abcf:12::/64",
+        "create_status": "n/a",
+        "delete_status": "n/a",
+        "final_state": "present",
+        "present_pre": true,
+        "status_input": "allocated"
+    }
+}
+
+TASK [infoblox : Derive missing networks list] *********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:456
+ok: [localhost] => {"ansible_facts": {"ms_missing_networks": []}, "changed": false}
+
+TASK [infoblox : Derive unreachable networks list] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:461
+ok: [localhost] => {"ansible_facts": {"ms_unreachable_networks": []}, "changed": false}
+
+TASK [infoblox : Derive missing IPv6 networks list] ****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:466
+ok: [localhost] => {"ansible_facts": {"ms_missing_networks_v6": []}, "changed": false}
+
+TASK [infoblox : Fail if networks still missing and autoCreateAndDeleteNetworks disabled or creation not allowed] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:471
+skipping: [localhost] => {"changed": false, "false_condition": "is_server_instance_record and (ms_missing_networks | length) > 0", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Fail if IPv6 networks still missing and autoCreateAndDeleteNetworks disabled or creation not allowed] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:476
+skipping: [localhost] => {"changed": false, "false_condition": "is_server_instance_record and (ms_missing_networks_v6 is defined) and (ms_missing_networks_v6 | length) > 0", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Fail if networks unreachable (connectivity issues)] ***********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:481
+skipping: [localhost] => {"changed": false, "false_condition": "is_server_instance_record and (ms_unreachable_networks | default([]) | length) > 0", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug network ensure summary] *********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:488
+ok: [localhost] => {
+    "msg": "Network ensure results: [{'cidr': '10.0.0.0/24', 'query_object': 'network', 'get_status': 200, 'present_pre': True, 'create_status': 'n/a', 'created': False, 'final_status': 'present '}]"
+}
+
+TASK [infoblox : Set working operation] ****************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:494
+ok: [localhost] => {"ansible_facts": {"working_operation": {"nameservers": [], "records": [{"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}], "soa_email": "admin.dc-eveng-qa02.example.invalid", "zone": "dc-eveng-qa02.example.invalid"}}, "changed": false}
+
+TASK [infoblox : Check if there are records to process] ************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:499
+ok: [localhost] => {"ansible_facts": {"has_records_to_delete": true, "has_records_to_set": false}, "changed": false}
+
+TASK [infoblox : Sentinel debug - force delete requested but no records currently marked deleting] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:518
+skipping: [localhost] => {"false_condition": "ms_force_delete | bool and (not has_records_to_delete) and ansible_verbosity | int >= 0"}
+
+TASK [infoblox : Debug deletion decision factors] ******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:526
+ok: [localhost] => {
+    "msg": {
+        "force_delete_names": [],
+        "has_records_to_delete": true,
+        "has_records_to_set": false,
+        "ms_force_delete": false,
+        "op_delete_flags": {
+            "cluster": false,
+            "instance": false,
+            "instance_group": false,
+            "server": false,
+            "switch": false
+        },
+        "record_names": [
+            "host-4436",
+            "host-4436",
+            "gw-ln1214"
+        ],
+        "records_statuses": [
+            "deleting",
+            "deleting",
+            "deleting"
+        ]
+    }
+}
+
+TASK [infoblox : Force convert to deleting if delete operation indicated but no deleting flags set] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:549
+skipping: [localhost] => {"changed": false, "false_condition": "not has_records_to_delete and ( _op_delete or ms_force_delete | bool or delete_active | bool or (force_delete_names | length > 0 and (_force_match_names | length) > 0) )", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug coercion trigger] ***************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:566
+skipping: [localhost] => {"false_condition": "ansible_verbosity | int >= 1 and (not has_records_to_delete) and ( (working_operation.records | selectattr('status','equalto','deleting') | list | length) > 0)"}
+
+TASK [infoblox : Re-evaluate deletion flag after coercion] *********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:579
+skipping: [localhost] => {"changed": false, "false_condition": "not has_records_to_delete and (working_operation.records | selectattr('status','equalto','deleting') | list | length) > 0", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug record processing flags] ********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:584
+ok: [localhost] => {
+    "msg": {
+        "deleting_records": [
+            "host-4436",
+            "host-4436",
+            "gw-ln1214"
+        ],
+        "has_records_to_delete": true,
+        "has_records_to_set": false
+    }
+}
+
+TASK [infoblox : Skip if there are no records to process] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:592
+META: end_play conditional evaluated to False, continuing play
+skipping: [localhost] => {"msg": "end_play", "skip_reason": "end_play conditional evaluated to False, continuing play"}
+
+TASK [infoblox : Parse zone name] **********************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:599
+ok: [localhost] => {"ansible_facts": {"zone_name": "dc-eveng-qa02.example.invalid."}, "changed": false}
+
+TASK [infoblox : Display operation details] ************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:603
+ok: [localhost] => {
+    "msg": [
+        "Format: Legacy",
+        "Zone: dc-eveng-qa02.example.invalid.",
+        "Records: [{'name': 'host-4436', 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': ['10.0.0.5']}, {'name': 'host-4436', 'status': 'deleting', 'type': 'AAAA', 'records': ['2002:db8:abcf:12::4']}, {'name': 'gw-ln1214', 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': ['10.0.0.1']}]"
+    ]
+}
+
+TASK [infoblox : Initialize zone existence flags] ******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:612
+ok: [localhost] => {"ansible_facts": {"zone_created": false, "zone_exists": false, "zone_id": "dc-eveng-qa02.example.invalid."}, "changed": false}
+
+TASK [infoblox : Validate IPv4 auto allocation config] *************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:618
+skipping: [localhost] => {"changed": false, "false_condition": "(allocation_ipv4_network | default('') | length) == 0", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Create zone if needed (Infoblox)] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:629
+skipping: [localhost] => {"changed": false, "false_condition": "has_records_to_set", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Add/Update records in zone] ***********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:633
+skipping: [localhost] => {"changed": false, "false_condition": "has_records_to_set", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Handle auto-generated PTR records] ****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:638
+skipping: [localhost] => {"changed": false, "skipped_reason": "No items in the list"}
+
+TASK [infoblox : Handle PTR records] *******************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:645
+skipping: [localhost] => {"changed": false, "skipped_reason": "No items in the list"}
+
+TASK [infoblox : Remove records from zone] *************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:657
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml for localhost
+
+TASK [infoblox : Prepare deleting non-PTR records] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:3
+ok: [localhost] => {"ansible_facts": {"_deleting_records": [{"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}]}, "changed": false}
+
+TASK [infoblox : Delete A/AAAA records] ****************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:8
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml for localhost => (item=A host-4436)
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml for localhost => (item=AAAA host-4436)
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml for localhost => (item=A gw-ln1214)
+
+TASK [infoblox : Initialize deletion candidate IP list (raw from input)] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:4
+ok: [localhost] => {"ansible_facts": {"_delete_candidate_ips": ["10.0.0.5"]}, "changed": false}
+
+TASK [infoblox : Query existing A record IPs for auto-allocated deletion fallback] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:9
+skipping: [localhost] => {"changed": false, "false_condition": "(_delete_candidate_ips | length == 0) or ('AUTO' in _delete_candidate_ips)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate auto-allocated A record IPs for deletion] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:24
+skipping: [localhost] => {"changed": false, "false_condition": "_existing_a_for_delete.json is defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (A)] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:35
+ok: [localhost] => {
+    "msg": {
+        "delete_candidate_ips": [
+            "10.0.0.5"
+        ],
+        "original_item_records": [
+            "10.0.0.5"
+        ],
+        "record_fqdn": "  host-4436.dc-eveng-qa02.example.invalid "
+    }
+}
+
+TASK [infoblox : Delete A record values for   host-4436.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:43
+ok: [localhost] => (item=10.0.0.5) => {"ansible_loop_var": "record_ip", "changed": false, "record_ip": "10.0.0.5"}
+
+TASK [infoblox : Delete AAAA record values for   host-4436.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:57
+skipping: [localhost] => (item=10.0.0.5)  => {"ansible_loop_var": "record_ip", "changed": false, "false_condition": "item.type | upper == 'AAAA'", "record_ip": "10.0.0.5", "skip_reason": "Conditional result was False"}
+skipping: [localhost] => {"changed": false, "msg": "All items skipped"}
+
+TASK [infoblox : Initialize deletion candidate IPv6 list (raw from input)] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:72
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Query existing AAAA record IPs for deletion fallback] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:77
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate existing AAAA record IPs for deletion] ************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:92
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (AAAA)] **************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:103
+skipping: [localhost] => {"false_condition": "item.type | upper == 'AAAA' and ansible_verbosity | int >= 1"}
+
+TASK [infoblox : Initialize deletion candidate IP list (raw from input)] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:4
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'A'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Query existing A record IPs for auto-allocated deletion fallback] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:9
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'A'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate auto-allocated A record IPs for deletion] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:24
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'A'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (A)] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:35
+skipping: [localhost] => {"false_condition": "item.type | upper == 'A' and ansible_verbosity | int >= 1"}
+
+TASK [infoblox : Delete A record values for   host-4436.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:43
+skipping: [localhost] => (item=10.0.0.5)  => {"ansible_loop_var": "record_ip", "changed": false, "false_condition": "item.type | upper == 'A'", "record_ip": "10.0.0.5", "skip_reason": "Conditional result was False"}
+skipping: [localhost] => {"changed": false, "msg": "All items skipped"}
+
+TASK [infoblox : Delete AAAA record values for   host-4436.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:57
+ok: [localhost] => (item=2002:db8:abcf:12::4) => {"ansible_loop_var": "record_ip", "changed": false, "record_ip": "2002:db8:abcf:12::4"}
+
+TASK [infoblox : Initialize deletion candidate IPv6 list (raw from input)] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:72
+ok: [localhost] => {"ansible_facts": {"_delete_candidate_ips_v6": ["2002:db8:abcf:12::4"]}, "changed": false}
+
+TASK [infoblox : Query existing AAAA record IPs for deletion fallback] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:77
+skipping: [localhost] => {"changed": false, "false_condition": "(_delete_candidate_ips_v6 | length == 0) or ('AUTO' in _delete_candidate_ips_v6)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate existing AAAA record IPs for deletion] ************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:92
+skipping: [localhost] => {"changed": false, "false_condition": "_existing_aaaa_for_delete.json is defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (AAAA)] **************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:103
+ok: [localhost] => {
+    "msg": {
+        "delete_candidate_ips_v6": [
+            "2002:db8:abcf:12::4"
+        ],
+        "original_item_records": [
+            "2002:db8:abcf:12::4"
+        ],
+        "record_fqdn": "  host-4436.dc-eveng-qa02.example.invalid "
+    }
+}
+
+TASK [infoblox : Initialize deletion candidate IP list (raw from input)] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:4
+ok: [localhost] => {"ansible_facts": {"_delete_candidate_ips": ["10.0.0.1"]}, "changed": false}
+
+TASK [infoblox : Query existing A record IPs for auto-allocated deletion fallback] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:9
+skipping: [localhost] => {"changed": false, "false_condition": "(_delete_candidate_ips | length == 0) or ('AUTO' in _delete_candidate_ips)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate auto-allocated A record IPs for deletion] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:24
+skipping: [localhost] => {"changed": false, "false_condition": "_existing_a_for_delete.json is defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (A)] *****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:35
+ok: [localhost] => {
+    "msg": {
+        "delete_candidate_ips": [
+            "10.0.0.1"
+        ],
+        "original_item_records": [
+            "10.0.0.1"
+        ],
+        "record_fqdn": "  gw-ln1214.dc-eveng-qa02.example.invalid "
+    }
+}
+
+TASK [infoblox : Delete A record values for   gw-ln1214.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:43
+ok: [localhost] => (item=10.0.0.1) => {"ansible_loop_var": "record_ip", "changed": false, "record_ip": "10.0.0.1"}
+
+TASK [infoblox : Delete AAAA record values for   gw-ln1214.dc-eveng-qa02.example.invalid] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:57
+skipping: [localhost] => (item=2002:db8:abcf:12::4)  => {"ansible_loop_var": "record_ip", "changed": false, "false_condition": "item.type | upper == 'AAAA'", "record_ip": "2002:db8:abcf:12::4", "skip_reason": "Conditional result was False"}
+skipping: [localhost] => {"changed": false, "msg": "All items skipped"}
+
+TASK [infoblox : Initialize deletion candidate IPv6 list (raw from input)] *****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:72
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Query existing AAAA record IPs for deletion fallback] *********
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:77
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate existing AAAA record IPs for deletion] ************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:92
+skipping: [localhost] => {"changed": false, "false_condition": "item.type | upper == 'AAAA'", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug deletion candidate IPs (AAAA)] **************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/_delete_ip_record_task.yml:103
+skipping: [localhost] => {"false_condition": "item.type | upper == 'AAAA' and ansible_verbosity | int >= 1"}
+
+TASK [infoblox : Requery remaining A records (post-delete)] ********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:27
+ok: [localhost] => (item=A host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+ok: [localhost] => (item=A gw-ln1214) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=gw-ln1214.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Requery remaining AAAA records (post-delete)] *****************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:43
+ok: [localhost] => (item=AAAA host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:aaaa?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv6addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Summarize remaining IP record presence] ***********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:59
+ok: [localhost] => {"ansible_facts": {"ms_remaining_a_records": [[], []], "ms_remaining_aaaa_records": [[]]}, "changed": false}
+
+TASK [infoblox : Debug remaining IP records after module deletion] *************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:67
+ok: [localhost] => {
+    "msg": {
+        "remaining_a": [
+            [],
+            []
+        ],
+        "remaining_aaaa": [
+            []
+        ]
+    }
+}
+
+TASK [infoblox : Fetch A record _refs for fallback delete] *********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:75
+ok: [localhost] => (item=A-ref host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "{ \"Error\": \"AdmConProtoError: Unknown argument/field: '_ref'\", \n  \"code\": \"Client.Ibap.Proto\", \n  \"text\": \"Unknown argument/field: '_ref'\"\n}", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "date": "Mon, 29 Sep 2025 00:02:56 GMT", "elapsed": 0, "failed_when_result": false, "item": {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed": false, "failed_when_result": false, "invocation": {"module_args": {"attributes": null, "body": null, "body_format": "raw", "ca_path": null, "ciphers": null, "client_cert": null, "client_key": null, "creates": null, "decompress": true, "dest": null, "follow_redirects": "safe", "force": false, "force_basic_auth": true, "group": null, "headers": {}, "http_agent": "ansible-httpget", "method": "GET", "mode": null, "owner": null, "password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "remote_src": false, "removes": null, "return_content": true, "selevel": null, "serole": null, "setype": null, "seuser": null, "src": null, "status_code": [200], "timeout": 30, "unix_socket": null, "unredirected_headers": [], "unsafe_writes": false, "url": "https://192.168.1.55/wapi/v2.12/record:a?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "url_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "url_username": "admin", "use_gssapi": false, "use_netrc": true, "use_proxy": true, "user": "admin", "validate_certs": false}}, "item": {"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,M06ZugddISzT1dhLjJDZq3BDSZJAFV+weGU\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}, "json": {"Error": "AdmConProtoError: Unknown argument/field: '_ref'", "code": "Client.Ibap.Proto", "text": "Unknown argument/field: '_ref'"}, "msg": "Status code was 400 and not [200]: HTTP Error 400: Bad Request", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,q/gq1hjmC2T3zUzqCL8L2+dNCdWZCccJGtA\"; httponly; Path=/; secure; SameSite=Lax", "status": 400, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr,_ref", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+ok: [localhost] => (item=A-ref gw-ln1214) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "{ \"Error\": \"AdmConProtoError: Unknown argument/field: '_ref'\", \n  \"code\": \"Client.Ibap.Proto\", \n  \"text\": \"Unknown argument/field: '_ref'\"\n}", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "date": "Mon, 29 Sep 2025 00:02:56 GMT", "elapsed": 0, "failed_when_result": false, "item": {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed": false, "failed_when_result": false, "invocation": {"module_args": {"attributes": null, "body": null, "body_format": "raw", "ca_path": null, "ciphers": null, "client_cert": null, "client_key": null, "creates": null, "decompress": true, "dest": null, "follow_redirects": "safe", "force": false, "force_basic_auth": true, "group": null, "headers": {}, "http_agent": "ansible-httpget", "method": "GET", "mode": null, "owner": null, "password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "remote_src": false, "removes": null, "return_content": true, "selevel": null, "serole": null, "setype": null, "seuser": null, "src": null, "status_code": [200], "timeout": 30, "unix_socket": null, "unredirected_headers": [], "unsafe_writes": false, "url": "https://192.168.1.55/wapi/v2.12/record:a?name=gw-ln1214.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "url_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "url_username": "admin", "use_gssapi": false, "use_netrc": true, "use_proxy": true, "user": "admin", "validate_certs": false}}, "item": {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,AZPPSXpI4OM0E7+HpLyGXJIWJdIcnK4TcrA\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=gw-ln1214.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}, "json": {"Error": "AdmConProtoError: Unknown argument/field: '_ref'", "code": "Client.Ibap.Proto", "text": "Unknown argument/field: '_ref'"}, "msg": "Status code was 400 and not [200]: HTTP Error 400: Bad Request", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,ycFTgIFbmrS6WFLBWh5kfzdc+izrtNBcMGA\"; httponly; Path=/; secure; SameSite=Lax", "status": 400, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=gw-ln1214.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr,_ref", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Flatten A _ref records for fallback deletion] *****************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:95
+ok: [localhost] => {"ansible_facts": {"_fallback_a_records_flat": []}, "changed": false}
+
+TASK [infoblox : Delete remaining A records via direct WAPI (flattened)] *******
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:107
+skipping: [localhost] => {"changed": false, "skipped_reason": "No items in the list"}
+
+TASK [infoblox : Fetch AAAA record _refs for fallback delete] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:123
+ok: [localhost] => (item=AAAA-ref host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "{ \"Error\": \"AdmConProtoError: Unknown argument/field: '_ref'\", \n  \"code\": \"Client.Ibap.Proto\", \n  \"text\": \"Unknown argument/field: '_ref'\"\n}", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "date": "Mon, 29 Sep 2025 00:02:56 GMT", "elapsed": 0, "failed_when_result": false, "item": {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\"", "date": "Mon, 29 Sep 2025 00:02:55 GMT", "elapsed": 0, "failed": false, "failed_when_result": false, "invocation": {"module_args": {"attributes": null, "body": null, "body_format": "raw", "ca_path": null, "ciphers": null, "client_cert": null, "client_key": null, "creates": null, "decompress": true, "dest": null, "follow_redirects": "safe", "force": false, "force_basic_auth": true, "group": null, "headers": {}, "http_agent": "ansible-httpget", "method": "GET", "mode": null, "owner": null, "password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "remote_src": false, "removes": null, "return_content": true, "selevel": null, "serole": null, "setype": null, "seuser": null, "src": null, "status_code": [200], "timeout": 30, "unix_socket": null, "unredirected_headers": [], "unsafe_writes": false, "url": "https://192.168.1.55/wapi/v2.12/record:aaaa?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv6addr", "url_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER", "url_username": "admin", "use_gssapi": false, "use_netrc": true, "use_proxy": true, "user": "admin", "validate_certs": false}}, "item": {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104175,timeout=600,mtime=1759104175,su=1,auth=LOCAL,user=admin,TPCv2mYsq1bUENrIw5Cxb6y28tWH+eai6kY\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:aaaa?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv6addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}, "json": {"Error": "AdmConProtoError: Unknown argument/field: '_ref'", "code": "Client.Ibap.Proto", "text": "Unknown argument/field: '_ref'"}, "msg": "Status code was 400 and not [200]: HTTP Error 400: Bad Request", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,/iCGJhSN8B9/0ZMfp5gBmTBZq5LDz0i0vuU\"; httponly; Path=/; secure; SameSite=Lax", "status": 400, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:aaaa?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv6addr,_ref", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Flatten AAAA _ref records for fallback deletion] **************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:143
+ok: [localhost] => {"ansible_facts": {"_fallback_aaaa_records_flat": []}, "changed": false}
+
+TASK [infoblox : Delete remaining AAAA records via direct WAPI (flattened)] ****
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:155
+skipping: [localhost] => {"changed": false, "skipped_reason": "No items in the list"}
+
+TASK [infoblox : Final requery A after fallback] *******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:170
+ok: [localhost] => (item=A-final host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,EyzwEIfPQgan+PnQkR02zlQE1rhp1yPW/KU\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,EyzwEIfPQgan+PnQkR02zlQE1rhp1yPW/KU\"", "date": "Mon, 29 Sep 2025 00:02:56 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104176,timeout=600,mtime=1759104176,su=1,auth=LOCAL,user=admin,EyzwEIfPQgan+PnQkR02zlQE1rhp1yPW/KU\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+ok: [localhost] => (item=A-final gw-ln1214) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,8JLzsWWiUcobsppf2EscJdv1h6UNEKhqMGM\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,8JLzsWWiUcobsppf2EscJdv1h6UNEKhqMGM\"", "date": "Mon, 29 Sep 2025 00:02:57 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,8JLzsWWiUcobsppf2EscJdv1h6UNEKhqMGM\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:a?name=gw-ln1214.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv4addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Final requery AAAA after fallback] ****************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:186
+ok: [localhost] => (item=AAAA-final host-4436) => {"ansible_loop_var": "item", "cache_control": "no-cache, no-store", "changed": false, "connection": "close", "content": "[]", "content_security_policy": "default-src 'self' blob: *.splunk.com img-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: style-src 'self' 'unsafe-inline' 'unsafe-eval'", "content_type": "application/json", "cookies": {"ibapauth": "\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,Nk5CbGv61pxtp/ePzjY4lg4r79aUJN3YNy8\""}, "cookies_string": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,Nk5CbGv61pxtp/ePzjY4lg4r79aUJN3YNy8\"", "date": "Mon, 29 Sep 2025 00:02:57 GMT", "elapsed": 0, "failed_when_result": false, "item": {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, "json": [], "msg": "OK (unknown bytes)", "pragma": "no-cache", "redirected": false, "referrer_policy": "no-referrer-when-downgrade", "server": "Apache", "set_cookie": "ibapauth=\"ip=192.168.1.19,client=API,group=admin-group,ctime=1759104177,timeout=600,mtime=1759104177,su=1,auth=LOCAL,user=admin,Nk5CbGv61pxtp/ePzjY4lg4r79aUJN3YNy8\"; httponly; Path=/; secure; SameSite=Lax", "status": 200, "strict_transport_security": "max-age=31536000; includeSubDomains", "transfer_encoding": "chunked", "url": "https://192.168.1.55/wapi/v2.12/record:aaaa?name=host-4436.dc-eveng-qa02.example.invalid&view=default&_return_fields=name,ipv6addr", "x_content_type_options": "nosniff", "x_frame_options": "SAMEORIGIN", "x_xss_protection": "1; mode=block"}
+
+TASK [infoblox : Debug final presence after fallback] **************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:202
+ok: [localhost] => {
+    "msg": {
+        "final_a_records": [
+            [],
+            []
+        ],
+        "final_aaaa_records": [
+            []
+        ]
+    }
+}
+
+TASK [infoblox : Delete CNAME records] *****************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:209
+skipping: [localhost] => (item=CNAME host-4436)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'CNAME'", "item": {"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => (item=CNAME host-4436)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'CNAME'", "item": {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => (item=CNAME gw-ln1214)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'CNAME'", "item": {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => {"changed": false, "msg": "All items skipped"}
+
+TASK [infoblox : Delete TXT records] *******************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_records.yml:230
+skipping: [localhost] => (item=TXT host-4436)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'TXT'", "item": {"name": "host-4436", "ptr": "enabled", "records": ["10.0.0.5"], "status": "deleting", "type": "A"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => (item=TXT host-4436)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'TXT'", "item": {"name": "host-4436", "records": ["2002:db8:abcf:12::4"], "status": "deleting", "type": "AAAA"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => (item=TXT gw-ln1214)  => {"ansible_loop_var": "item", "changed": false, "false_condition": "item.type | upper == 'TXT'", "item": {"name": "gw-ln1214", "ptr": "enabled", "records": ["10.0.0.1"], "status": "deleting", "type": "A"}, "skip_reason": "Conditional result was False"}
+skipping: [localhost] => {"changed": false, "msg": "All items skipped"}
+
+TASK [infoblox : Cleanup auto-generated PTR records] ***************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:664
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml for localhost => (item={'name': 'host-4436', 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': ['10.0.0.5']})
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml for localhost => (item={'name': 'gw-ln1214', 'status': 'deleting', 'type': 'A', 'ptr': 'enabled', 'records': ['10.0.0.1']})
+
+TASK [infoblox : Build FQDN for A record] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:2
+ok: [localhost] => {"ansible_facts": {"_auto_ptr_fqdn": "host-4436.dc-eveng-qa02.example.invalid"}, "changed": false}
+
+TASK [infoblox : Initialize PTR deletion candidate IP list] ********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:7
+ok: [localhost] => {"ansible_facts": {"_auto_ptr_candidate_ips": ["10.0.0.5"]}, "changed": false}
+
+TASK [infoblox : Discover A record IPs for PTR cleanup when missing or AUTO] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:11
+skipping: [localhost] => {"changed": false, "false_condition": "(_auto_ptr_candidate_ips | length == 0) or ('AUTO' in _auto_ptr_candidate_ips)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate discovered IPs for PTR deletion] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:25
+skipping: [localhost] => {"changed": false, "false_condition": "_auto_ptr_existing_a.json is defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug PTR deletion candidates] ********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:35
+ok: [localhost] => {
+    "msg": {
+        "candidate_ips": [
+            "10.0.0.5"
+        ],
+        "fqdn": "host-4436.dc-eveng-qa02.example.invalid",
+        "original_records": [
+            "10.0.0.5"
+        ]
+    }
+}
+
+TASK [infoblox : Delete autogenerated PTR records for each discovered IP of host-4436] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:43
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml for localhost => (item=Delete PTR 10.0.0.5)
+
+TASK [infoblox : Derive default ptrdname if not provided] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml:2
+ok: [localhost] => {"ansible_facts": {"_ptrdname_delete": "host-4436.dc-eveng-qa02.example.invalid"}, "changed": false}
+
+TASK [infoblox : Delete PTR record for 10.0.0.5] *******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml:7
+ok: [localhost] => {"changed": false}
+
+TASK [infoblox : Build FQDN for A record] **************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:2
+ok: [localhost] => {"ansible_facts": {"_auto_ptr_fqdn": "gw-ln1214.dc-eveng-qa02.example.invalid"}, "changed": false}
+
+TASK [infoblox : Initialize PTR deletion candidate IP list] ********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:7
+ok: [localhost] => {"ansible_facts": {"_auto_ptr_candidate_ips": ["10.0.0.1"]}, "changed": false}
+
+TASK [infoblox : Discover A record IPs for PTR cleanup when missing or AUTO] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:11
+skipping: [localhost] => {"changed": false, "false_condition": "(_auto_ptr_candidate_ips | length == 0) or ('AUTO' in _auto_ptr_candidate_ips)", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Consolidate discovered IPs for PTR deletion] ******************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:25
+skipping: [localhost] => {"changed": false, "false_condition": "_auto_ptr_existing_a.json is defined", "skip_reason": "Conditional result was False"}
+
+TASK [infoblox : Debug PTR deletion candidates] ********************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:35
+ok: [localhost] => {
+    "msg": {
+        "candidate_ips": [
+            "10.0.0.1"
+        ],
+        "fqdn": "gw-ln1214.dc-eveng-qa02.example.invalid",
+        "original_records": [
+            "10.0.0.1"
+        ]
+    }
+}
+
+TASK [infoblox : Delete autogenerated PTR records for each discovered IP of gw-ln1214] ***
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/destroy_autogenerated_ptr.yml:43
+included: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml for localhost => (item=Delete PTR 10.0.0.1)
+
+TASK [infoblox : Derive default ptrdname if not provided] **********************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml:2
+ok: [localhost] => {"ansible_facts": {"_ptrdname_delete": "gw-ln1214.dc-eveng-qa02.example.invalid"}, "changed": false}
+
+TASK [infoblox : Delete PTR record for 10.0.0.1] *******************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/delete_ptr_for_ip.yml:7
+ok: [localhost] => {"changed": false}
+
+TASK [infoblox : Cleanup PTR records] ******************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:672
+skipping: [localhost] => {"changed": false, "skipped_reason": "No items in the list"}
+
+TASK [infoblox : Delete zone completely] ***************************************
+task path: /Users/alexandrubordei/code/metalsoft-extensions/infoblox-extension/ansible/roles/infoblox/tasks/main.yml:680
+skipping: [localhost] => {"changed": false, "false_condition": "working_operation.operation is defined", "skip_reason": "Conditional result was False"}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=104  changed=0    unreachable=0    failed=0    skipped=67   rescued=0    ignored=0   
+

@@ -1,9 +1,11 @@
 ---
 # Infoblox WAPI connection details
 # These should be overridden via extra vars or variables.json
-infoblox_host: "192.168.1.55"
+infoblox_host: "10.255.146.53"
+#infoblox_host: "192.168.1.55"
 infoblox_username: "admin"
-infoblox_password: "infoblox"
+#infoblox_password: "infoblox"
+infoblox_password: "infoblox123"
 infoblox_validate_certs: false
 infoblox_wapi_version: "2.12"  # adjust if your grid uses a different version
 
@@ -26,10 +28,10 @@ create_reverse_zones: true   # create reverse zone automatically when creating P
 ptr_require_existing_zone: false  # if true, will not attempt to create reverse zone
 
 # IP Allocation (auto-assign from Infoblox IPAM when no IP provided or 'AUTO' token used)
+auto_create_ipv4_network: true     # if true and network missing, attempt to create it (CIDR must not already exist)
 allocate_ipv4_method: "lookup"       # default 'wapi' avoids macOS fork crash; 'lookup' uses nios_next_ip lookup + A record. 'host_record' disabled for WAPI < 2.13
-auto_create_ipv4_network: false     # if true and network missing, attempt to create it (CIDR must not already exist)
-allocate_ipv4: true
-allocation_ipv4_network: "10.0.0.0/24"
+allocate_ipv4: false
+allocation_ipv4_network: ""
 
 # New: network auto-create/delete control for explicit IP ingestion (serverInstanceRecordSet)
 # When true: create missing required networks and delete networks whose status indicates removal.
@@ -49,3 +51,6 @@ infoblox_role_version: "0.1.0-dev-20250927a"
 
 # Enable last-resort direct WAPI deletion if module-based deletion leaves records behind.
 ms_direct_delete_fallback: true
+
+# Default domain suffix for synthesized server instance records (used when zone not provided)
+serverRecordsDomain: ".example.invalid"

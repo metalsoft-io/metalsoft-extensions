@@ -71,14 +71,17 @@
           'present_before': _mns_present,
           'created': (_mns_create.status | default(0)) in [200,201],
           'deleted': (_mns_delete.status | default(0)) in [200,204],
-          'final_state': (
-             ((item.status | lower) == 'allocated') and (
-                (_mns_present or ((_mns_create.status | default(0)) in [200,201])) and 'present' or 'missing'
-             )
-             or ((item.status | lower) in ['released','deleting','deleted']) and (
-                ((_mns_delete.status | default(0)) in [200,204]) and 'deleted' or (_mns_present and 'present' or 'missing')
-             )
-          )
+       'final_state': (
+        ((_mns_get.status | default(0)) == -1) or ((_mns_create.status | default(0)) == -1) or ((_mns_delete.status | default(0)) == -1)
+       ) and 'unreachable'
+       or (
+         ((item.status | lower) == 'allocated') and (
+           (_mns_present or ((_mns_create.status | default(0)) in [200,201])) and 'present' or 'missing'
+         )
+         or ((item.status | lower) in ['released','deleting','deleted']) and (
+           ((_mns_delete.status | default(0)) in [200,204]) and 'deleted' or (_mns_present and 'present' or 'missing')
+         )
+       )
         } ] }}
 
 - name: Debug manage network state result {{ item.cidr }} (verbosity>=2)

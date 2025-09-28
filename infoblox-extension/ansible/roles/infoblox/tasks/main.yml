@@ -180,9 +180,9 @@
   ansible.builtin.set_fact:
     transformed_operation: >-
       {{ {
-          'zone': (dns_operation.serverInstanceRecordSet.zone.zoneName if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.zoneName is defined) else dns_operation.serverInstanceRecordSet.siteLabel ~ '.example.invalid'),
+          'zone': (dns_operation.serverInstanceRecordSet.zone.zoneName if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.zoneName is defined) else dns_operation.serverInstanceRecordSet.siteLabel ~ serverRecordsDomain),
           'nameservers': (dns_operation.serverInstanceRecordSet.zone.nameServers if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.nameServers is defined) else []),
-          'soa_email': (dns_operation.serverInstanceRecordSet.zone.soaEmail if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.soaEmail is defined) else 'admin.' ~ (dns_operation.serverInstanceRecordSet.siteLabel | default('local')) ~ '.example.invalid'),
+          'soa_email': (dns_operation.serverInstanceRecordSet.zone.soaEmail if (dns_operation.serverInstanceRecordSet.zone is defined and dns_operation.serverInstanceRecordSet.zone.soaEmail is defined) else 'admin.' ~ (dns_operation.serverInstanceRecordSet.siteLabel | default('local')) ~ serverRecordsDomain),
           'records': (
               (
                 dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map('extract', attribute='ip')
@@ -293,6 +293,35 @@
       {{ dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='networkAddress') | list
          | zip(dns_operation.serverInstanceRecordSet.instanceIpv4Ips | map(attribute='maskBits') | list)
          | map('join','/') | list | unique }}
+
+# Preflight connectivity check so we treat host-down as distinct from logical absence
+- name: Preflight Infoblox connectivity check (serverInstanceRecordSet)
+  when: is_server_instance_record
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network?_max_results=1&_return_fields=network"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _infoblox_preflight
+  failed_when: false
+
+- name: Debug preflight connectivity (verbosity>=1)
+  when: is_server_instance_record and (ansible_verbosity | int) >= 1
+  ansible.builtin.debug:
+    msg:
+      preflight_status: "{{ _infoblox_preflight.status | default('n/a') }}"
+      preflight_msg: "{{ _infoblox_preflight.msg | default('') }}"
+      preflight_json: "{{ _infoblox_preflight.json | default([]) }}"
+
+- name: Fail early if Infoblox unreachable (preflight status -1)
+  when: is_server_instance_record and ((_infoblox_preflight.status | default(0)) == -1)
+  ansible.builtin.fail:
+    msg: >-
+      Infoblox WAPI unreachable during preflight (status -1). Message: {{ _infoblox_preflight.msg | default('no message') }}.
+      Aborting before attempting network ensure. Investigate connectivity / Infoblox service availability.
 
 - name: Build required IPv6 CIDRs
   when: is_server_instance_record and (dns_operation.serverInstanceRecordSet.instanceIpv6Ips | default([]) | length) > 0
@@ -413,6 +442,11 @@
   ansible.builtin.set_fact:
     ms_missing_networks: "{{ ms_network_results | selectattr('final_status','equalto','missing') | map(attribute='cidr') | list }}"
 
+- name: Derive unreachable networks list
+  when: is_server_instance_record
+  ansible.builtin.set_fact:
+    ms_unreachable_networks: "{{ ms_network_results | selectattr('final_status','equalto','unreachable') | map(attribute='cidr') | list }}"
+
 - name: Derive missing IPv6 networks list
   when: is_server_instance_record and (ms_network_results_v6 is defined)
   ansible.builtin.set_fact:
@@ -427,6 +461,13 @@
   when: is_server_instance_record and (ms_missing_networks_v6 is defined) and (ms_missing_networks_v6 | length) > 0
   ansible.builtin.fail:
     msg: "Required IPv6 networks missing in Infoblox: {{ ms_missing_networks_v6 }} (autoCreateAndDeleteNetworks={{ autoCreateAndDeleteNetworks }})"
+
+- name: Fail if networks unreachable (connectivity issues)
+  when: is_server_instance_record and (ms_unreachable_networks | default([]) | length) > 0
+  ansible.builtin.fail:
+    msg: >-
+      Could not verify / ensure networks due to connectivity errors for CIDRs: {{ ms_unreachable_networks }}.
+      These were marked 'unreachable' (e.g., status -1). Check network path / Infoblox service health before retrying.
 
 - name: Debug network ensure summary
   when: is_server_instance_record and ansible_verbosity | int >= 1

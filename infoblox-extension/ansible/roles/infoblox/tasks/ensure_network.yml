@@ -30,6 +30,89 @@
           )
         ) }}
 
+- name: Debug primary network query (verbosity >=1)
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      target: "{{ target_cidr }}"
+      primary_status: "{{ _net_query.status | default('n/a') }}"
+      primary_json: "{{ _net_query.json | default([]) }}"
+      primary_present: "{{ _net_present }}"
+
+# Fallback 1: if not present, try ipv4network object (Infoblox alternate object name)
+- name: Fallback query ipv4network {{ target_cidr }} when not detected
+  when: not _net_present
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/ipv4network?network={{ target_cidr | urlencode }}&_return_fields=network"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _net_query_v4
+  failed_when: false
+
+- name: Re-evaluate presence after ipv4network query
+  when: not _net_present
+  ansible.builtin.set_fact:
+    _net_present: >-
+      {{ _net_present or (
+          (_net_query_v4.status | default(0)) == 200 and (
+            (_net_query_v4.json is mapping and ('network' in _net_query_v4.json))
+            or (
+              _net_query_v4.json is sequence and (
+                _net_query_v4.json | selectattr('network','defined') | selectattr('network','equalto', target_cidr) | list | length
+              ) > 0
+            )
+          )
+        ) }}
+
+- name: Debug ipv4network fallback query (verbosity >=1)
+  when: ansible_verbosity | int >= 1 and (not _net_present) and (_net_query_v4 is defined)
+  ansible.builtin.debug:
+    msg:
+      target: "{{ target_cidr }}"
+      ipv4_status: "{{ _net_query_v4.status | default('n/a') }}"
+      ipv4_json: "{{ _net_query_v4.json | default([]) }}"
+      present_after_ipv4: "{{ _net_present }}"
+
+# Fallback 2: broad search all networks then filter
+- name: Broad search all networks when still not present
+  when: not _net_present
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/network?_return_fields=network&_max_results=1000"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _net_query_broad
+  failed_when: false
+
+- name: Re-evaluate presence after broad search
+  when: not _net_present
+  ansible.builtin.set_fact:
+    _net_present: >-
+      {{ _net_present or (
+          (_net_query_broad.status | default(0)) == 200 and (
+            (_net_query_broad.json is sequence) and (
+              _net_query_broad.json | selectattr('network','defined') | selectattr('network','equalto', target_cidr) | list | length > 0
+            )
+          )
+        ) }}
+
+- name: Debug broad search fallback (verbosity >=1)
+  when: ansible_verbosity | int >= 1 and (_net_query_broad is defined)
+  ansible.builtin.debug:
+    msg:
+      target: "{{ target_cidr }}"
+      broad_status: "{{ _net_query_broad.status | default('n/a') }}"
+      matched_after_broad: "{{ _net_present }}"
+      broad_count: "{{ (_net_query_broad.json | length) if (_net_query_broad.json is sequence) else 'n/a' }}"
+
+
 - name: Create network {{ target_cidr }} if missing and allowed
   when: (not _net_present) and autoCreateAndDeleteNetworks | bool
   ansible.builtin.uri:
@@ -49,6 +132,15 @@
   register: _net_create
   failed_when: false
 
+- name: Derive final status for network {{ target_cidr }}
+  ansible.builtin.set_fact:
+    _net_final_status: >-
+      {% if (_net_query.status | default(0)) == -1 %}unreachable
+      {% elif (_net_create.status | default(0)) == -1 %}unreachable
+      {% elif _net_present | bool %}present
+      {% elif (_net_create.status | default(0)) in [200,201] %}created
+      {% else %}missing{% endif %}
+
 - name: Record network ensure outcome {{ target_cidr }}
   ansible.builtin.set_fact:
     ms_network_results: >-
@@ -59,7 +151,7 @@
           'present_pre': _net_present,
           'create_status': _net_create.status | default('n/a'),
           'created': (_net_create.status | default(0)) in [200,201],
-          'final_status': (_net_present | bool) and 'present' or (((_net_create.status | default(0)) in [200,201]) and 'created' or 'missing')
+          'final_status': _net_final_status
         } ] }}
 
 - name: Debug ensure network {{ target_cidr }} (verbosity >=2)

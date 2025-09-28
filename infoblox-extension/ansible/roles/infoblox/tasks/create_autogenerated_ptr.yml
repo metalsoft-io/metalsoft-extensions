@@ -18,10 +18,9 @@
   vars:
     # Need to escape backslash for YAML; using double backslash before dot in regex
     _matching_alloc: "{{ allocated_auto_a_records | selectattr('name','equalto', (a_record.name + '.' + zone_name.rstrip('.')) | trim | regex_replace('\\.$','')) | list }}"
+    ip_address: "{{ item }}"
+    ptr_record_value: "{{ a_record.name }}.{{ zone_name.rstrip('.') }}"
   include_tasks: create_ptr.yml
   loop: "{{ _matching_alloc | map(attribute='ip') | list }}"
   loop_control:
     label: "Allocated PTR for {{ item }}"
-  vars:
-    ip_address: "{{ item }}"
-    ptr_record_value: "{{ a_record.name }}.{{ zone_name.rstrip('.') }}"

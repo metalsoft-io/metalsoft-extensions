@@ -113,18 +113,18 @@
         }
       ]
     },
-    {
-      "stage": "serverInstanceUpdate",
-      "tasks": [
-        {
-          "label": "update-ip-records-for-instance",
-          "taskType": "ExtensionTaskAnsible",
-          "options": {
-            "asset": "infoblox-configuration",
-            "playbook": "sync_infoblox.yaml"
-          }
-        }
-      ]
-    }
+    {               
+                "stage": "serverInstanceUpdate",
+                "tasks": [
+                    {
+                        "label": "update-ip-records-for-instance",
+                        "taskType": "ExtensionTaskAnsible",
+                        "options": {
+                            "asset": "infoblox-configuration",
+                            "playbook": "sync_infoblox.yaml"
+                        }
+                    }   
+                ]       
+            }  
   ]
 }

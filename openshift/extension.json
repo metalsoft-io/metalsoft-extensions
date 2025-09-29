@@ -160,7 +160,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "api.{{CLUSTER_NAME}}.{{BASE_DOMAIN}}",
+                "name": "api.{{CLUSTER_NAME}}.{{DEFAULT_ZONE_NAME}}",
                 "recordType": "A",
                 "generatePtrRecord": true
               }
@@ -173,7 +173,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "*.apps.{{CLUSTER_NAME}}.{{BASE_DOMAIN}}",
+                "name": "*.apps.{{CLUSTER_NAME}}.{{DEFAULT_ZONE_NAME}}",
                 "recordType": "A",
                 "generatePtrRecord": false
               }

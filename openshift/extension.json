@@ -160,7 +160,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "api.{{CLUSTER_NAME}}.metalcloud.local",
+                "name": "api.{{CLUSTER_NAME}}.{{BASE_DOMAIN}}",
                 "recordType": "A",
                 "generatePtrRecord": true
               }
@@ -173,7 +173,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "*.apps.{{CLUSTER_NAME}}.metalcloud.local",
+                "name": "*.apps.{{CLUSTER_NAME}}.{{BASE_DOMAIN}}",
                 "recordType": "A",
                 "generatePtrRecord": false
               }

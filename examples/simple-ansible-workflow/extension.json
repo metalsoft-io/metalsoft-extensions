@@ -12,7 +12,6 @@
     "vendor": "MetalSoft",
     "extensionVersion": "1.0.0",
     "description": "Execute a simple command over ssh",
-    "icon": "",
     "dependencies": {
       "controllerVersion": "string"
     },

@@ -1,0 +1,29 @@
+---
+- name: Add host in the playbook's in-memory hosts
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Add a host alias that we reach through a tunnel
+      ansible.builtin.add_host:
+        hostname: 'test-srv'
+        ansible_host: '192.168.0.1'
+        ansible_port: '22'
+        #ansible_ssh_private_key_file: '~/.ssh/id_rsa'
+        #note that for this to work the ssh key should be present in the ansible-runner
+  
+- name: Execute script on remote host
+  hosts: test-srv
+  gather_facts: false
+  vars:
+    variables_file: "{{ playbook_dir }}/variables.json"
+  tasks:
+    - name: Load JSON configuration
+      ansible.builtin.include_vars:
+        file: "{{ variables_file }}"
+        name: task_vars
+      vars:
+        task_vars: "{{ task_vars }}"
+    - name: Execute script on remote host
+      ansible.builtin.shell: /path/to/your/script.sh {{ task_vars.server.model }} {{ task_vars.server.serialNumber }} {{task_vars.server.managementAddress}}
+      when: inventory_hostname == 'test-srv'

@@ -1,0 +1,44 @@
+---
+- name: Vendor specific server health validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    variables_file: "{{ playbook_dir }}/variables.json"
+  tasks:
+    - name: Load server JSON configuration
+      ansible.builtin.include_vars:
+        file: "{{ variables_file }}"
+        name: task_vars
+
+    - name: Derive OOB credentials
+      ansible.builtin.set_fact:
+        oob_host: "{{ task_vars.server.managementAddress }}"
+        oob_user: "{{ task_vars.server.username }}"
+        oob_password: "{{ (oob_password | default(lookup('env','OOB_PASSWORD') | default(omit))) }}"
+        expected_serial: "{{ task_vars.server.serialNumber | default('N/A') }}"
+        vendor_string: "{{ task_vars.server.vendor | default('unknown') }}"
+      no_log: true
+
+    - name: Fail if OOB password not provided
+      ansible.builtin.fail:
+        msg: "Provide OOB password via -e oob_password=... or env OOB_PASSWORD"
+      when: oob_password is not defined
+
+    - name: Run Dell health role
+      ansible.builtin.include_role:
+        name: dell_health_check
+      when: "'dell' in vendor_string|lower"
+
+    - name: Run HP health role
+      ansible.builtin.include_role:
+        name: hp_health_check
+      when: "'hp' in vendor_string|lower"
+  
+    - name: Skip – unsupported vendor
+      ansible.builtin.debug:
+        msg: "Vendor {{ vendor_string }} not supported (expected contains Dell / HP / HPE)."
+      when:
+        - "'dell' not in vendor_string|lower"
+        - "'hp' not in vendor_string|lower"
+

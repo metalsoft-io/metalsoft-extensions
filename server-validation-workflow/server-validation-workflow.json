@@ -1,0 +1,39 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "server validation",
+  "label": "execute-on-ssh",
+  "extensionType": "workflow",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.0.0",
+  "description": "alidate a server on server register",
+  "icon": "",
+  "dependencies": {
+    "controllerVersion": "string"
+  },
+  "inputs": [],
+  "outputs": [],
+  "assets": [
+    {
+      "label": "server_validation_ansible",
+      "name": "server_validation_ansible",
+      "assetType": "Bundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/server_validation.zip"
+    }
+  ],
+  "onAssetChange": [
+    {
+      "stage": "serverRegistered",
+      "tasks": [
+        {
+          "label": "Validate server",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "server_validation_ansible",
+            "playbook": "server_validation_playbook.yaml"
+          }
+        }
+      ]
+    },
+  ]
+}

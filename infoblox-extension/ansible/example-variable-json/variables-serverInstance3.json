@@ -1,0 +1,66 @@
+{
+    "serverInstanceRecordSet": {
+        "deployStatus": "ongoing",
+        "deployType": "create",
+        "deploymentId": 218,
+        "instanceIpv4IpRanges": [],
+        "instanceIpv4Ips": [
+            {
+                "cidr": "172.16.2.10/24",
+                "gateway": "172.16.2.1",
+                "ip": "172.16.2.10",
+                "logicalNetworkId": 74,
+                "maskBits": 24,
+                "netmask": "255.255.255.0",
+                "networkAddress": "172.16.2.0",
+                "status": "allocated"
+            }
+        ],
+        "instanceIpv6IpRanges": [],
+        "instanceIpv6Ips": [],
+        "logicalNetworks": [
+            {
+                "interfaces": [
+                    {
+                        "macAddress": "B8:CB:29:E4:B6:B0",
+                        "redundancyIndex": null,
+                        "serverInterfaceId": 224,
+                        "tagged": false
+                    }
+                ],
+                "ipv4Subnets": [
+                    {
+                        "gateway": "172.16.2.1",
+                        "gatewayPlacement": "default",
+                        "id": 12,
+                        "networkAddress": "172.16.2.0",
+                        "prefixLength": 24,
+                        "scope": {
+                            "kind": "fabric",
+                            "resourceId": 2
+                        },
+                        "status": "allocated"
+                    }
+                ],
+                "logicalNetworkId": 74,
+                "logicalNetworkLabel": "openshift-network",
+                "logicalNetworkName": "openshift-network",
+                "vlans": [
+                    {
+                        "id": 27,
+                        "scope": {
+                            "kind": "fabric",
+                            "resourceId": 2
+                        },
+                        "status": "allocated",
+                        "vlanId": 102
+                    }
+                ]
+            }
+        ],
+        "serverId": 496,
+        "serverInstanceId": 106,
+        "serviceStatus": "ordered",
+        "siteLabel": "dc-eveng-qa"
+    }
+}

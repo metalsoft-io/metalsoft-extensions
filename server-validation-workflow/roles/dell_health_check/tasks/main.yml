@@ -1,0 +1,61 @@
+---
+# Dell iDRAC health checks role
+# Expects vars: oob_host, oob_user, oob_password, expected_serial
+
+- name: Gather iDRAC facts (Redfish)
+  ansible.builtin.include_role:
+    name: dellemc.openmanage.idrac_gather_facts
+  vars:
+    hostname: "{{ oob_host }}"
+    username: "{{ oob_user }}"
+    password: "{{ oob_password }}"
+    validate_certs: false
+    target:
+      - System
+  register: idrac_facts
+
+- name: print gathered facts for debug
+  ansible.builtin.debug:
+    var: system
+
+- name: Fail if Dell system facts missing
+  ansible.builtin.fail:
+    msg: "No Dell system facts returned from iDRAC."
+  when:  system | length == 0
+
+- name: Check serial number
+  ansible.builtin.fail:
+    msg: >-
+      Serial number mismatch: expected {{ expected_serial }},
+      got {{ system.ChassisServiceTag | default('unknown') }}
+  when: system.ChassisServiceTag | default('unknown') != expected_serial
+
+- name: Check system health
+  ansible.builtin.fail:
+    msg: >-
+      System health '{{ system.CurrentRollupStatus | default('unknown') }}' (expected OK)
+  when: (system.CurrentRollupStatus | default('unknown') | lower) != 'ok'
+
+- name: Check memory health
+  ansible.builtin.fail:
+    msg: >-
+      Memory health '{{ system.SysMemPrimaryStatus | default('unknown') }}' (expected OK)
+  when: (system.SysMemPrimaryStatus | default('unknown') | lower) != 'ok'
+
+- name: Check power health
+  ansible.builtin.fail:
+    msg: >-
+      Cooling health '{{ system.CoolingRollupStatus | default('unknown') }}' (expected OK)
+  when: (system.CoolingRollupStatus | default('unknown') | lower) != 'ok'
+
+- name: Check CPU health
+  ansible.builtin.fail:
+    msg: >-
+      CPU health '{{ system.CPURollupStatus | default('unknown') }}' (expected OK)
+  when: (system.CPURollupStatus | default('unknown') | lower) != 'ok'
+
+- name: Check storage health
+  ansible.builtin.fail:
+    msg: >-
+      Storage health '{{ system.StorageRollupStatus | default('unknown') }}' (expected OK)
+  when: (system.StorageRollupStatus | default('unknown') | lower) != 'ok'

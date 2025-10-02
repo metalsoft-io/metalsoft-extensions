@@ -1,0 +1,4 @@
+---
+collections:
+  - name: dellemc.openmanage
+  - name: community.general

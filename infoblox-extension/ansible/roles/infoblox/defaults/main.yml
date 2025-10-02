@@ -39,7 +39,9 @@ allocation_ipv4_network: ""
 autoCreateAndDeleteNetworks: true
 
 # Comment templates for created IP records
-ip_record_comment_template: "MetalSoft server ID: {{ server_id }} | MetalSoft logical network ID: {{ logical_network_id }}"
+# Use literal token placeholders (double square brackets) so Jinja does not pre-render them.
+# These tokens are replaced at record creation time inside task logic.
+ip_record_comment_template: "MetalSoft server ID: [[SERVER_ID]] | MetalSoft logical network ID: [[LOGICAL_NETWORK_ID]]"
 
 # Manual deletion override controls
 ms_force_delete: false               # when true, all records in input coerced to deleting

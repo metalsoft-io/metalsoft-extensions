@@ -1,0 +1,40 @@
+---
+# HP/HPE iLO health checks using generic Redfish
+# Expects vars: oob_host, oob_user, oob_password
+
+- name: Gather HP/HPE Redfish system info
+  community.general.hpilo_info:
+    host: "{{ oob_host }}"
+    login: "{{ oob_user }}"
+    password: "{{ oob_password }}"
+  register: hp_system
+
+- name: Check if the serial number matches
+  ansible.builtin.fail:
+    msg: >-
+      Serial number mismatch: expected {{ expected_serial }}, got {{  hp_system.hw_system_serial | default('unknown') }}
+  when: hp_system.hw_system_serial | default('unknown') != expected_serial
+
+- name: Check power supplies
+  ansible.builtin.fail:
+    msg: >-
+      Power health '{{ hp_system.hw_health.health_at_a_glance.power_supplies.status | default('unknown') }}' (expected OK)
+  when: (hp_system.hw_health.health_at_a_glance.power_supplies.status | default('unknown') | lower) != 'ok'
+
+- name: Check processor health
+  ansible.builtin.fail:
+    msg: >-
+      Processor health '{{ hp_system.hw_health.health_at_a_glance.processor.status | default('unknown') }}' (expected OK)
+  when: (hp_system.hw_health.health_at_a_glance.processor.status | default('unknown') | lower) != 'ok'
+
+- name: Check storage health
+  ansible.builtin.fail:
+    msg: >-
+      Storage health '{{ hp_system.hw_health.health_at_a_glance.storage.status | default('unknown') }}' (expected OK)
+  when: (hp_system.hw_health.health_at_a_glance.storage.status | default('unknown') | lower) != 'ok'
+
+- name: Check memory health
+  ansible.builtin.fail:
+    msg: >-
+      Memory health '{{ hp_system.hw_health.health_at_a_glance.memory.status | default('unknown') }}' (expected OK)
+  when: (hp_system.hw_health.health_at_a_glance.memory.status | default('unknown') | lower) != 'ok'

@@ -1,0 +1,185 @@
+{
+  "server": {
+    "administrationState": "managed",
+    "bdkDebug": 0,
+    "biosInfo": {
+      "vendor": "HPE",
+      "version": "1.17.2"
+    },
+    "bmcMacAddress": "08:92:04:a4:d9:98",
+    "bootLastUpdateTimestamp": "0000-00-00T00:00:00Z",
+    "bootingCustomIsoInProgress": 0,
+    "chassisRackId": null,
+    "customInfo": null,
+    "datacenterName": "sonic-qts",
+    "diskCount": 4,
+    "disks": [],
+    "extensionInfo": null,
+    "gpuCount": 0,
+    "gpuInfo": [],
+    "instanceCustomInfo": null,
+    "interfaces": [],
+    "inventoryId": null,
+    "ipmiCredentialsNeedUpdate": 0,
+    "ipmiVersion": "2",
+    "isBasicCampusEndpoint": 0,
+    "jobInfo": {
+      "jobGroupId": null,
+      "jobId": null
+    },
+    "links": [],
+    "managementAddress": "172.18.33.187",
+    "mgmtSnmpPasswordEncrypted": "sonic-qts_r1|aes-cbc|GsO+10B80u+bZZ9ppepYrV/tA16siQw4Arb6FYI3feJT5TQTkzXqlmbCGGuY6sAZ",
+    "mgmtSnmpPort": 161,
+    "model": "HPE done by hand R450",
+    "passwordEncrypted": "....",
+    "powerStatus": "off",
+    "powerStatusLastUpdateTimestamp": "2025-09-16T18:48:50Z",
+    "processorCoreCount": 12,
+    "processorCoreMhz": 4000,
+    "processorCount": 1,
+    "processorCpuMark": null,
+    "processorName": "Intel(R) Xeon(R) Silver 4310 CPU @ 2.10GHz",
+    "processorThreads": 24,
+    "rackName": null,
+    "rackPositionLowerUnit": null,
+    "rackPositionUpperUnit": null,
+    "ramGbytes": 32,
+    "registeredTimestamp": "2025-09-16T18:48:50Z",
+    "requiresManualCleaning": 0,
+    "requiresReRegister": 0,
+    "resourcePoolId": null,
+    "revision": 16,
+    "serialNumber": "CZ2613001Z",
+    "serverAllocationTimestamp": null,
+    "serverCapacityMbps": 20000,
+    "serverClass": "bigdata",
+    "serverCleanupPolicyId": null,
+    "serverComments": null,
+    "serverCreatedTimestamp": "2025-09-16T18:13:26Z",
+    "serverDhcpStatus": "deny_requests",
+    "serverDiskCount": 4,
+    "serverDiskWipe": 1,
+    "serverId": 27,
+    "serverIsProduction": 0,
+    "serverMetricsMetadata": {
+      "fans": [],
+      "temperatures": [
+        {
+          "Label": "temperature.cpu.1",
+          "Name": "CPU1 Temp",
+          "Number": 1,
+          "Oem": null,
+          "PhysicalContext": "CPU",
+          "Units": "Celsius",
+          "UpperThresholdCritical": null,
+          "UpperThresholdFatal": null
+        },
+        {
+          "Label": "temperature.systemboard.5",
+          "Name": "System Board Inlet Temp",
+          "Number": 5,
+          "Oem": null,
+          "PhysicalContext": "SystemBoard",
+          "Units": "Celsius",
+          "UpperThresholdCritical": 47,
+          "UpperThresholdFatal": null
+        },
+        {
+          "Label": "temperature.systemboard.6",
+          "Name": "System Board Exhaust Temp",
+          "Number": 6,
+          "Oem": null,
+          "PhysicalContext": "SystemBoard",
+          "Units": "Celsius",
+          "UpperThresholdCritical": null,
+          "UpperThresholdFatal": null
+        }
+      ]
+    },
+    "serverStatus": "deleting",
+    "serverSupportsOobProvisioning": 1,
+    "serverSupportsSol": 1,
+    "serverSupportsVirtualMedia": 1,
+    "serverTypeId": 9,
+    "serverUUID": "44454c4c-5300-1042-8054-b6c04f305233",
+    "siteId": 1,
+    "storageControllers": [
+      {
+        "description": "Embedded AHCI 1",
+        "id": 114,
+        "label": "C620 Series Chipset Family SSATA Controller [AHCI mode]",
+        "mode": "HBA",
+        "name": "AHCI.Embedded.1-1",
+        "options": {
+          "controllerModesSupported": [],
+          "raidTypesSupported": []
+        },
+        "serverId": 27
+      },
+      {
+        "description": "Embedded AHCI 2",
+        "id": 115,
+        "label": "C620 Series Chipset Family SATA Controller [AHCI mode]",
+        "mode": "HBA",
+        "name": "AHCI.Embedded.2-1",
+        "options": {
+          "controllerModesSupported": [],
+          "raidTypesSupported": []
+        },
+        "serverId": 27
+      },
+      {
+        "description": "AHCI controller in slot 1",
+        "id": 113,
+        "label": "BOSS-S1",
+        "mode": "RAID",
+        "name": "AHCI.Slot.1-1",
+        "options": {
+          "controllerModesSupported": [
+            "RAID"
+          ],
+          "raidTypesSupported": [
+            "RAID1"
+          ]
+        },
+        "serverId": 27
+      },
+      {
+        "description": "RAID Controller in SL 3",
+        "id": 112,
+        "label": "PERC H745 Front",
+        "mode": "RAID",
+        "name": "RAID.SL.3-1",
+        "options": {
+          "controllerModesSupported": [
+            "RAID",
+            "HBA"
+          ],
+          "raidTypesSupported": [
+            "RAID0",
+            "RAID1",
+            "RAID5",
+            "RAID6",
+            "RAID10",
+            "RAID50",
+            "RAID60"
+          ]
+        },
+        "serverId": 27
+      }
+    ],
+    "submodel": null,
+    "supportsFcProvisioning": 0,
+    "tags": null,
+    "username": "root",
+    "vendor": "HPE",
+    "vendorInfo": {
+      "management": "iDRAC",
+      "version": "iDRAC9"
+    },
+    "vendorSkuId": "PowerEdge R450",
+    "vncPasswordEncrypted": "rqi|aes-cbc|1so23myI+2ymfZzcacFnk1EN7Yx726lGH0/jTI5pLc/nFhAJZYPSfRiiEO0PY6ak",
+    "vncPort": 5901
+  }
+}

@@ -126,7 +126,7 @@
     dest: "{{ ocp_install_backup_dir }}/agent-config.yaml"
     mode: '0644'
 
-# Air-gapped deployment configuration - MUST BE BEFORE ISO CREATION
+# Air-gapped deployment configuration
 - name: Set release image override for air-gapped deployment
   set_fact:
     release_image_override: "{{ extensionInstanceVariables.mirror_registry }}:{{ extensionInstanceVariables.ocp_version }}"
@@ -137,6 +137,25 @@
     msg: "Air-gapped mode: Using release image {{ release_image_override }}"
   when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
 
+# Validate the registry for air-gapped deployments
+- name: Validate mirror registry accessibility
+  shell: |
+    /usr/local/bin/oc adm release info {{ release_image_override }} --insecure=true
+  register: registry_validation
+  failed_when: registry_validation.rc != 0
+  when:
+  - extensionInstanceVariables.airgapped_deployment | default(false) | bool
+  - not iso_exists.stat.exists
+
+- name: Display registry validation result
+  debug:
+    msg: "Registry validation successful. Release info: {{ registry_validation.stdout_lines | select('match', '^(Name|Version|OS/Arch|Pull From):.*') | list }}"
+  when:
+  - extensionInstanceVariables.airgapped_deployment | default(false) | bool
+  - not iso_exists.stat.exists
+  - registry_validation is defined
+  - registry_validation.rc | default(1) == 0
+
 # Create the agent ISO directly on NFS (air-gapped)
 - name: Create agent installer image directly on NFS (air-gapped)
   command: /usr/local/bin/openshift-install agent create image
@@ -145,6 +164,8 @@
   environment:
     PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE: "{{ release_image_override }}"
+  register: iso_creation_airgapped
+  failed_when: iso_creation_airgapped.rc != 0
   when:
   - not iso_exists.stat.exists
   - extensionInstanceVariables.airgapped_deployment | default(false) | bool
@@ -156,6 +177,8 @@
     chdir: "{{ ocp_install_dir }}"
   environment:
     PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  register: iso_creation_normal
+  failed_when: iso_creation_normal.rc != 0
   when:
   - not iso_exists.stat.exists
   - not (extensionInstanceVariables.airgapped_deployment | default(false) | bool)
@@ -174,6 +197,8 @@
   args:
     removes: "{{ ocp_install_dir }}/agent.x86_64.iso"
     creates: "{{ iso_final_path }}"
+  register: iso_move_result
+  failed_when: iso_move_result.rc != 0
   when: not iso_exists.stat.exists
 
 # Create logs directory for context file

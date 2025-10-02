@@ -1,0 +1,44 @@
+{
+  "name": "Simple Workflow",
+  "label": "simple-workflow",
+  "description": "Simple Workflow Extension",
+  "kind": "workflow",
+  "definition": {
+    "kind": "workflow",
+    "schemaVersion": "1.1",
+    "name": "execute-on-ssh",
+    "label": "execute-on-ssh",
+    "extensionType": "workflow",
+    "vendor": "MetalSoft",
+    "extensionVersion": "1.0.0",
+    "description": "Execute a simple command over ssh",
+    "dependencies": {
+      "controllerVersion": "string"
+    },
+    "inputs": [],
+    "outputs": [],
+    "assets": [
+      {
+        "label": "test_playbook",
+        "name": "test playbook",
+        "assetType": "Bundle",
+        "url": "https://repo.metalsoft.io/.extensions_ms/workflows/ansible.zip"
+      }
+    ],
+    "onAssetChange": [
+      {
+        "stage": "serverRegistered",
+        "tasks": [
+          {
+            "label": "test workflow",
+            "taskType": "ExtensionTaskAnsible",
+            "options": {
+              "asset": "test_ansible",
+              "playbook": "test_playbook.yaml"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

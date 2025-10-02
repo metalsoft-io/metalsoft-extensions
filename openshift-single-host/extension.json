@@ -163,12 +163,12 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "api.{{CLUSTER_NAME}}.metalcloud.local",
+                "name": "api.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true
               },
               {
-                "name": "*.apps.{{CLUSTER_NAME}}.metalcloud.local",
+                "name": "*.apps.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": false
               }

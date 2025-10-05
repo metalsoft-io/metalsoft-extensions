@@ -9,7 +9,7 @@
     "description": "VMware Cloud Foundation (VCF)",
     "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
     "dependencies": {
-        "controllerVersion": "develop",
+        "controllerVersion": "release-v7.0",
         "osTemplates": [
             "esxi-8-cluster-node"
         ]

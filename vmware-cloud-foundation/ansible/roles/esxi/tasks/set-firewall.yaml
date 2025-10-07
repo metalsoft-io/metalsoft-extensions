@@ -1,0 +1,14 @@
+---
+- name: Enable httpClient rule set for an ESXi Host
+  vmware_host_firewall_manager:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ inventory_hostname }}"
+    validate_certs: false
+    rules:
+      - name: httpClient
+        enabled: true
+        allowed_hosts:
+          all_ip: true
+  delegate_to: localhost

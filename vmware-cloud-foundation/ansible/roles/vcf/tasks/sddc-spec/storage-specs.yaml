@@ -1,0 +1,10 @@
+---
+# Storage specifications
+
+- name: Build | VSAN spec
+  set_fact:
+    vsan_spec:
+      datastore_name: m-cl1-ds1
+      vsan_dedup: "{{ extensionInstanceVariables.m_vsan_dedup | default(false) | bool }}"
+      hcl_file: "{{ extensionInstanceVariables.m_vsan_hcl_file | default('') }}"
+      esa_config: "{{ extensionInstanceVariables.m_vsan_esa_enabled | default(false) | bool }}"

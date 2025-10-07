@@ -1,0 +1,61 @@
+---
+# IP allocation extraction and CBA configuration tasks
+# Purpose: Extract and configure Cloud Builder Appliance and SDDC Manager specifications
+
+- name: Build | Management server instance group custom variables
+  set_fact:
+    management_server_instance_group_custom_variables: >
+      {{ {}
+         | combine((vcf_cluster | default({}, true)), recursive=True)
+         | combine(((management_server_instance_group_data | default({})).customVariables | default({}, true)), recursive=True)
+      }}
+
+- name: Build | Extract key IP allocations (CBA & SDDC Manager & vCenter & NSX Managers)
+  set_fact:
+    cba_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'cloud-builder') | first | default({}) }}"
+    sddc_manager_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'sddc-manager') | first | default({}) }}"
+    management_vcenter_server_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'management-vcenter-server') | first | default({}) }}"
+    nsx_manager_vip_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-vip') | first | default({}) }}"
+    nsx_manager_node1_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node1') | first | default({}) }}"
+    nsx_manager_node2_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node2') | first | default({}) }}"
+    nsx_manager_node3_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node3') | first | default({}) }}"
+
+- name: Build | CBA spec
+  set_fact:
+    cba:
+      hostname_fqdn: "{{ cba_config.fqdn | default('cloud-builder.vmware.local') }}"
+      hostname: "{{ cba_config.fqdn | default('') | split('.') | first }}"
+      admin_username: "{{ management_server_instance_group_custom_variables.cba_admin_username | default('admin') }}"
+      admin_password: "{{ extensionInstanceVariables.cba_admin_password | default('VMw@re1!VMw@re1!') }}"
+      root_password: "{{ extensionInstanceVariables.cba_root_password | default('VMw@re1!VMw@re1!') }}"
+      ipv4_address: "{{ cba_config.ip | default('') }}"
+      ipv4_netmask: "{{ cba_config.netmask | default('') }}"
+      ipv4_gateway: "{{ cba_config.gateway | default('') }}"
+      ipv4_dns: "{{ dns_servers | join(',') }}"
+      datastore: "{{ extensionInstanceVariables.cba_datastore | default('datastore1') }}"
+      disk_provisioning: "{{ extensionInstanceVariables.cba_disk_provisioning | default('thin') }}"
+      validate_certs: "{{ extensionInstanceVariables.cba_validate_certs | default('no') }}"
+      initialize_api_retries: "{{ extensionInstanceVariables.cba_initialize_api_retries | default(180) }}"
+      initialize_api_retries_delay: "{{ extensionInstanceVariables.cba_initialize_api_retries_delay | default(10) }}"
+      api_retries: "{{ extensionInstanceVariables.cba_api_retries | default(5) }}"
+      api_retries_delay: "{{ extensionInstanceVariables.cba_api_retries_delay | default(10) }}"
+      validation_api_retries: "{{ extensionInstanceVariables.cba_validation_api_retries | default(240) }}"
+      validation_api_retries_delay: "{{ extensionInstanceVariables.cba_validation_api_retries_delay | default(5) }}"
+      deploy_task_api_retries: "{{ extensionInstanceVariables.cba_deploy_task_api_retries | default(1440) }}"
+      deploy_task_api_retries_delay: "{{ extensionInstanceVariables.cba_deploy_task_api_retries_delay | default(10) }}"
+
+- name: Build | SDDC Manager spec
+  set_fact:
+    sddc_manager_spec:
+      id: "{{ extensionInstanceRecordSet.extensionInstanceName | default('test') }}-m"
+      management_pool_name: "m-np1"
+      hostname_fqdn: "{{ sddc_manager_config.fqdn | default('sddc-manager.vmware.local') }}"
+      hostname: "{{ sddc_manager_config.fqdn | default('') | split('.') | first }}"
+      local_user_password: "{{ extensionInstanceVariables.sddc_local_admin_password | default('VMw@re1!VMw@re1!') }}"
+      root_user_credentials:
+        username: "{{ management_server_instance_group_custom_variables.sddc_root_username | default('root') }}"
+        password: "{{ extensionInstanceVariables.sddc_root_password | default('VMw@re1!VMw@re1!') }}"
+      second_user_credentials:
+        username: "{{ management_server_instance_group_custom_variables.sddc_second_username | default('vcf') }}"
+        password: "{{ extensionInstanceVariables.sddc_second_user_password | default('VMw@re1!VMw@re1!') }}"
+      ipv4_address: "{{ sddc_manager_config.ip | default('') }}"

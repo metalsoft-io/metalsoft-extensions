@@ -1,0 +1,11 @@
+---
+- name: Configure NTP servers for an ESXi Hosts
+  community.vmware.vmware_host_ntp:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ esxi_hostname }}"
+    validate_certs: false
+    ntp_servers: "{{ ntp_servers }}"
+    verbose: true
+  delegate_to: localhost

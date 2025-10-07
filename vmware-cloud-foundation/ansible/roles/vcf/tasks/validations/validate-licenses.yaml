@@ -1,0 +1,21 @@
+---
+# License Configuration Validation Tasks
+# This file contains validation for VMware Cloud Foundation license requirements
+# including ESXi, vSAN, NSX, and vCenter Server licenses
+
+- name: Validate | VCF License Configuration
+  tags: ['validation', 'license']
+  ansible.builtin.assert:
+    that:
+      - vcf.license is defined
+      - vcf.license.esxi is not none
+      - vcf.license.esxi | length > 0
+      - vcf.license.vsan is not none
+      - vcf.license.vsan | length > 0
+      - vcf.license.nsx is not none
+      - vcf.license.nsx | length > 0
+      - vcf.license.vcenter is not none
+      - vcf.license.vcenter | length > 0
+    fail_msg: "VCF licenses (esxi, vsan, nsx, vcenter) are required"
+    success_msg: "VCF licenses are set"
+  when: not vcf.deploy_without_license_keys | bool

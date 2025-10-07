@@ -1,0 +1,47 @@
+---
+# Collect ESXi HTTPS (SSL) certificate SHA256 fingerprint (colon-separated hex)
+
+- name: Obtain ESXi SSL certificate fingerprint (SHA256)
+  delegate_to: localhost
+  vars:
+    target_host: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
+    target_port: "{{ esxi_https_port | default(443) }}"
+  shell: |
+    set -e
+    host="{{ target_host }}"
+    port="{{ target_port }}"
+    cert=$(echo | openssl s_client -servername "$host" -connect "$host:$port" 2>/dev/null | openssl x509 -outform pem || true)
+    if [ -z "$cert" ]; then
+      echo "ERROR: Failed to retrieve certificate from $host:$port" >&2
+      exit 1
+    fi
+    # Extract SHA256 fingerprint (colon-separated)
+    fp=$(printf '%s\n' "$cert" | openssl x509 -fingerprint -sha256 -noout | awk -F= '{print $2}')
+    if [ -z "$fp" ] || ! echo "$fp" | grep -Eq '^[0-9A-F:]{59,}$'; then
+      echo "ERROR: Failed to derive SHA256 SSL fingerprint for $host:$port" >&2
+      exit 1
+    fi
+    echo "$fp"
+  register: esxi_ssl_thumbprint_cmd
+  changed_when: false
+
+- name: Set per-host SSL thumbprint fact
+  ansible.builtin.set_fact:
+    esxi_ssl_thumbprint: "{{ esxi_ssl_thumbprint_cmd.stdout | trim }}"
+
+- name: Debug ESXi SSL thumbprint (optional)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} => {{ esxi_ssl_thumbprint }}"
+  when: esxi_print_ssl_thumbprints | default(false) | bool
+
+- name: Aggregate ESXi SSL thumbprints into a dict
+  ansible.builtin.set_fact:
+    esxi_ssl_thumbprints: "{{ esxi_ssl_thumbprints | default({}) | combine({item: (hostvars[item].esxi_ssl_thumbprint | default(''))}) }}"
+  loop: "{{ groups.get('vcf_cluster', groups['all']) }}"
+  run_once: true
+
+- name: Debug aggregated ESXi SSL thumbprints (optional)
+  ansible.builtin.debug:
+    var: esxi_ssl_thumbprints
+  when: esxi_print_ssl_thumbprints | default(false) | bool
+  run_once: true

@@ -1,0 +1,255 @@
+---
+# Network Configuration Validation Tasks
+# This file contains comprehensive validation for VMware Cloud Foundation network configuration
+# including logical networks, network subnets, and network specifications
+
+- name: Validate | Network Configuration
+  tags: ['validation', 'network']
+  block:
+    - name: Validate | Required logical networks exist
+      vars:
+        required_networks:
+          - vcf-mgmt
+          - vcf-vsan
+          - vcf-vmotion
+          - vcf-nsx
+      ansible.builtin.assert:
+        that:
+          - logical_networks_index is defined
+          - required_networks | difference(logical_networks_index.keys() | list) | length == 0
+        fail_msg: >-
+          Missing required logical networks: {{ required_networks | difference(logical_networks_index.keys() | list) }}
+        success_msg: >-
+          All required logical networks present: {{ required_networks }}
+
+    - name: Validate | Logical network objects present with VLAN IDs
+      vars:
+        logical_network_objects:
+          - { name: 'mgmt_network', obj: '{{ mgmt_network }}' }
+          - { name: 'vmotion_network', obj: '{{ vmotion_network }}' }
+          - { name: 'vsan_network', obj: '{{ vsan_network }}' }
+          - { name: 'nsx_network', obj: '{{ nsx_network }}' }
+      ansible.builtin.assert:
+        that:
+          - item.obj is defined
+          - item.obj.vlan_id is defined
+          - item.obj.vlan_id is not none
+        fail_msg: "{{ item.name }} is missing or lacks required vlan_id property"
+        success_msg: "{{ item.name }} is valid with VLAN ID {{ item.obj.vlan_id }}"
+      loop: "{{ logical_network_objects }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Validate | vm-mgmt logical network present when distinct VLAN enabled
+      ansible.builtin.assert:
+        that:
+          - logical_networks_index.get('vcf-vm-mgmt') is defined
+          - (logical_networks_index.get('vcf-vm-mgmt') | length) > 0
+        fail_msg: "distinct_vlan_id_vm_mgmt_and_esxi_mgmt is true but vcf-vm-mgmt network is missing"
+        success_msg: "vcf-vm-mgmt network present (distinct VLAN mode)"
+      when: vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool
+
+    - name: Validate | NSX network basic configuration
+      ansible.builtin.assert:
+        that:
+          - nsx_network_subnet is defined
+          - nsx_network_subnet.subnet is defined
+          - nsx_network_subnet.gateway is defined
+          - nsx_network_subnet.vlan_id is defined
+          - nsx_network_subnet.mtu is defined
+          - (nsx_network_subnet.subnet | length) > 0
+          - (nsx_network_subnet.gateway | length) > 0
+          - nsx_network_subnet.vlan_id is not none
+          - nsx_network_subnet.mtu is not none
+        fail_msg: "NSX network basic configuration (subnet, gateway, vlan_id, mtu) is missing or invalid"
+        success_msg: |-
+          NSX network basic configuration is valid
+          Subnet: {{ nsx_network_subnet.subnet }}
+          Gateway: {{ nsx_network_subnet.gateway }}
+          VLAN: {{ nsx_network_subnet.vlan_id }}
+          MTU: {{ nsx_network_subnet.mtu }}
+
+    - name: Validate | NSX network Host Overlay IP range (when defined)
+      ansible.builtin.assert:
+        that:
+          - nsx_network_subnet.startIp is defined
+          - nsx_network_subnet.endIp is defined
+          - (nsx_network_subnet.startIp | length) > 0
+          - (nsx_network_subnet.endIp | length) > 0
+        fail_msg: "NSX network IP ranges (startIp/endIp) are defined but missing or empty"
+        success_msg: "NSX network IP ranges set: {{ nsx_network_subnet.startIp }}-{{ nsx_network_subnet.endIp }}"
+      when: nsx_network_subnet.startIp is defined and nsx_network_subnet.endIp is defined
+
+    - name: Validate | VMOTION network basic configuration
+      ansible.builtin.assert:
+        that:
+          - vmotion_network_subnet is defined
+          - vmotion_network_subnet.subnet is defined
+          - vmotion_network_subnet.gateway is defined
+          - vmotion_network_subnet.vlan_id is defined
+          - vmotion_network_subnet.mtu is defined
+          - (vmotion_network_subnet.subnet | length) > 0
+          - (vmotion_network_subnet.gateway | length) > 0
+          - vmotion_network_subnet.vlan_id is not none
+          - vmotion_network_subnet.mtu is not none
+        fail_msg: "VMOTION network basic configuration (subnet, gateway, vlan_id, mtu) is missing or invalid"
+        success_msg: |-
+          VMOTION network basic configuration is valid
+          Subnet: {{ vmotion_network_subnet.subnet }}
+          Gateway: {{ vmotion_network_subnet.gateway }}
+          VLAN: {{ vmotion_network_subnet.vlan_id }}
+          MTU: {{ vmotion_network_subnet.mtu }}
+
+    - name: Validate | VMOTION network pool IP range
+      ansible.builtin.assert:
+        that:
+          - vmotion_network_subnet.startIp is defined
+          - vmotion_network_subnet.endIp is defined
+          - (vmotion_network_subnet.startIp | length) > 0
+          - (vmotion_network_subnet.endIp | length) > 0
+        fail_msg: "VMOTION network IP ranges (startIp/endIp) are defined but missing or empty"
+        success_msg: "VMOTION network pool IP range set: {{ vmotion_network_subnet.startIp }}-{{ vmotion_network_subnet.endIp }}"
+
+    - name: Validate | VSAN network basic configuration
+      ansible.builtin.assert:
+        that:
+          - vsan_network_subnet is defined
+          - vsan_network_subnet.subnet is defined
+          - vsan_network_subnet.gateway is defined
+          - vsan_network_subnet.vlan_id is defined
+          - vsan_network_subnet.mtu is defined
+          - (vsan_network_subnet.subnet | length) > 0
+          - (vsan_network_subnet.gateway | length) > 0
+          - vsan_network_subnet.vlan_id is not none
+          - vsan_network_subnet.mtu is not none
+        fail_msg: "VSAN network basic configuration (subnet, gateway, vlan_id, mtu) is missing or invalid"
+        success_msg: |-
+          VSAN network basic configuration is valid
+          Subnet: {{ vsan_network_subnet.subnet }}
+          Gateway: {{ vsan_network_subnet.gateway }}
+          VLAN: {{ vsan_network_subnet.vlan_id }}
+          MTU: {{ vsan_network_subnet.mtu }}
+
+    - name: Validate | VSAN network pool IP range
+      ansible.builtin.assert:
+        that:
+          - vsan_network_subnet.startIp is defined
+          - vsan_network_subnet.endIp is defined
+          - (vsan_network_subnet.startIp | length) > 0
+          - (vsan_network_subnet.endIp | length) > 0
+        fail_msg: "VSAN network IP ranges (startIp/endIp) are defined but missing or empty"
+        success_msg: "VSAN network pool IP range set: {{ vsan_network_subnet.startIp }}-{{ vsan_network_subnet.endIp }}"
+
+    - name: Validate | Network specs configuration
+      vars:
+        required_network_types:
+          - network_type_vmotion
+          - network_type_vsan
+        network_type_properties:
+          - type_name
+          - teaming_policy
+          - port_group_key
+          - active_uplinks
+      ansible.builtin.assert:
+        that:
+          - network_specs is defined
+          - required_network_types | difference(network_specs.keys() | list) | length == 0
+        fail_msg: >-
+          Missing required network types in network_specs: {{ required_network_types | difference(network_specs.keys() | list) }}
+        success_msg: >-
+          All required network types present in network_specs: {{ required_network_types }}
+
+    - name: Validate | Network type properties for VMOTION
+      ansible.builtin.assert:
+        that:
+          - network_specs.network_type_vmotion.type_name is defined
+          - network_specs.network_type_vmotion.teaming_policy is defined
+          - network_specs.network_type_vmotion.port_group_key is defined
+          - network_specs.network_type_vmotion.active_uplinks is defined
+          - (network_specs.network_type_vmotion.type_name | length) > 0
+          - (network_specs.network_type_vmotion.teaming_policy | length) > 0
+          - (network_specs.network_type_vmotion.port_group_key | length) > 0
+          - network_specs.network_type_vmotion.active_uplinks | length > 0
+        fail_msg: "VMOTION network type configuration is missing required properties (type_name, teaming_policy, port_group_key, active_uplinks)"
+        success_msg: "VMOTION network type configuration is valid: {{ network_specs.network_type_vmotion.type_name }}"
+
+    - name: Validate | Network type properties for VSAN
+      ansible.builtin.assert:
+        that:
+          - network_specs.network_type_vsan.type_name is defined
+          - network_specs.network_type_vsan.teaming_policy is defined
+          - network_specs.network_type_vsan.port_group_key is defined
+          - network_specs.network_type_vsan.active_uplinks is defined
+          - (network_specs.network_type_vsan.type_name | length) > 0
+          - (network_specs.network_type_vsan.teaming_policy | length) > 0
+          - (network_specs.network_type_vsan.port_group_key | length) > 0
+          - network_specs.network_type_vsan.active_uplinks | length > 0
+        fail_msg: "VSAN network type configuration is missing required properties (type_name, teaming_policy, port_group_key, active_uplinks)"
+        success_msg: "VSAN network type configuration is valid: {{ network_specs.network_type_vsan.type_name }}"
+
+    - name: Validate | Network subnet and type compatibility for VMOTION
+      ansible.builtin.assert:
+        that:
+          - vmotion_network_subnet.vlan_id == vmotion_network.vlan_id
+        fail_msg: "VMOTION network subnet VLAN ID ({{ vmotion_network_subnet.vlan_id | default('undefined') }}) does not match network VLAN ID ({{ vmotion_network.vlan_id | default('undefined') }})"
+        success_msg: "VMOTION network subnet and network VLAN IDs are consistent: {{ vmotion_network_subnet.vlan_id }}"
+      when:
+        - vmotion_network_subnet is defined
+        - vmotion_network is defined
+        - vmotion_network_subnet.vlan_id is defined
+        - vmotion_network.vlan_id is defined
+
+    - name: Validate | Network subnet and type compatibility for VSAN
+      ansible.builtin.assert:
+        that:
+          - vsan_network_subnet.vlan_id == vsan_network.vlan_id
+        fail_msg: "VSAN network subnet VLAN ID ({{ vsan_network_subnet.vlan_id | default('undefined') }}) does not match network VLAN ID ({{ vsan_network.vlan_id | default('undefined') }})"
+        success_msg: "VSAN network subnet and network VLAN IDs are consistent: {{ vsan_network_subnet.vlan_id }}"
+      when:
+        - vsan_network_subnet is defined
+        - vsan_network is defined
+        - vsan_network_subnet.vlan_id is defined
+        - vsan_network.vlan_id is defined
+
+  rescue:
+    - name: Debug | Dump logical networks index (failure context)
+      ansible.builtin.debug:
+        var: logical_networks_index
+      when:
+        - vcf.validation_debug | default(false) | bool
+        - logical_networks_index is defined
+
+    - name: Debug | Dump NSX host overlay pool subnet (failure context)
+      ansible.builtin.debug:
+        var: nsx_network_subnet
+      when:
+        - vcf.validation_debug | default(false) | bool
+        - nsx_network_subnet is defined
+
+    - name: Debug | Dump VMOTION network subnet (failure context)
+      ansible.builtin.debug:
+        var: vmotion_network_subnet
+      when:
+        - vcf.validation_debug | default(false) | bool
+        - vmotion_network_subnet is defined
+
+    - name: Debug | Dump VSAN network subnet (failure context)
+      ansible.builtin.debug:
+        var: vsan_network_subnet
+      when:
+        - vcf.validation_debug | default(false) | bool
+        - vsan_network_subnet is defined
+
+    - name: Debug | Dump network specs configuration (failure context)
+      ansible.builtin.debug:
+        var: network_specs
+      when:
+        - vcf.validation_debug | default(false) | bool
+        - network_specs is defined
+
+    - name: Fail | Re-raise validation error
+      ansible.builtin.fail:
+        msg: >-
+          Network validation failed.
+          {{ not (vcf.validation_debug | default(false) | bool)
+             | ternary('Set validation_debug=true to see detailed dumps.', 'Debug data was printed above.') }}

@@ -1,0 +1,6 @@
+---
+esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
+esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
+esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
+
+esxi_print_facts: "{{ extensionInstanceVariables.esxi_print_facts | default(true) | bool }}"

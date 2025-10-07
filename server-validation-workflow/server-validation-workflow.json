@@ -2,12 +2,12 @@
   "kind": "ExtensionDefinition",
   "schemaVersion": "1.1",
   "name": "server validation",
-  "label": "execute-on-ssh",
+  "label": "execute_on_ssh",
   "extensionType": "workflow",
   "vendor": "MetalSoft",
   "extensionVersion": "1.0.0",
-  "description": "alidate a server on server register",
-  "icon": "",
+  "description": "Validate a server on server register",
+  "icon": "servervalidation",
   "dependencies": {
     "controllerVersion": "string"
   },
@@ -26,7 +26,7 @@
       "stage": "serverRegistered",
       "tasks": [
         {
-          "label": "Validate server",
+          "label": "validate_server",
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "server_validation_ansible",

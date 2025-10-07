@@ -1,0 +1,78 @@
+workflowType: "{{ vcf.platform | default('VCF') }}"
+skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation }}
+deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys }}
+ceipEnabled: {{ vcf.ceip_enabled }}
+fipsEnabled: {{ vcf.fips_enabled }}
+taskName: {{ vcf.task_name }}
+
+ntpServers: {{ ntp_servers }}
+
+dnsSpec:
+  subdomain: "{{ subdomain }}"
+  domain: "{{ domain }}"
+  nameserver: "{{ dns_servers[0] }}"
+  secondaryNameserver: "{{ dns_servers[1] | default('') }}"
+
+{% if proxy_enabled | bool %}
+proxySpec:
+  host: "{{ proxy_spec.host }}"
+  port: "{{ proxy_spec.port }}"
+{% if proxy_spec.username is defined and proxy_spec.username %}
+    username: "{{ proxy_spec.username }}"
+{% endif %}
+{% if proxy_spec.password is defined and proxy_spec.password %}
+    password: "{{ proxy_spec.password }}"
+{% endif %}
+  transferProtocol: "{{ proxy_spec.transferProtocol }}"
+{% endif %}
+
+{% if
+  (not vcf.deploy_without_license_keys | bool)
+  and (vcf.license.esxi is defined)
+  and (vcf.license.esxi)
+%}
+esxLicense: "{{ vcf.license.esxi }}"
+{% endif %}
+
+{% if sddc_manager_spec.management_pool_name is defined and sddc_manager_spec.management_pool_name %}
+managementPoolName: "{{ sddc_manager_spec.management_pool_name }}"
+{% endif %}
+
+sddcId: "{{ sddc_manager_spec.id }}"
+
+sddcManagerSpec:
+  hostname: "{{ sddc_manager_spec.hostname }}"
+  ipAddress: "{{ sddc_manager_spec.ipv4_address }}"
+  localUserPassword: "{{ sddc_manager_spec.local_user_password }}"
+  rootUserCredentials:
+    username: "{{ sddc_manager_spec.root_user_credentials.username }}"
+    password: "{{ sddc_manager_spec.root_user_credentials.password }}"
+  secondUserCredentials:
+    username: "{{ sddc_manager_spec.second_user_credentials.username }}"
+    password: "{{ sddc_manager_spec.second_user_credentials.password }}"
+
+{% include 'network-specs.yaml.j2' %}
+
+{% include 'nsx-spec.yaml.j2' %}
+
+{% include 'vsan-spec.yaml.j2' %}
+
+{% if dv_switch_version is defined and dv_switch_version %}
+dvSwitchVersion: "{{ dv_switch_version }}"
+{% endif %}
+
+{% include 'dvs-specs.yaml.j2' %}
+
+{% include 'cluster-spec.yaml.j2' %}
+
+{% include 'host-specs.yaml.j2' %}
+
+pscSpecs:
+- adminUserSsoPassword: "{{ psc_specs.sso_admin_password }}"
+  pscSsoSpec:
+    ssoDomain: "{{ psc_specs.sso_domain_name }}"
+vcenterSpec:
+  vcenterIp: "{{ vcenter_spec.ip }}"
+  vcenterHostname: "{{ vcenter_spec.vcenter_hostname }}"
+  rootVcenterPassword: "{{ vcenter_spec.root_password }}"
+  vmSize: "{{ vcenter_spec.vm_size }}"

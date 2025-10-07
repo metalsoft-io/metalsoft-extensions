@@ -1,0 +1,18 @@
+---
+# vCenter and PSC specifications
+
+# Specification for SSO Configuration in the Management vCenter Server Appliance
+- name: Build | PSC spec
+  set_fact:
+    psc_specs:
+      sso_domain_name: "{{ extensionInstanceVariables.psc_sso_domain_name | default('vsphere.local') }}"
+      sso_admin_password: "{{ extensionInstanceVariables.vcenter_sso_admin_password | default('VMw@re1!VMw@re1!') }}"
+
+- name: Build | vCenter spec
+  set_fact:
+    vcenter_spec:
+      vm_size: "{{ extensionInstanceVariables.vcenter_vm_size | default('small') }}"
+      ip: "{{ management_vcenter_server_config.ip | default('') }}"
+      vcenter_fqdn: "{{ management_vcenter_server_config.fqdn | default('vcenter.vmware.local') }}"
+      vcenter_hostname: "{{ management_vcenter_server_config.fqdn | default('') | split('.') | first }}"
+      root_password: "{{ extensionInstanceVariables.vcenter_root_password | default('VMw@re1!VMw@re1!') }}"

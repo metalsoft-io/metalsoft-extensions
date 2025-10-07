@@ -1,0 +1,51 @@
+---
+repository_base_url: "{{ extensionInstanceVariables.repository_base_url | default(extensionInstanceRecordSet.repositoryBaseUrl | default('')) }}"
+ntp_servers: "{{ extensionInstanceRecordSet.ntpServers | default(['0.us.pool.ntp.org', '1.us.pool.ntp.org']) }}"
+domain: "{{ extensionInstanceRecordSet.baseDomain | default('vmware.local') }}"
+subdomain: "{{ extensionInstanceRecordSet.baseDomain | default('vmware.local') }}"
+dns_servers: "{{ extensionInstanceRecordSet.dnsResolvers | default(['1.1.1.1', '8.8.8.8']) }}"
+dns_searchpath: "{{ extensionInstanceRecordSet.baseDomain | default('vmware.local') }}"
+
+
+esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
+esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
+esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
+
+proxy_enabled: "{{ extensionInstanceVariables.proxy_enabled | default(false) | bool }}"
+# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/5.2.2/data-structures/ProxySpec/
+proxy_spec:
+  host: "{{ extensionInstanceVariables.proxy_host | default('') }}"
+  port: "{{ extensionInstanceVariables.proxy_port | default(3128) }}"
+  username: "{{ extensionInstanceVariables.proxy_username | default('') }}"
+  password: "{{ extensionInstanceVariables.proxy_password | default('') }}"
+  transferProtocol: "{{ extensionInstanceVariables.proxy_transfer_protocol | default('HTTPS') }}" # HTTP or HTTPS
+
+vcf_version: "{{ extensionInstanceVariables.vcf_version | default('5.2.1') }}"
+ova_name: "{{ extensionInstanceVariables.ova_name | default('VMware-Cloud-Builder-5.2.1.0-24307856_OVF10.ova') }}"
+ova_url: "{{ extensionInstanceVariables.ova_url | default(repository_base_url + '/.vmware/vcf/' + vcf_version + '/' + ova_name) }}"
+
+vcf:
+  # Deployment architecture model: consolidated, standard, or custom
+  architecture: "{{ extensionInstanceVariables.deployment_architecture_model | default('consolidated') }}"
+  # Deployment platform ("workflowType": VCF | VCF_VXRAIL")
+  platform: "{{ extensionInstanceVariables.deployment_platform | default('VCF') }}" # ToDo: Add support for VCF on VxRail
+  aria_suite_enabled: "{{ extensionInstanceVariables.aria_suite_enabled | default(false) | bool }}"
+  distinct_vlan_id_vm_mgmt_and_esxi_mgmt: "{{ extensionInstanceVariables.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool }}"
+  ceip_enabled: "{{ extensionInstanceVariables.ceip_enabled | default(false) | bool }}"
+  fips_enabled: "{{ extensionInstanceVariables.fips_enabled | default(false) | bool }}"
+  skip_esx_thumbprint_validation: "{{ extensionInstanceVariables.skip_esx_thumbprint_validation | default(false) | bool }}"
+  # subscription_licensing: "{{ extensionInstanceVariables.subscription_licensing | default(false) | bool }}"
+  license:
+    esxi: "{{ extensionInstanceVariables.license_esxi | default('') }}"
+    vsan: "{{ extensionInstanceVariables.license_vsan | default('') }}"
+    nsx: "{{ extensionInstanceVariables.license_nsx | default('') }}"
+    vcenter: "{{ extensionInstanceVariables.license_vcenter | default('') }}"
+  deploy_without_license_keys: "{{ extensionInstanceVariables.deploy_without_license_keys | default(true) | bool }}"
+  task_name: "{{ extensionInstanceVariables.task_name | default('workflowconfig/workflowspec-ems.json') }}"
+  dv_switch_version: "{{ extensionInstanceVariables.dv_switch_version | default('8.0.0') }}"
+  validation_debug: "{{ extensionInstanceVariables.validation_debug | default(true) | bool }}"
+  api_call_debug_localfile: "{{ extensionInstanceVariables.api_call_debug_localfile | default(true) | bool }}"
+
+
+esxi_print_ssh_thumbprints: "{{ extensionInstanceVariables.esxi_print_ssh_thumbprints | default(true) | bool }}"
+esxi_print_ssl_thumbprints: "{{ extensionInstanceVariables.esxi_print_ssl_thumbprints | default(true) | bool }}"

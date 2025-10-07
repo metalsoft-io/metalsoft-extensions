@@ -1,0 +1,46 @@
+---
+# Basic required variables validation
+# Validates foundational configuration like repository URLs, NTP, DNS, and domain settings
+
+- name: Validate | Basic required variables
+  tags: ['validation', 'basic']
+  block:
+    - name: Validate | Required basic variables
+      vars:
+        basic_validations:
+          - { label: 'repository_base_url', value: '{{ repository_base_url }}' }
+          - { label: 'ntp_servers', value: '{{ ntp_servers }}' }
+          - { label: 'domain', value: '{{ domain }}' }
+          - { label: 'subdomain', value: '{{ subdomain }}' }
+          - { label: 'dns_servers', value: '{{ dns_servers }}' }
+          - { label: 'dns_searchpath', value: '{{ dns_searchpath }}' }
+      ansible.builtin.assert:
+        that:
+          - item.value is not none
+          - (item.value | length) > 0
+        fail_msg: "{{ item.label }} is required"
+        success_msg: "{{ item.label }} is set to {{ item.value }}"
+      loop: "{{ basic_validations }}"
+      loop_control:
+        label: "{{ item.label }}"
+  rescue:
+    - name: Debug | Dump basic validation variables
+      ansible.builtin.debug:
+        msg: |-
+          repository_base_url={{ repository_base_url | default('') }}
+          ntp_servers={{ ntp_servers | default('') }}
+          domain={{ domain | default('') }}
+          subdomain={{ subdomain | default('') }}
+          dns_servers={{ dns_servers | default('') }}
+          dns_searchpath={{ dns_searchpath | default('') }}
+      when: vcf.validation_debug | default(false) | bool
+    - name: Fail | Re-raise basic validations failure
+      ansible.builtin.fail:
+        msg: |-
+          Basic variable validation failed.
+          {{ not (vcf.validation_debug | default(false) | bool)
+             | ternary(
+               'Set vcf.validation_debug=true for details.',
+               'Debug data was printed above.'
+             )
+          }}

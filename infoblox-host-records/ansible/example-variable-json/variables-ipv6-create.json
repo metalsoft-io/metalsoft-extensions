@@ -1,0 +1,65 @@
+{
+    "serverInstanceRecordSet": {
+        "deployStatus": "ongoing",
+        "deployType": "create",
+        "deploymentId": 5395,
+        "instanceIpv4IpRanges": [],
+        "instanceIpv4Ips": [],
+        "instanceIpv6IpRanges": [],
+        "instanceIpv6Ips": [
+            {
+                "cidr": "2002:db8:abcf:12::4/64",
+                "gateway": "2002:db8:abcf:12::1",
+                "ip": "2002:db8:abcf:12::4",
+                "logicalNetworkId": 1215,
+                "maskBits": 64,
+                "netmask": "ffff:ffff:ffff:ffff::",
+                "networkAddress": "2002:db8:abcf:12::",
+                "status": "allocated"
+            }
+        ],
+        "logicalNetworks": [
+            {
+                "interfaces": [
+                    {
+                        "macAddress": "8c:84:74:0e:6c:34",
+                        "redundancyIndex": null,
+                        "serverInterfaceId": 688,
+                        "tagged": false
+                    }
+                ],
+                "ipv6Subnets": [
+                    {
+                        "gateway": "2002:db8:abcf:12::1",
+                        "gatewayPlacement": "default",
+                        "networkAddress": "2002:db8:abcf:12::",
+                        "prefixLength": 64,
+                        "scope": {
+                            "kind": "fabric",
+                            "resourceId": 1931
+                        },
+                        "status": "allocated"
+                    }
+                ],
+                "logicalNetworkId": 1215,
+                "logicalNetworkLabel": "alex-ipv6",
+                "logicalNetworkName": "alex-ipv6",
+                "vlans": [
+                    {
+                        "id": 315,
+                        "scope": {
+                            "kind": "fabric",
+                            "resourceId": 1931
+                        },
+                        "status": "allocated",
+                        "vlanId": 427
+                    }
+                ]
+            }
+        ],
+        "serverId": 204,
+        "serverInstanceId": 4437,
+        "serviceStatus": "ordered",
+        "siteLabel": "dc-eveng-qa02"
+    }
+}

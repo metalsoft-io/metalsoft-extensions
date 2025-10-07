@@ -1,0 +1,56 @@
+{
+    "serverInstanceDNSRecordSet": {
+        "records": [
+            {
+                "createdAt": "2025-09-26T22:01:37.000Z",
+                "createdBy": 1,
+                "id": 120,
+                "infrastructureId": 4365,
+                "name": "instance-4430.eveng-qa02.metalcloud.io.",
+                "records": [
+                    "10.0.0.4"
+                ],
+                "revision": 1,
+                "siteId": 11,
+                "status": "deleting",
+                "tags": [
+                    "instance:4430"
+                ],
+                "ttl": 3600,
+                "type": "A",
+                "zoneId": 1,
+                "zoneName": "eveng-qa02.metalcloud.io"
+            },
+            {
+                "createdAt": "2025-09-26T22:01:37.000Z",
+                "createdBy": 1,
+                "id": 121,
+                "infrastructureId": 4365,
+                "name": "4.0.0.10.in-addr.arpa.",
+                "records": [
+                    "instance-4430.eveng-qa02.metalcloud.io"
+                ],
+                "revision": 1,
+                "siteId": 11,
+                "status": "deleting",
+                "tags": [
+                    "instance:4430"
+                ],
+                "ttl": 3600,
+                "type": "PTR",
+                "zoneId": 1,
+                "zoneName": "eveng-qa02.metalcloud.io"
+            }
+        ],
+        "zone": {
+            "isDefault": true,
+            "nameServers": [
+                "ns1.evenq-qa02.metalcloud.io",
+                "test.1.2com"
+            ],
+            "soaEmail": "admin.eveng-qa02.metalcloud.io",
+            "ttl": 3600,
+            "zoneName": "eveng-qa02.metalcloud.io"
+        }
+    }
+}

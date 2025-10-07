@@ -1,0 +1,4 @@
+---
+collections:
+  - name: infoblox.nios_modules
+  - name: community.general

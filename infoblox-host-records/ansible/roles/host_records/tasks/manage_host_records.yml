@@ -1,0 +1,6 @@
+---
+- name: Iterate host records
+  include_tasks: host_record_item.yml
+  loop: "{{ host_records }}"
+  loop_control:
+    loop_var: host_item

@@ -1,0 +1,55 @@
+{
+    "serverInstanceDNSRecordSet": {
+        "records": [
+            {
+                "createdAt": "2025-09-26T05:15:44.000Z",
+                "createdBy": 1,
+                "id": 99,
+                "infrastructureId": 81,
+                "name": "instance-263.us05.metalsoft.io.",
+                "records": [
+                    "192.168.64.6"
+                ],
+                "revision": 1,
+                "siteId": 1,
+                "status": "deleting",
+                "tags": [
+                    "instance:263"
+                ],
+                "ttl": 3600,
+                "type": "A",
+                "zoneId": 1,
+                "zoneName": "us05.metalsoft.io"
+            },
+            {
+                "createdAt": "2025-09-26T05:15:44.000Z",
+                "createdBy": 1,
+                "id": 102,
+                "infrastructureId": 81,
+                "name": "6.64.168.192.in-addr.arpa.",
+                "records": [
+                    "instance-263.us05.metalsoft.io"
+                ],
+                "revision": 1,
+                "siteId": 1,
+                "status": "deleting",
+                "tags": [
+                    "instance:263"
+                ],
+                "ttl": 3600,
+                "type": "PTR",
+                "zoneId": 1,
+                "zoneName": "us05.metalsoft.io"
+            }
+        ],
+        "zone": {
+            "isDefault": true,
+            "nameServers": [
+                "ns.us05.metalsoft.io"
+            ],
+            "soaEmail": "admin.us05.metalsoft.io",
+            "ttl": 3600,
+            "zoneName": "us05.metalsoft.io"
+        }
+    }
+}

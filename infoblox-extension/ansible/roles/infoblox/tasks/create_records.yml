@@ -3,7 +3,7 @@
 - name: Prepare active non-PTR records
   ansible.builtin.set_fact:
     _active_records: "{{ working_operation.records | selectattr('status','equalto','active') | selectattr('type','defined') | selectattr('type','ne','PTR') | list }}"
-- name: Create A/AAAA records
+- name: Create host records (host mode enabled)
   vars:
     record_fqdn: >-
       {% set base = (item.name | default('@')) %}
@@ -14,10 +14,31 @@
       {% else %}
       {{ base + '.' + zone_name.rstrip('.') }}
       {% endif %}
-  when: item.type | upper in ['A','AAAA'] and item.records is defined and (item.records | length) > 0
   loop: "{{ _active_records }}"
   loop_control:
-    label: "{{ item.type }} {{ item.name }}"
+    label: "HOST {{ item.name }}"
+  when:
+    - use_host_records | default(false) | bool
+    - item.type | upper in ['A','AAAA']
+  ansible.builtin.include_tasks: _create_host_record_task.yml
+
+- name: Create A/AAAA records (legacy mode)
+  vars:
+    record_fqdn: >-
+      {% set base = (item.name | default('@')) %}
+      {% if base == '@' %}
+      {{ zone_name.rstrip('.') }}
+      {% elif base.endswith('.') %}
+      {{ base.rstrip('.') }}
+      {% else %}
+      {{ base + '.' + zone_name.rstrip('.') }}
+      {% endif %}
+  loop: "{{ _active_records }}"
+  loop_control:
+    label: "REC {{ item.name }}"
+  when:
+    - not (use_host_records | default(false) | bool)
+    - item.type | upper in ['A','AAAA']
   ansible.builtin.include_tasks: _create_ip_record_task.yml
 
 - name: Debug existing A records before potential deletion (verbosity 1)

@@ -1,0 +1,76 @@
+{
+    "clusterDNSRecordSet": {
+        "records": [
+            {
+                "createdAt": "2025-09-26T05:12:04.000Z",
+                "createdBy": 1,
+                "id": 96,
+                "infrastructureId": 81,
+                "name": "api.sttest-ocp-ag.metalcloud.local.",
+                "records": [
+                    "192.168.64.7"
+                ],
+                "revision": 2,
+                "siteId": 1,
+                "status": "deleting",
+                "tags": [
+                    "cluster:18"
+                ],
+                "ttl": 3600,
+                "type": "A",
+                "zoneId": 2,
+                "zoneName": "metalcloud.local"
+            },
+            {
+                "createdAt": "2025-09-26T05:12:04.000Z",
+                "createdBy": 1,
+                "id": 97,
+                "infrastructureId": 81,
+                "name": "7.64.168.192.in-addr.arpa.",
+                "records": [
+                    "api.sttest-ocp-ag.metalcloud.local"
+                ],
+                "revision": 2,
+                "siteId": 1,
+                "status": "deleting",
+                "tags": [
+                    "cluster:18"
+                ],
+                "ttl": 3600,
+                "type": "PTR",
+                "zoneId": 1,
+                "zoneName": "us05.metalsoft.io"
+            },
+            {
+                "createdAt": "2025-09-26T05:12:04.000Z",
+                "createdBy": 1,
+                "id": 95,
+                "infrastructureId": 81,
+                "name": "*.apps.sttest-ocp-ag.metalcloud.local.",
+                "records": [
+                    "192.168.64.8"
+                ],
+                "revision": 2,
+                "siteId": 1,
+                "status": "deleting",
+                "tags": [
+                    "cluster:18"
+                ],
+                "ttl": 3600,
+                "type": "A",
+                "zoneId": 2,
+                "zoneName": "metalcloud.local"
+            }
+        ],
+        "zone": {
+            "isDefault": false,
+            "nameServers": [
+                "ns1.metalcloud.local",
+                "ns2.metalcloud.local"
+            ],
+            "soaEmail": "admin.metalcloud.local",
+            "ttl": 3600,
+            "zoneName": "metalcloud.local"
+        }
+    }
+}

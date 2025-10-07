@@ -1,0 +1,83 @@
+---
+# Legacy fallback when WAPI < 2.13 (host record extended return fields unsupported)
+# We emulate a host record by creating A (and optional AAAA) plus PTR records.
+
+- name: Fallback ensure A records for {{ host_item.host_name }}
+  vars:
+    record_state: "{{ host_item.state if force_state|length == 0 else force_state }}"
+  nios_a_record:
+    name: "{{ host_item.host_name }}"
+    ipv4: "{{ ipv4_addr }}"
+    state: "{{ record_state }}"
+    ttl: "{{ host_item.ttl | default(3600) }}"
+    comment: "managed-by=metalsoft(fallback)"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ host_item.ipv4_list | default([]) }}"
+  loop_control:
+    loop_var: ipv4_addr
+  when: (host_item.ipv4_list | default([])) | length > 0 and (not delete_only or record_state == 'absent')
+  register: _fallback_a_result
+
+- name: Fallback ensure AAAA records for {{ host_item.host_name }} (if any)
+  vars:
+    record_state: "{{ host_item.state if force_state|length == 0 else force_state }}"
+  nios_aaaa_record:
+    name: "{{ host_item.host_name }}"
+    ipv6: "{{ ipv6_addr }}"
+    state: "{{ record_state }}"
+    ttl: "{{ host_item.ttl | default(3600) }}"
+    comment: "managed-by=metalsoft(fallback)"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ host_item.ipv6_list | default([]) }}"
+  loop_control:
+    loop_var: ipv6_addr
+  when: (host_item.ipv6_list | default([])) | length > 0 and (not delete_only or record_state == 'absent')
+  register: _fallback_aaaa_result
+
+- name: Fallback create PTR for each IPv4
+  nios_ptr_record:
+    ipv4: "{{ ipv4_addr }}"
+    ptrdname: "{{ host_item.host_name }}"
+    state: "{{ host_item.state if force_state|length == 0 else force_state }}"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ host_item.ipv4_list | default([]) }}"
+  loop_control:
+    loop_var: ipv4_addr
+  when: create_ptr and (host_item.state if force_state|length == 0 else force_state) == 'present'
+
+- name: Fallback create PTR for each IPv6 (optional)
+  nios_ptr_record:
+    ipv6: "{{ ipv6_addr }}"
+    ptrdname: "{{ host_item.host_name }}"
+    state: "{{ host_item.state if force_state|length == 0 else force_state }}"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ host_item.ipv6_list | default([]) }}"
+  loop_control:
+    loop_var: ipv6_addr
+  when: create_ipv6_ptr and (host_item.state if force_state|length == 0 else force_state) == 'present'
+
+- name: Fallback debug results (changed summary)
+  debug:
+    msg: >-
+      Fallback mode results: A changed={{ (_fallback_a_result.results | selectattr('changed','equalto',True) | list | length) if _fallback_a_result is defined else 0 }}, AAAA changed={{ (_fallback_aaaa_result.results | selectattr('changed','equalto',True) | list | length) if _fallback_aaaa_result is defined else 0 }}
+*** End Patch

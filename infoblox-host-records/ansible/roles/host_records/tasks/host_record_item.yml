@@ -1,0 +1,106 @@
+---
+- name: Compute record_state for host_item
+  set_fact:
+    record_state: "{{ host_item.state if force_state|length == 0 else force_state }}"
+
+- name: Manage host record {{ host_item.host_name }} (multi-IP) via native module
+  vars:
+    _ipv4_list: >-
+      {{ (
+           host_item.ipv4_list
+             if (host_item.ipv4_list is defined and host_item.ipv4_list is not none)
+             else ([host_item.ipv4] if (host_item.ipv4 is defined and host_item.ipv4 is not none and (host_item.ipv4|string)|length>0) else [])
+         ) | list }}
+    _ipv6_list: >-
+      {{ (
+           host_item.ipv6_list
+             if (host_item.ipv6_list is defined and host_item.ipv6_list is not none)
+             else ([host_item.ipv6] if (host_item.ipv6 is defined and host_item.ipv6 is not none and (host_item.ipv6|string)|length>0) else [])
+         ) | list }}
+  nios_host_record:
+    name: "{{ host_item.host_name }}"
+    ipv4addrs: "{{ (_ipv4_list | map('community.general.dict_kv', 'ipv4addr') | list) if _ipv4_list|length>0 else omit }}"
+    ipv6addrs: "{{ (_ipv6_list | map('community.general.dict_kv', 'ipv6addr') | list) if _ipv6_list|length>0 else omit }}"
+    state: "{{ record_state }}"
+    ttl: "{{ host_item.ttl | default(3600) }}"
+    comment: "managed-by=metalsoft"
+    use_dns_ea_inheritance: "{{ (infoblox_wapi_version | regex_replace('[^0-9.]','')) is version('2.13', '>=') | ternary(true, omit) }}"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  register: host_record_result
+  when: (not delete_only or record_state == 'absent') and not (host_record_use_compat | default(false))
+
+- name: Manage host record {{ host_item.host_name }} (multi-IP) via compat module
+  vars:
+    _ipv4_list: >-
+      {{ (
+           host_item.ipv4_list
+             if (host_item.ipv4_list is defined and host_item.ipv4_list is not none)
+             else ([host_item.ipv4] if (host_item.ipv4 is defined and host_item.ipv4 is not none and (host_item.ipv4|string)|length>0) else [])
+         ) | list }}
+    _ipv6_list: >-
+      {{ (
+           host_item.ipv6_list
+             if (host_item.ipv6_list is defined and host_item.ipv6_list is not none)
+             else ([host_item.ipv6] if (host_item.ipv6 is defined and host_item.ipv6 is not none and (host_item.ipv6|string)|length>0) else [])
+         ) | list }}
+  nios_host_record_compat:
+    name: "{{ host_item.host_name }}"
+    ipv4addrs: "{{ (_ipv4_list | map('community.general.dict_kv', 'ipv4addr') | list) if _ipv4_list|length>0 else [] }}"
+    ipv6addrs: "{{ (_ipv6_list | map('community.general.dict_kv', 'ipv6addr') | list) if _ipv6_list|length>0 else [] }}"
+    state: "{{ record_state }}"
+    ttl: "{{ host_item.ttl | default(3600) }}"
+    comment: "managed-by=metalsoft"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+      view: "{{ infoblox_dns_view }}"
+  register: host_record_result
+  when: (not delete_only or record_state == 'absent') and (host_record_use_compat | default(false))
+
+- name: Debug host result
+  debug:
+    var: host_record_result
+  when: host_record_result is defined and host_record_result is changed
+
+- name: Create PTR for each IPv4
+  nios_ptr_record:
+    ipv4: "{{ ipv4_addr }}"
+    ptrdname: "{{ host_item.host_name }}"
+    state: "{{ record_state }}"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ (host_item.ipv4_list | default([])) + ([host_item.ipv4] if (host_item.ipv4 is defined and host_item.ipv4|length>0 and (host_item.ipv4_list|default([])|length)==0) else []) }}"
+  loop_control:
+    loop_var: ipv4_addr
+  when: create_ptr and record_state == 'present'
+
+- name: Create PTR for each IPv6 (optional)
+  nios_ptr_record:
+    ipv6: "{{ ipv6_addr }}"
+    ptrdname: "{{ host_item.host_name }}"
+    state: "{{ record_state }}"
+    provider:
+      host: "{{ infoblox_hostname }}"
+      username: "{{ infoblox_username }}"
+      password: "{{ infoblox_password }}"
+      validate_certs: "{{ infoblox_validate_certs }}"
+      wapi_version: "{{ infoblox_wapi_version }}"
+  loop: "{{ (host_item.ipv6_list | default([])) + ([host_item.ipv6] if (host_item.ipv6 is defined and host_item.ipv6 is not none and (host_item.ipv6|string)|length>0 and (host_item.ipv6_list|default([])|length)==0) else []) }}"
+  loop_control:
+    loop_var: ipv6_addr
+  when: create_ipv6_ptr and record_state == 'present' and (
+          (host_item.ipv6_list | default([])) | length > 0 or
+          (host_item.ipv6 is defined and host_item.ipv6 is not none and (host_item.ipv6|string)|length > 0)
+        )

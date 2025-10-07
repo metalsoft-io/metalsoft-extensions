@@ -1,0 +1,122 @@
+---
+# Helper: create / update Infoblox host record for current 'item'
+# Expects: record_fqdn, item (with .records list of IPs), infoblox_view, nios_provider
+# Optional: item.ttl, ip_record_comment_template, ms_server_id, ms_logical_network_ids, ms_ip_logical_map
+
+- name: Derive IPv4 list for host record
+  ansible.builtin.set_fact:
+    _host_ipv4_list: >-
+      {{ (item.records | default([])) | select('ansible.utils.ipv4') | list }}
+
+- name: Derive IPv6 list for host record
+  ansible.builtin.set_fact:
+    _host_ipv6_list: >-
+      {{ (item.records | default([])) | select('ansible.utils.ipv6') | list }}
+
+- name: Fail if no IPs provided for host record
+  ansible.builtin.fail:
+    msg: "Host record {{ record_fqdn }} has no valid IP addresses (records list empty or invalid)"
+  when: (_host_ipv4_list | length) == 0 and (_host_ipv6_list | length) == 0 and not (allocate_ipv4 | default(false) | bool)
+
+# If allocation is enabled for IPv4 A records treat it similar to AUTO logic from A record path
+- name: Auto allocate IPv4 for host record when requested
+  when:
+    - allocate_ipv4 | default(false) | bool
+    - allocation_ipv4_network | default('') | length > 0
+    - (item.records is not defined) or (item.records | length == 0) or ('AUTO' in item.records)
+  block:
+    - name: Lookup existing host record (for reuse)
+      ansible.builtin.uri:
+        url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:host?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addrs&_max_results=20"
+        method: GET
+        user: "{{ infoblox_username }}"
+        password: "{{ infoblox_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ infoblox_validate_certs }}"
+        return_content: true
+      register: _existing_host_lookup
+      failed_when: false
+
+    - name: Extract existing IPv4 from host record
+      ansible.builtin.set_fact:
+        _existing_host_ipv4: >-
+          {{ (_existing_host_lookup.json[0].ipv4addrs[0].ipv4addr | default('')) if (_existing_host_lookup.json is sequence and (_existing_host_lookup.json | length) > 0) else '' }}
+
+    - name: Allocate new IPv4 for host record (lookup method)
+      when: _existing_host_ipv4 | length == 0
+      ansible.builtin.set_fact:
+        _next_host_ipv4_list: "{{ lookup('infoblox.nios_modules.nios_next_ip', allocation_ipv4_network, 'num=1', provider=nios_provider, wantlist=True) }}"
+      environment:
+        OBJC_DISABLE_INITIALIZE_FORK_SAFETY: "YES"
+
+    - name: Normalize allocated host IPv4
+      when: _existing_host_ipv4 | length == 0
+      ansible.builtin.set_fact:
+        _allocated_host_ipv4_raw: "{{ _next_host_ipv4_list[0] if (_next_host_ipv4_list is sequence) else _next_host_ipv4_list }}"
+
+    - name: Sanitize allocated host IPv4
+      when: _existing_host_ipv4 | length == 0
+      ansible.builtin.set_fact:
+        _allocated_host_ipv4: >-
+          {{ (_allocated_host_ipv4_raw | string)
+             | regex_replace('^[\[\(]{1}', '')
+             | regex_replace('[\]\)]{1}$', '')
+             | regex_replace('^"', '')
+             | regex_replace('"$', '')
+             | regex_replace("^'", '')
+             | regex_replace("'$", '') }}
+
+    - name: Fail if host IPv4 not allocated
+      when:
+        - _existing_host_ipv4 | length == 0
+        - _next_host_ipv4_list is not defined or (_next_host_ipv4_list | length) == 0 or (_allocated_host_ipv4 | default('') | length) == 0
+      ansible.builtin.fail:
+        msg: "Infoblox lookup did not return an IP for host record network {{ allocation_ipv4_network }}"
+
+    - name: Set host IPv4 list (allocated or existing)
+      ansible.builtin.set_fact:
+        _host_ipv4_list: >-
+          {{ ([ _existing_host_ipv4 ] if (_existing_host_ipv4 | length > 0) else [ _allocated_host_ipv4 ]) }}
+
+- name: Prepare host record comment
+  ansible.builtin.set_fact:
+    _host_comment: >-
+      {{ (
+          (ip_record_comment_template | default('MetalSoft server ID: [[SERVER_ID]] | MetalSoft logical network ID: [[LOGICAL_NETWORK_ID]]'))
+          | replace('[[SERVER_ID]]', (ms_server_id | default('') | string))
+          | replace('[[LOGICAL_NETWORK_ID]]', (
+              ms_ip_logical_map[_host_ipv4_list[0]]
+              | default( (ms_logical_network_ids | default([]) | first) | default('') )
+            ) | string)
+        ) | trim }}
+  when: (_host_ipv4_list | length) > 0
+
+- name: Create / update host record {{ record_fqdn }}
+  infoblox.nios_modules.nios_host_record:
+    name: "{{ record_fqdn | trim }}"
+    view: "{{ infoblox_view }}"
+    ttl: "{{ item.ttl | default(default_ttl) }}"
+    ipv4addrs: >-
+      {{ _host_ipv4_list | map('community.general.json_query', '{ipv4addr: @}') | list if (_host_ipv4_list | length) > 0 else omit }}
+    ipv6addrs: >-
+      {{ _host_ipv6_list | map('community.general.json_query', '{ipv6addr: @}') | list if (_host_ipv6_list | length) > 0 else omit }}
+    comment: "{{ _host_comment | default('') }}"
+    state: present
+    provider: "{{ nios_provider }}"
+
+- name: Track created host record
+  ansible.builtin.set_fact:
+    created_host_records: "{{ (created_host_records | default([])) + [ { 'name': record_fqdn | trim, 'ipv4': _host_ipv4_list | default([]), 'ipv6': _host_ipv6_list | default([]) } ] }}"
+
+- name: Create PTRs for host record IPv4 addresses (explicit) when enabled
+  when:
+    - host_record_ptr_enabled | default(false) | bool
+    - (_host_ipv4_list | length) > 0
+  loop: "{{ _host_ipv4_list }}"
+  loop_control:
+    loop_var: host_ptr_ip
+    label: "PTR {{ host_ptr_ip }}"
+  ansible.builtin.include_tasks: create_ptr.yml
+  vars:
+    ip_address: "{{ host_ptr_ip }}"
+    ptr_record_value: "{{ record_fqdn }}"

@@ -1,6 +1,23 @@
 # prettier-ignore-file
 # yamllint disable
 ---
+# Host Record Mode (optional):
+#   Set `use_host_records: true` (e.g. via extra vars or inventory) to create consolidated
+#   Infoblox host records instead of separate A / AAAA records.
+#   Effects:
+#     * A/AAAA items are grouped per name; IPv4/IPv6 lists placed in a single host object.
+#     * PTR handling: set `host_record_ptr_enabled: true` to create PTRs explicitly after host record creation (loops over IPv4 addresses invoking create_ptr.yml).
+#     * Deletion: when records are marked status=deleting, host records are removed via `_delete_host_record_task.yml`.
+#     * Allocation flags (allocate_ipv4, allocation_ipv4_network, allocation_ipv4_method) still apply for IPv4 AUTO logic.
+#     * Falls back to legacy per-record behavior when `use_host_records` is false.
+#     * Minimum WAPI version: 2.13. For older grids (e.g. 2.12) the role auto-disables host record mode to avoid unsupported return fields.
+#   Default: false.
+#
+#   Variable summary:
+#     use_host_records: boolean (default false)
+#     host_record_ptr_enabled: boolean (default false) – sets configure_for_dns on ipv4/ipv6 entries.
+#
+#   Enhancement: support for creating & deleting host records instead of separate A, AAAA and PTR combination.
 # Detect which JSON format
 - name: Detect JSON format type
   ansible.builtin.set_fact:
@@ -42,6 +59,22 @@
 - name: Debug role version
   ansible.builtin.debug:
     msg: "Infoblox role version: {{ infoblox_role_version }}"
+
+# Guard: auto-disable host record mode if WAPI version too old (< 2.13) to avoid unsupported field errors
+- name: Disable host record mode for unsupported WAPI version
+  when:
+    - use_host_records | default(false) | bool
+    - infoblox_wapi_version is version('2.13','<')
+  ansible.builtin.set_fact:
+    use_host_records: false
+    host_records_wapi_downgraded: true
+
+- name: Warn host record mode downgraded due to WAPI version
+  when: host_records_wapi_downgraded | default(false) | bool
+  ansible.builtin.debug:
+    msg: >-
+      Host record mode disabled automatically: Infoblox WAPI version {{ infoblox_wapi_version }} < 2.13.
+      Falling back to legacy A/AAAA record creation. Upgrade grid or set infoblox_wapi_version >= 2.13 to enable.
 
 # Ensure core mapping variables exist to prevent undefined errors in record comment templates
 - name: Initialize safe defaults for logical network variables

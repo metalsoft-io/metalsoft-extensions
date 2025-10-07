@@ -1,0 +1,111 @@
+#!/usr/bin/python
+from __future__ import annotations
+import requests
+from ansible.module_utils.basic import AnsibleModule
+
+def run():
+    args = dict(
+        name=dict(type='str', required=True),
+        ipv4addrs=dict(type='list', elements='dict', default=[]),
+        ipv6addrs=dict(type='list', elements='dict', default=[]),
+        state=dict(type='str', default='present', choices=['present','absent']),
+        ttl=dict(type='int', required=False),
+        comment=dict(type='str', required=False),
+        provider=dict(type='dict', required=True)
+    )
+    m = AnsibleModule(argument_spec=args, supports_check_mode=True)
+    p = m.params
+    name = p['name']
+    provider = p['provider']
+    wapi = str(provider.get('wapi_version','2.12'))
+    base = f"https://{provider['host']}/wapi/v{wapi}"
+    view = provider.get('view', 'default')
+    sess = requests.Session()
+    sess.auth = (provider['username'], provider['password'])
+    sess.headers.update({'Content-Type':'application/json'})
+    verify = provider.get('validate_certs', True)
+
+    def get():
+        r = sess.get(f"{base}/record:host", params={'name': name, 'view': view, '_return_fields':'name,ipv4addrs,ipv6addrs,ttl,comment'}, verify=verify)
+        if r.status_code >=300:
+            try:
+                data = r.json()
+            except Exception:
+                data = None
+            # Return None if not found or generic error to allow create
+        try:
+            data = r.json()
+        except Exception:
+            data = []
+        if not data:
+            return None
+        return data[0]
+
+    existing = get()
+    state = p['state']
+    if state == 'absent':
+        if existing:
+            if m.check_mode:
+                m.exit_json(changed=True)
+            ref = existing.get('_ref')
+            if ref:
+                dr = sess.delete(f"{base}/{ref}", verify=verify)
+                if dr.status_code >=300:
+                    m.fail_json(msg=f"DELETE failed {dr.status_code} {dr.text}")
+            m.exit_json(changed=True)
+        m.exit_json(changed=False)
+
+    ipv4 = [d for d in p['ipv4addrs'] if isinstance(d, dict) and d.get('ipv4addr')]
+    ipv6 = [d for d in p['ipv6addrs'] if isinstance(d, dict) and d.get('ipv6addr')]
+    if not existing:
+        if m.check_mode:
+            m.exit_json(changed=True, record={'name': name})
+        body = {'name': name, 'view': view}
+        if ipv4:
+            body['ipv4addrs'] = ipv4
+        if ipv6:
+            body['ipv6addrs'] = ipv6
+        if p.get('ttl'):
+            body['ttl'] = p['ttl']
+        if p.get('comment'):
+            body['comment'] = p['comment']
+        cr = sess.post(f"{base}/record:host", json=body, verify=verify)
+        if cr.status_code >= 300:
+            if 'parent was not found' in cr.text.lower() or 'parent was not found' in cr.reason.lower():
+                m.fail_json(msg=(
+                    f"CREATE failed {cr.status_code} parent zone missing. Consider enabling auto_create_forward_zones=true or creating zone manually. Raw: {cr.text}"))
+            m.fail_json(msg=f"CREATE failed {cr.status_code} {cr.text}")
+        existing = get()
+        m.exit_json(changed=True, record=existing)
+
+    changed = False
+    upd = {}
+    ex_ipv4 = [d.get('ipv4addr') for d in existing.get('ipv4addrs',[])]
+    ex_ipv6 = [d.get('ipv6addr') for d in existing.get('ipv6addrs',[])]
+    if sorted(ex_ipv4) != sorted([d['ipv4addr'] for d in ipv4]):
+        upd['ipv4addrs'] = ipv4
+    if ipv6 and sorted(ex_ipv6) != sorted([d['ipv6addr'] for d in ipv6]):
+        upd['ipv6addrs'] = ipv6
+    if p.get('ttl') and p['ttl'] != existing.get('ttl'):
+        upd['ttl'] = p['ttl']
+    if p.get('comment') and p['comment'] != existing.get('comment'):
+        upd['comment'] = p['comment']
+    if upd:
+        if m.check_mode:
+            m.exit_json(changed=True, record=existing)
+        ref = existing.get('_ref')
+        ur = sess.put(f"{base}/{ref}", json=upd, verify=verify)
+        if ur.status_code >= 300:
+            if 'parent was not found' in ur.text.lower():
+                m.fail_json(msg=(
+                    f"UPDATE failed {ur.status_code} parent zone missing for {name}. Create zone or enable auto_create_forward_zones. Raw: {ur.text}"))
+            m.fail_json(msg=f"UPDATE failed {ur.status_code} {ur.text}")
+        changed = True
+        existing = get()
+    m.exit_json(changed=changed, record=existing)
+
+def main():
+    run()
+
+if __name__ == '__main__':
+    main()

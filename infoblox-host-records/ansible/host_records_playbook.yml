@@ -1,0 +1,12 @@
+---
+- name: Manage Infoblox host records only
+  hosts: localhost
+  gather_facts: false
+  pre_tasks:
+    - name: Auto-load variables.json if present and enabled
+      include_vars:
+        file: variables.json
+      when: auto_load_variables_file | default(true)
+      ignore_errors: true
+  roles:
+    - role: host_records

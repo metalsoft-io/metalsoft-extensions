@@ -1,0 +1,102 @@
+---
+# Build host_records list from possible input shapes.
+# Preference order:
+# 1. Existing host_records variable provided by user
+# 2. Derive from serverInstanceDNSRecordSet.records (A records with status to determine state)
+# 3. Derive from serverInstanceRecordSet (IPv4/IPv6 ip lists) with synthesized names (requires host_records_domain)
+#
+# Multi-IP enhancement:
+# Each host_record now supports:
+#   ipv4_list: [list of IPv4 strings]
+#   ipv6_list: [list of IPv6 strings]
+# Backward compatibility:
+#   ipv4 / ipv6 (single) still populated as first element when lists exist.
+
+- name: Initialize host_records if undefined
+  set_fact:
+    host_records: "{{ host_records | default([]) }}"
+
+- name: Derive A records into host_records (loop build)
+  set_fact:
+    host_records: "{{ host_records + [_new_item] }}"
+  vars:
+    _force_state: "{{ force_state | default('') }}"
+    _new_item:
+      host_name: "{{ item.name | regex_replace('\\.$','') }}"
+      ipv4_list: "{{ item.records | list }}"
+      state: "{{ _force_state if _force_state|length>0 else ('absent' if item.status == 'deleting' else 'present') }}"
+      ttl: "{{ item.ttl | default(omit) }}"
+      zone_name: "{{ item.zoneName | default('') }}"
+  when: host_records | length == 0 and serverInstanceDNSRecordSet is defined and serverInstanceDNSRecordSet.records is defined and item.type == 'A'
+  loop: "{{ serverInstanceDNSRecordSet.records }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Prepare cluster A records list (filtered)
+  set_fact:
+    _cluster_a_records: >-
+      {{ (clusterDNSRecordSet.records | selectattr('type','equalto','A') | list) if (clusterDNSRecordSet is defined and clusterDNSRecordSet.records is defined) else [] }}
+  when: host_records | length == 0
+
+- name: Derive cluster A records into host_records (clusterDNSRecordSet)
+  set_fact:
+    host_records: "{{ host_records + [_new_item] }}"
+  vars:
+    _force_state: "{{ force_state | default('') }}"
+    _is_wildcard: "{{ item.name.startswith('*.') }}"
+    _new_item:
+      host_name: "{{ item.name | regex_replace('\\.$','') }}"
+      ipv4_list: "{{ item.records | list }}"
+      state: "{{ _force_state if _force_state|length>0 else ('absent' if item.status == 'deleting' else 'present') }}"
+      ttl: "{{ item.ttl | default(omit) }}"
+      zone_name: "{{ item.zoneName | default('') }}"
+  when: host_records | length == 0 and (_cluster_a_records | default([])) | length > 0 and (include_wildcard_host_records or not _is_wildcard)
+  loop: "{{ _cluster_a_records | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Attach IPv6 addresses from serverInstanceRecordSet if available
+  set_fact:
+    host_records: >-
+      {{ host_records | map('combine', {'ipv6_list': (serverInstanceRecordSet.instanceIpv6Ips | default([]) | map(attribute='ip') | list) }) | list }}
+  when: serverInstanceRecordSet is defined and (serverInstanceRecordSet.instanceIpv6Ips | default([])) | length > 0
+
+- name: Derive from serverInstanceRecordSet if still empty (synthetic)
+  set_fact:
+    host_records: "{{ host_records + [_synthetic] }}"
+  vars:
+    _domain: "{{ host_records_domain | default('') }}"
+    _ipv4s: "{{ (serverInstanceRecordSet.instanceIpv4Ips | default([])) | map(attribute='ip') | list }}"
+    _ipv6s: "{{ (serverInstanceRecordSet.instanceIpv6Ips | default([])) | map(attribute='ip') | list }}"
+    _base_name: "{{ (_ipv4s[0] if _ipv4s|length>0 else (_ipv6s[0] if _ipv6s|length>0 else 'host')) ~ ('.' ~ _domain if _domain|length>0 else '') }}"
+    _synthetic:
+      host_name: "{{ _base_name }}"
+      ipv4_list: "{{ _ipv4s }}"
+      ipv6_list: "{{ _ipv6s }}"
+      state: "present"
+      zone_name: "{{ host_records_domain if host_records_domain|length>0 else '' }}"
+  when: host_records | length == 0 and serverInstanceRecordSet is defined and ( (serverInstanceRecordSet.instanceIpv4Ips | default([])) | length > 0 or (serverInstanceRecordSet.instanceIpv6Ips | default([])) | length > 0 )
+
+- name: Initialize rebuilt host_records list
+  set_fact:
+    _rebuilt_host_records: []
+
+- name: Build rebuilt host_records with single-value ipv4/ipv6
+  set_fact:
+    _rebuilt_host_records: >-
+      {{ _rebuilt_host_records + [ item | combine({
+           'state': (item.state | default('present')),
+           'ipv4': ((item.ipv4_list[0]) if (item.ipv4_list is defined and (item.ipv4_list|length)>0) else (item.ipv4 | default(None))),
+           'ipv6': ((item.ipv6_list[0]) if (item.ipv6_list is defined and (item.ipv6_list|length)>0) else (item.ipv6 | default(None)))
+         }) ] }}
+  loop: "{{ host_records }}"
+  loop_control:
+    loop_var: item
+
+- name: Finalize host_records rebuilt
+  set_fact:
+    host_records: "{{ _rebuilt_host_records }}"
+
+- name: Debug normalized host_records
+  debug:
+    var: host_records

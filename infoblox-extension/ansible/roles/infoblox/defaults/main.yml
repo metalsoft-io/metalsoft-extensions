@@ -56,3 +56,9 @@ ms_direct_delete_fallback: true
 
 # Default domain suffix for synthesized server instance records (used when zone not provided)
 serverRecordsDomain: ".example.invalid"
+
+# Host record feature flags
+# When true, create/update/delete consolidated Infoblox host records instead of separate A/AAAA records
+use_host_records: true
+# When true (and use_host_records true), attempt to enable PTR (configure_for_dns) for host record IP entries
+host_record_ptr_enabled: true

@@ -5,7 +5,7 @@
     _deleting_records: >-
       {{ working_operation.records | selectattr('status','equalto','deleting') | selectattr('type','defined') | selectattr('type','ne','PTR') | list }}
 
-- name: Delete A/AAAA records
+- name: Delete A/AAAA or Host records
   vars:
     record_fqdn: >-
       {% set base = (item.name | default('@')) %}
@@ -16,12 +16,18 @@
       {% else %}
       {{ base + '.' + zone_name.rstrip('.') }}
       {% endif %}
-  # Allow deletion even if records list missing/empty; helper task will query existing values.
   when: item.type | upper in ['A','AAAA']
   loop: "{{ _deleting_records }}"
   loop_control:
-    label: "{{ item.type }} {{ item.name }}"
-  ansible.builtin.include_tasks: _delete_ip_record_task.yml
+    label: "{{ (use_host_records | default(false) | bool) | ternary('HOST-DEL','REC-DEL') }} {{ item.name }}"
+  block:
+    - name: Delete host record when host mode enabled
+      when: use_host_records | default(false) | bool
+      ansible.builtin.include_tasks: _delete_host_record_task.yml
+
+    - name: Delete traditional A/AAAA record when host mode disabled
+      when: not (use_host_records | default(false) | bool)
+      ansible.builtin.include_tasks: _delete_ip_record_task.yml
 
 # Requery any remaining A/AAAA records for diagnostics
 - name: Requery remaining A records (post-delete)

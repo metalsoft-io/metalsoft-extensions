@@ -1,0 +1,40 @@
+---
+# Default variables for host_records role
+infoblox_hostname: "192.168.1.55"
+infoblox_username: "admin"
+infoblox_password: "infoblox"
+infoblox_validate_certs: false
+infoblox_wapi_version: "2.12"
+infoblox_dns_view: "default"
+
+# When true create reverse PTR for each IPv4
+create_ptr: false
+# When true and IPv6 present, attempt IPv6 PTR creation (needs reverse zone existing)
+create_ipv6_ptr: false
+
+# Input object raw variable file path can load these structures:
+# - serverInstanceDNSRecordSet.records: list of existing DNS records (A and PTR) with statuses active|deleting
+# - serverInstanceRecordSet.instanceIpv4Ips / instanceIpv6Ips: list of allocated IP objects
+# - Or a pre-normalized host_records list already supplied.
+#
+# Multi-IP model:
+#   host_records item may include ipv4_list / ipv6_list arrays.
+#   Single-value ipv4 / ipv6 are auto-derived (first element) for backward compatibility.
+
+# Provide optional explicit domain if not derivable from record names
+host_records_domain: ""
+# Merge strategy for existing host records: present|absent automatically determined from status; override with force_state if set
+force_state: ""
+
+# Set to true to skip creation operations and only perform deletions of records with status deleting
+delete_only: false
+
+# Automatically attempt to load a variables.json file from playbook directory when true
+auto_load_variables_file: true
+
+# Force compatibility lightweight host record module instead of official collection (auto for WAPI <2.13)
+force_compat_host_record: false
+auto_create_forward_zones: true
+
+# Include host records derived from wildcard names (e.g. *.apps.example). Default false skips them.
+include_wildcard_host_records: false

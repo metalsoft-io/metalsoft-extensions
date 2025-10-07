@@ -1,0 +1,53 @@
+---
+# Main task file for host_records role
+# High-level flow:
+# 1. Load provided variables file (variables.json) if given externally (user supplies via -e @file).
+# 2. Normalize input into host_records list: [{ name, ipv4, ipv6, state }]
+# 3. Create or delete Infoblox host records using nios_host_record
+# 4. Optionally create PTR records for IPv4 (and IPv6 if enabled) when creating records.
+
+- name: Assert required Infoblox connection variables
+  assert:
+    that:
+      - infoblox_hostname | length > 0
+      - infoblox_username | length > 0
+      - infoblox_password | length > 0
+    fail_msg: "infoblox_hostname/username/password must be provided (set with -e or inventory vars)."
+
+- name: Include normalization tasks
+  include_tasks: normalize.yml
+
+# Always attempt host record mode (fallback removed by user request). We provide a minimal return_fields list
+# in the host_record task itself to maximize backward compatibility with older WAPI versions.
+
+- name: Decide compat host record usage
+  set_fact:
+    host_record_use_compat: >-
+      {{ force_compat_host_record | bool or not ((infoblox_wapi_version | default('0') | regex_replace('[^0-9.]','')) is version('2.13','>=')) }}
+  when: host_records | length > 0
+
+- name: Warn if auto_create_forward_zones disabled and compat mode might fail due to missing zone
+  vars:
+    _warn_zones: >-
+      {{ host_records | map(attribute='zone_name') | map('default','') | list | unique | difference(['']) }}
+  debug:
+    msg: >-
+      auto_create_forward_zones=false and host_record_use_compat=true. If a parent zone for any host does not exist in view '{{ infoblox_dns_view }}' the create will fail with parent zone missing. Enable -e auto_create_forward_zones=true to auto-create or pre-create zones: {{ _warn_zones }}
+  when: host_records | length > 0 and (host_record_use_compat | default(false)) and not auto_create_forward_zones
+
+- name: Ensure forward zones exist (optional)
+  include_tasks: ensure_zones.yml
+  when: auto_create_forward_zones and host_records | length > 0
+
+- name: Debug compat host record usage
+  debug:
+    msg: "Host record implementation: {{ 'compat' if host_record_use_compat else 'native' }} (wapi {{ infoblox_wapi_version }})"
+  when: host_records | length > 0
+
+- name: Create / delete host records
+  include_tasks: manage_host_records.yml
+  when: host_records | length > 0
+
+- name: Summary
+  debug:
+    msg: "Processed {{ host_records | length }} host record item(s)."

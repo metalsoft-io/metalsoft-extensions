@@ -42,6 +42,7 @@ ansible-galaxy collection install -r collections/requirements.yml
 
 Supply the OOB password via one of:
 
+* Hardcode the `oob_password` password field in `server_validation_playbook.yaml`: `oob_password:"calvin"`
 * Extra var: `-e oob_password='PlainPassword'`
 * Environment variable: `OOB_PASSWORD=PlainPassword ansible-playbook ...`
 * Vaulted var overriding `oob_password`

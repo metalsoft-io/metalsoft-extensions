@@ -1,0 +1,62 @@
+---
+# Helper: delete Infoblox host record for current 'item'
+# Expects: record_fqdn, infoblox_view, nios_provider
+
+- name: Query existing host record before delete
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:host?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name,ipv4addrs,ipv6addrs,_ref"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _existing_host_record
+  failed_when: false
+
+- name: Extract host record _ref list
+  ansible.builtin.set_fact:
+    _host_record_refs: >-
+      {{ (_existing_host_record.json if (_existing_host_record.json is sequence) else []) | selectattr('_ref','defined') | map(attribute='_ref') | list }}
+
+- name: Delete host record(s) via module (simple path) if exactly one
+  when: _host_record_refs | length == 1 and not (ms_direct_delete_fallback | default(false) | bool)
+  infoblox.nios_modules.nios_host_record:
+    name: "{{ record_fqdn | trim }}"
+    view: "{{ infoblox_view }}"
+    state: absent
+    provider: "{{ nios_provider }}"
+
+- name: Delete host records via direct WAPI when multiple or fallback enabled
+  when: _host_record_refs | length > 0 and (ms_direct_delete_fallback | default(false) | bool or _host_record_refs | length > 1)
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/{{ item }}"
+    method: DELETE
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  loop: "{{ _host_record_refs }}"
+  loop_control:
+    label: "host-del {{ item }}"
+  failed_when: false
+
+- name: Re-query to verify host record removal
+  ansible.builtin.uri:
+    url: "https://{{ infoblox_host }}/wapi/v{{ infoblox_wapi_version }}/record:host?name={{ (record_fqdn | trim) | urlencode }}&view={{ infoblox_view | urlencode }}&_return_fields=name"
+    method: GET
+    user: "{{ infoblox_username }}"
+    password: "{{ infoblox_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ infoblox_validate_certs }}"
+    return_content: true
+  register: _post_delete_host_query
+  failed_when: false
+
+- name: Debug host record deletion result
+  when: ansible_verbosity | int >= 1
+  ansible.builtin.debug:
+    msg:
+      deleted_name: "{{ record_fqdn }}"
+      post_delete_json: "{{ _post_delete_host_query.json | default('undefined') }}"

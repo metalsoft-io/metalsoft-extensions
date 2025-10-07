@@ -1,0 +1,30 @@
+{
+  "serverInstanceDNSRecordSet": {
+    "records": [
+      {
+        "name": "example1.test.local.",
+        "records": ["10.10.10.11"],
+        "status": "active",
+        "type": "A"
+      },
+      {
+        "name": "11.10.10.10.in-addr.arpa.",
+        "records": ["example1.test.local"],
+        "status": "active",
+        "type": "PTR"
+      },
+      {
+        "name": "example2.test.local.",
+        "records": ["10.10.10.12"],
+        "status": "deleting",
+        "type": "A"
+      }
+    ],
+    "zone": {
+      "zoneName": "test.local",
+      "nameServers": ["ns1.test.local"],
+      "soaEmail": "admin.test.local",
+      "ttl": 3600
+    }
+  }
+}

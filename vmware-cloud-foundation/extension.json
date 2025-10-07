@@ -81,9 +81,26 @@
             "options": {}
         },
         {
+            "label": "nsx_manager_size",
+            "name": "nsx_manager_size",
+            "inputType": "ExtensionInputString",
+            "isPassword": false,
+            "defaultValue": "medium",
+            "options": {}
+        },
+        {
+            "label": "vcenter_vm_size",
+            "name": "vcenter_vm_size",
+            "inputType": "ExtensionInputString",
+            "isPassword": false,
+            "defaultValue": "small",
+            "options": {}
+        },
+        {
             "label": "cba_admin_password",
             "name": "cba_admin_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "Q#ZT1N#uarLPoPd",
             "options": {}
         },
@@ -91,6 +108,7 @@
             "label": "cba_root_password",
             "name": "cba_root_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "SALkFJ8e8x69?Of",
             "options": {}
         },
@@ -98,6 +116,7 @@
             "label": "sddc_root_password",
             "name": "sddc_root_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "h1C^L#zoENSqfu2",
             "options": {}
         },
@@ -105,6 +124,7 @@
             "label": "sddc_local_admin_password",
             "name": "sddc_local_admin_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "a9C$E#zoTNSqfj7",
             "options": {}
         },
@@ -112,6 +132,7 @@
             "label": "sddc_second_user_password",
             "name": "sddc_second_user_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "BAtdNYmg?vcZ8Oa",
             "options": {}
         },
@@ -119,6 +140,7 @@
             "label": "nsx_manager_root_password",
             "name": "nsx_manager_root_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "#kCKefi$2@otD^m",
             "options": {}
         },
@@ -126,6 +148,7 @@
             "label": "nsx_manager_admin_password",
             "name": "nsx_manager_admin_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "oIt@KT5!1B1TQ7t",
             "options": {}
         },
@@ -133,6 +156,7 @@
             "label": "nsx_manager_audit_password",
             "name": "nsx_manager_audit_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "ytpc7H8XdqD$A2e",
             "options": {}
         },
@@ -140,6 +164,7 @@
             "label": "vcenter_root_password",
             "name": "vcenter_root_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "sQZBOfys6^Y?4wv",
             "options": {}
         },
@@ -147,6 +172,7 @@
             "label": "vcenter_sso_admin_password",
             "name": "vcenter_sso_admin_password",
             "inputType": "ExtensionInputString",
+            "isPassword": true,
             "defaultValue": "FLgdLdBX@zih9I8",
             "options": {}
         },

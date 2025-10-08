@@ -1,0 +1,130 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "infoblox-automation-hosts-records",
+  "label": "infobloxautomation-host-records",
+  "extensionType": "workflow",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.0.0",
+  "description": "Manages DNS records and IPs via Infoblox API and creates host records",
+  "icon": "dns",
+  "dependencies": {
+    "controllerVersion": "7.0.12"
+  },
+  "inputs": [],
+  "outputs": [],
+  "assets": [
+    {
+      "label": "infoblox-configuration",
+      "name": "infoblox-configuration",
+      "assetType": "Bundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/.infoblox/infoblox-hosts.zip"
+    }
+  ],
+  "onAssetChange": [
+    {
+      "stage": "serverInstanceGroupUpdateDNS",
+      "tasks": [
+        {
+          "label": "update-dns-records-for-instance-group",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "serverInstanceUpdateDNS",
+      "tasks": [
+        {
+          "label": "update-dns-records-for-instance",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "clusterUpdateDNS",
+      "tasks": [
+        {
+          "label": "update-dns-records-for-cluster",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "serverCreateDNS",
+      "tasks": [
+        {
+          "label": "create-dns-and-ptr-records-for-server",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "serverDeleteDNS",
+      "tasks": [
+        {
+          "label": "delete-dns-and-ptr-records-for-server",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "switchCreateDNS",
+      "tasks": [
+        {
+          "label": "create-dns-and-ptr-records-for-switch",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "switchDeleteDNS",
+      "tasks": [
+        {
+          "label": "delete-dns-and-ptr-records-for-switch",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "infoblox-configuration",
+            "playbook": "infoblox-extension.yaml"
+          }
+        }
+      ]
+    },
+    {               
+      "stage": "serverInstanceUpdate",
+      "tasks": [
+          {
+              "label": "update-ip-records-for-instance",
+              "taskType": "ExtensionTaskAnsible",
+              "options": {
+                  "asset": "infoblox-configuration",
+                  "playbook": "infoblox-extension.yaml"
+              }
+          }   
+      ]       
+    }  
+  ]
+}

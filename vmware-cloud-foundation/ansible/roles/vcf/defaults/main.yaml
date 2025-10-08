@@ -1,0 +1,31 @@
+---
+# Extract 'management' server instance group data
+management_server_instance_group_data: >-
+  {{ extensionInstanceRecordSet.serverInstanceGroups
+     | default([])
+     | selectattr('serverInstanceGroupLabel', 'equalto', 'management')
+     | first
+     | default({}) }}
+
+# Build an index (name -> logical network object)
+logical_networks_index: >-
+  {{ dict(
+     (management_server_instance_group_data.logicalNetworks | default([]))
+     | map(attribute='name') | list
+     | zip(management_server_instance_group_data.logicalNetworks | default([]))
+    )
+  }}
+
+# Extract logical networks by name
+mgmt_network: "{{ logical_networks_index.get('vcf-mgmt', {}) }}"
+vmotion_network: "{{ logical_networks_index.get('vcf-vmotion', {}) }}"
+vsan_network: "{{ logical_networks_index.get('vcf-vsan', {}) }}"
+nsx_network: "{{ logical_networks_index.get('vcf-nsx', {}) }}"
+
+vm_mgmt_network: >-
+  {{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool)
+    | ternary(
+      logical_networks_index.get('vcf-vm-mgmt', {}),
+      {}
+    )
+  }}

@@ -1,0 +1,10 @@
+{#
+# Network specifications for VMware Cloud Foundation
+# This template renders the networkSpecs section using reusable macros
+#}
+{% from 'macros.yaml.j2' import render_network_spec %}
+networkSpecs:
+{{ render_network_spec(vm_management_network_spec, network_specs.network_type_vm_mgmt) | indent(2, True) -}}
+{{ render_network_spec(management_network_spec, network_specs.network_type_esxi_mgmt) | indent(2, True) -}}
+{{ render_network_spec(vmotion_network_spec, network_specs.network_type_vmotion) | indent(2, True) -}}
+{{ render_network_spec(vsan_network_spec, network_specs.network_type_vsan) | indent(2, True) }}

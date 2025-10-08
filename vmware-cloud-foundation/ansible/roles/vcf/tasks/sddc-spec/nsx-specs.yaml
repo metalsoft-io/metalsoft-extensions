@@ -1,0 +1,35 @@
+---
+# NSX-T specification
+
+- name: Build | NSX spec
+  set_fact:
+    nsx_spec:
+      nsxt_manager_size: "{{ extensionInstanceVariables.nsx_manager_size | default('medium') }}"
+      nsxt_manager_vip:
+        ipv4_address: "{{ nsx_manager_vip_config.ip | default('') }}"
+        hostname_fqdn: "{{ nsx_manager_vip_config.fqdn | default('') }}"
+        hostname: "{{ nsx_manager_vip_config.fqdn | default('') | split('.') | first }}"
+      nsxt_manager_a:
+        ipv4_address: "{{ nsx_manager_node1_config.ip | default('') }}"
+        hostname_fqdn: "{{ nsx_manager_node1_config.fqdn | default('') }}"
+        hostname: "{{ nsx_manager_node1_config.fqdn | default('') | split('.') | first }}"
+      nsxt_manager_b:
+        ipv4_address: "{{ nsx_manager_node2_config.ip | default('') }}"
+        hostname_fqdn: "{{ nsx_manager_node2_config.fqdn | default('') }}"
+        hostname: "{{ nsx_manager_node2_config.fqdn | default('') | split('.') | first }}"
+      nsxt_manager_c:
+        ipv4_address: "{{ nsx_manager_node3_config.ip | default('') }}"
+        hostname_fqdn: "{{ nsx_manager_node3_config.fqdn | default('') }}"
+        hostname: "{{ nsx_manager_node3_config.fqdn | default('') | split('.') | first }}"
+      nsxt_manager_root_password: "{{ extensionInstanceVariables.nsx_manager_root_password | default('VMw@re1!VMw@re1!') }}"
+      nsxt_manager_admin_password: "{{ extensionInstanceVariables.nsx_manager_admin_password | default('VMw@re1!VMw@re1!') }}"
+      nsxt_manager_audit_password: "{{ extensionInstanceVariables.nsx_manager_audit_password | default('VMw@re1!VMw@re1!') }}"
+      nsxt_host_overlay_tep_ip_pool:
+        name: m-cl1-tep1
+        description: "{{ nsx_host_overlay_tep_ip_pool_description | default('ESXi Host Overlay TEP IP Pool') }}"
+        subnet_ip_rage:
+          start: "{{ nsx_network_subnet.startIp | default('') }}"
+          end: "{{ nsx_network_subnet.endIp | default('') }}"
+          cidr: "{{ nsx_network_subnet.subnet | default('') }}"
+          gateway: "{{ nsx_network_subnet.gateway | default('') }}"
+      tep_transport_vlan_id: "{{ nsx_network_subnet.vlan_id | default('') }}"

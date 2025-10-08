@@ -1,0 +1,46 @@
+---
+# Collect ESXi SSH host key SHA256 fingerprints in-memory
+
+- name: Obtain SSH host key fingerprint (SHA256)
+  delegate_to: localhost
+  vars:
+    target_host: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
+  shell: |
+    set -e
+    target="{{ target_host }}"
+    # Collect ONLY RSA host key, output a single line
+    scan_output=$(ssh-keyscan -T 5 -t rsa "$target" 2>/dev/null || true)
+    if [ -z "$scan_output" ]; then
+      echo "ERROR: ssh-keyscan (rsa) produced no output for $target" >&2
+      exit 1
+    fi
+    # Convert to SHA256 fingerprint (OpenSSH format) and extract field 2
+    fp=$(echo "$scan_output" | ssh-keygen -l -f - -E sha256 | awk 'NR==1 {print $2}')
+    if [ -z "$fp" ] || ! echo "$fp" | grep -q '^SHA256:' ; then
+      echo "ERROR: Failed to derive RSA SHA256 fingerprint for $target" >&2
+      exit 1
+    fi
+    echo "$fp"
+  register: esxi_ssh_thumbprint_cmd
+  changed_when: false
+
+- name: Set per-host SSH thumbprint fact
+  ansible.builtin.set_fact:
+    esxi_ssh_thumbprint: "{{ esxi_ssh_thumbprint_cmd.stdout | trim }}"
+
+- name: Debug ESXi SSH thumbprint (optional)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} => {{ esxi_ssh_thumbprint }}"
+  when: esxi_print_ssh_thumbprints | default(false) | bool
+
+- name: Aggregate ESXi SSH thumbprints into a dict
+  ansible.builtin.set_fact:
+    esxi_ssh_thumbprints: "{{ esxi_ssh_thumbprints | default({}) | combine({item: (hostvars[item].esxi_ssh_thumbprint | default(''))}) }}"
+  loop: "{{ groups.get('vcf_cluster', groups['all']) }}"
+  run_once: true
+
+- name: Debug aggregated ESXi SSH thumbprints (optional)
+  ansible.builtin.debug:
+    var: esxi_ssh_thumbprints
+  when: esxi_print_ssh_thumbprints | default(false) | bool
+  run_once: true

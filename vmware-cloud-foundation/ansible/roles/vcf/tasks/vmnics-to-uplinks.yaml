@@ -1,0 +1,17 @@
+---
+- name: Gather ESXi vmnic (pNIC) information via ESXi API
+  community.vmware.vmware_host_vmnic_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs | default(false) }}"
+    esxi_hostname: "{{ inventory_hostname }}"
+  delegate_to: localhost
+  register: vmnic_info
+  changed_when: false
+  failed_when: false
+
+- name: Debug vmnic_info
+  debug:
+    var: vmnic_info
+  when: vmnic_info is defined and (debug_vmnic_mapping | default(false))

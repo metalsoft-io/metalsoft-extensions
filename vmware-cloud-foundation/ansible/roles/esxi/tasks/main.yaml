@@ -1,0 +1,40 @@
+---
+- name: Import set ESXi host firewall playbook
+  ansible.builtin.import_tasks: set-firewall.yaml
+
+- name: Import set ESXi host SSH playbook
+  ansible.builtin.import_tasks: enable-ssh.yaml
+
+- name: Import set ESXi host DNS playbook
+  ansible.builtin.import_tasks: set-dns.yaml
+
+- name: Import set ESXi host NTP playbook
+  ansible.builtin.import_tasks: set-ntp.yaml
+
+- name: Test SSH connectivity
+  ansible.builtin.ping:
+  when: esxi_print_facts | default(false) | bool
+  ignore_errors: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+- name: Gather Ansible facts
+  ansible.builtin.setup:
+    gather_timeout: 60
+  when: esxi_print_facts | default(false) | bool
+  ignore_errors: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+- name: Print ESXi host Ansible facts
+  ansible.builtin.debug:
+    var: ansible_facts
+  when: esxi_print_facts | default(false) | bool
+
+- name: Collect ESXi sshThumbprint
+  ansible.builtin.import_tasks: collect-ssh-thumbprint.yaml
+  when: not (vcf.skip_esx_thumbprint_validation | default(false) | bool)
+
+- name: Collect ESXi sslThumbprint
+  ansible.builtin.import_tasks: collect-ssl-thumbprint.yaml
+  when: not (vcf.skip_esx_thumbprint_validation | default(false) | bool)

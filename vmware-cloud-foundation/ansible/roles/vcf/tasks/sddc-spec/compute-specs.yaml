@@ -1,0 +1,63 @@
+---
+# Compute cluster specifications
+
+- name: Build | Cluster spec
+  set_fact:
+    cluster_spec:
+      name: m-cl1
+      evc_mode: "{{ extensionInstanceVariables.cluster_evc_mode | default('n/a') }}"
+      image_enabled: "{{ extensionInstanceVariables.m_cl1_cluster_image_enabled | default(true) | bool }}"
+      vm_folders:
+        management: m-fd-mgmt
+        networking: m-fd-nsx
+      resource_pool_specs_consolidated:
+        - name: m-cl1-rp-sddc-mgmt
+          cpu_limit: -1
+          cpu_reservation_expandable: true
+          cpu_reservation_mhz: 0
+          cpu_reservation_percentage: 0
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_limit: -1
+          memory_reservation_expandable: true
+          memory_reservation_mb: 0
+          memory_reservation_percentage: 0
+          memory_shares_level: normal
+          memory_shares_value: 0
+          type: management
+        - name: m-cl1-rp-sddc-edge
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: network
+        - name: m-cl1-rp-user-vm
+          cpu_shares_level: normal
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: compute
+        - name: m-cl1-rp-user-edge
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: compute

@@ -30,7 +30,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]

@@ -212,6 +212,7 @@
                         "networkConnection": {
                             "tagged": true,
                             "accessMode": "l2",
+                            "disableAutoIpAllocation": true,
                             "redundancy": {
                                 "mode": "active-active"
                             }
@@ -222,6 +223,7 @@
                         "networkConnection": {
                             "tagged": true,
                             "accessMode": "l2",
+                            "disableAutoIpAllocation": true,
                             "redundancy": {
                                 "mode": "active-active"
                             }
@@ -232,6 +234,7 @@
                         "networkConnection": {
                             "tagged": true,
                             "accessMode": "l2",
+                            "disableAutoIpAllocation": true,
                             "redundancy": {
                                 "mode": "active-active"
                             }

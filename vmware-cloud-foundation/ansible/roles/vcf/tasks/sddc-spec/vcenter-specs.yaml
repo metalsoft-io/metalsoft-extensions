@@ -1,6 +1,14 @@
 ---
 # vCenter and PSC specifications
 
+- name: Build | Extract key IP allocations for management vCenter
+  set_fact:
+    management_vcenter_server_config: >-
+      {{ management_ip_allocations
+       | selectattr('tags.role', 'equalto', 'management-vcenter-server')
+       | first
+       | default({}) }}
+
 # Specification for SSO Configuration in the Management vCenter Server Appliance
 - name: Build | PSC spec
   set_fact:

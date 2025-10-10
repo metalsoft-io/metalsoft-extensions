@@ -6,7 +6,6 @@ subdomain: "{{ extensionInstanceRecordSet.baseDomain | default('vmware.local') }
 dns_servers: "{{ extensionInstanceRecordSet.dnsResolvers | default(['1.1.1.1', '8.8.8.8']) }}"
 dns_searchpath: "{{ extensionInstanceRecordSet.baseDomain | default('vmware.local') }}"
 
-
 esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
 esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
 esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"

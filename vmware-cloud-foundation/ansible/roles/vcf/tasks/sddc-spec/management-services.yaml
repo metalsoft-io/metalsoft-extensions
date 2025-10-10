@@ -1,7 +1,5 @@
 ---
-# IP allocation extraction and CBA configuration tasks
-# Purpose: Extract and configure Cloud Builder Appliance and SDDC Manager specifications
-
+# Extract management server instance group variables (compatible with different variables.json structures)
 - name: Build | Management server instance group custom variables
   set_fact:
     management_server_instance_group_custom_variables: >
@@ -10,16 +8,13 @@
          | combine(((management_server_instance_group_data | default({})).customVariables | default({}, true)), recursive=True)
       }}
 
-- name: Build | Extract key IP allocations (CBA & SDDC Manager & vCenter & NSX Managers)
+# Extract DNS records data for CBA and SDDC Manager
+- name: Build | Extract key IP allocations (CBA & SDDC Manager)
   set_fact:
     cba_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'cloud-builder') | first | default({}) }}"
     sddc_manager_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'sddc-manager') | first | default({}) }}"
-    management_vcenter_server_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'management-vcenter-server') | first | default({}) }}"
-    nsx_manager_vip_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-vip') | first | default({}) }}"
-    nsx_manager_node1_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node1') | first | default({}) }}"
-    nsx_manager_node2_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node2') | first | default({}) }}"
-    nsx_manager_node3_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node3') | first | default({}) }}"
 
+# Cloud-Builder (CBA) specification construction
 - name: Build | CBA spec
   set_fact:
     cba:
@@ -44,6 +39,7 @@
       deploy_task_api_retries: "{{ extensionInstanceVariables.cba_deploy_task_api_retries | default(1440) }}"
       deploy_task_api_retries_delay: "{{ extensionInstanceVariables.cba_deploy_task_api_retries_delay | default(10) }}"
 
+# SDDC Manager specification construction
 - name: Build | SDDC Manager spec
   set_fact:
     sddc_manager_spec:

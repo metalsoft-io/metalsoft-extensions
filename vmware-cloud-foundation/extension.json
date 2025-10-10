@@ -11,7 +11,8 @@
     "dependencies": {
         "controllerVersion": "release-v7.0",
         "osTemplates": [
-            "esxi-8-cluster-node"
+            "esxi-8-24280767-cluster-node",
+            "esxi-8-24859861-cluster-node"
         ]
     },
     "inputs": [
@@ -19,17 +20,13 @@
             "label": "mgmt_domain_cluster_node_server_type",
             "name": "mgmt_domain_cluster_node_server_type",
             "inputType": "ExtensionInputServerType",
-            "options": {
-                "vendor": "Dell"
-            }
+            "options": {}
         },
         {
             "label": "vi_workload_domain_cluster_node_server_type",
             "name": "vi_workload_domain_cluster_node_server_type",
             "inputType": "ExtensionInputServerType",
-            "options": {
-                "vendor": "Dell"
-            }
+            "options": {}
         },
         {
             "label": "mgmt_domain_instance_count",
@@ -431,7 +428,7 @@
             "label": "vcf",
             "name": "vcf",
             "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.0.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.1.zip"
         }
     ],
     "onCreate": [

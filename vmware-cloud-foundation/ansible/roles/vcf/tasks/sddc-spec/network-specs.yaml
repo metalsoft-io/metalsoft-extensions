@@ -1,6 +1,5 @@
 ---
 # Network and subnet extraction
-
 - name: Build | Static uplink defaults
   set_fact:
     m_esxi_mgmt_active_uplinks:
@@ -16,6 +15,7 @@
       - uplink1
       - uplink2
 
+# Network subnets
 - name: Build | Network subnets (role-tag first match)
   vars:
     _net_objects:
@@ -111,7 +111,7 @@
 
 - name: Build | Uplinks MAC arrays
   set_fact:
-    server_network_uplinks: "{{ management_server_instance_group_data.serverInstances[0].logicalNetworks | default([]) }}"
+    server_network_uplinks: "{{ (management_server_instance_group_data.serverInstances | first | default({})).logicalNetworks | default([]) }}"
     m_esxi_mgmt_active_uplinks_mac_array: >-
       {{ server_network_uplinks | selectattr('name', 'equalto', 'vcf-mgmt') | map(attribute='uplinks') | first | default([]) }}
     m_vm_mgmt_active_uplinks_mac_array: >-
@@ -158,8 +158,8 @@
     dvs_management:
       - networks: ["MANAGEMENT", "VM_MANAGEMENT", "VMOTION", "VSAN"]
         nics:
-          - { id: vmnic2, uplink: uplink1 }
-          - { id: vmnic3, uplink: uplink2 }
+          - { id: "{{ uplink1_vmnic_name if uplink1_vmnic_name is defined and uplink1_vmnic_name != '' else 'vmnic2' }}", uplink: uplink1 }
+          - { id: "{{ uplink2_vmnic_name if uplink2_vmnic_name is defined and uplink2_vmnic_name != '' else 'vmnic3' }}", uplink: uplink2 }
         nsx: true
         mtu: 9000
     dvs_nsx_specs:

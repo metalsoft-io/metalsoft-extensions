@@ -1,0 +1,26 @@
+{# JSON mapping: host -> network -> [vmnic devices] #}
+{%- set outer = {} -%}
+{%- for server_instance in management_server_instance_group_data.serverInstances | default([]) -%}
+  {%- set host = server_instance.host -%}
+  {%- set vmnic_details = all_vmnic_info.get(host, {}).vmnic_details | default([]) -%}
+  {%- set connected = vmnic_details | selectattr('status','equalto','Connected') | list -%}
+  {%- set mac_to_device = {} -%}
+  {%- for vmnic_detail in connected -%}
+    {%- set _ = mac_to_device.update({ vmnic_detail.mac.upper(): vmnic_detail.device }) -%}
+  {%- endfor -%}
+  {%- set net_map = {} -%}
+  {%- for logical_network in server_instance.logicalNetworks | default([]) -%}
+    {%- if logical_network.uplinks is defined and (logical_network.uplinks | length) > 0 -%}
+      {%- set devices = [] -%}
+      {%- for mac in logical_network.uplinks -%}
+        {%- set dev = mac_to_device.get(mac.upper(), '') -%}
+        {%- if dev != '' and dev not in devices -%}
+          {%- set _ = devices.append(dev) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- set _ = net_map.update({ logical_network.name: devices }) -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- set _ = outer.update({ host: net_map }) -%}
+{%- endfor -%}
+{{ outer | to_json }}

@@ -1,6 +1,6 @@
 ---
-# - name: Tmp import vmnics-to-uplinks.yaml
-#   ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
+- name: Import vmnics-to-uplinks.yaml
+  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
 
 - name: Build SDDC specification
   ansible.builtin.import_tasks: build-sddc-spec.yaml

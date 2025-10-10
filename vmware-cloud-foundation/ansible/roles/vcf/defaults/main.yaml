@@ -1,11 +1,30 @@
 ---
-# Extract 'management' server instance group data
-management_server_instance_group_data: >-
+debug_vmnic_mapping: "{{ (vcf.validation_debug | default(false)) | bool }}"
+
+# Extract 'management' server instance group data (base)
+management_server_instance_group_base: >-
   {{ extensionInstanceRecordSet.serverInstanceGroups
      | default([])
      | selectattr('serverInstanceGroupLabel', 'equalto', 'management')
      | first
      | default({}) }}
+
+# Filter server instances by management server instance group ID
+management_server_instances: >-
+  {{ extensionInstanceRecordSet.serverInstances
+     | default([])
+     | selectattr('serverInstanceGroupId', 'equalto', management_server_instance_group_base.serverInstanceGroupId | default(-1))
+     | list
+     if management_server_instance_group_base.serverInstanceGroupId is defined
+     else [] }}
+
+# Combine management server instance group data with server instances
+# to be compatible with different variables.json structures
+management_server_instance_group_data: >-
+  {{ management_server_instance_group_base
+     | combine({'serverInstances': management_server_instances}, recursive=True)
+     if management_server_instance_group_base
+     else {} }}
 
 # Build an index (name -> logical network object)
 logical_networks_index: >-

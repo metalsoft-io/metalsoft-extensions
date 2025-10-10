@@ -1,17 +1,173 @@
 ---
-- name: Gather ESXi vmnic (pNIC) information via ESXi API
-  community.vmware.vmware_host_vmnic_info:
-    hostname: "{{ esxi_hostname }}"
-    username: "{{ esxi_username }}"
-    password: "{{ esxi_password }}"
-    validate_certs: "{{ esxi_validate_certs | default(false) }}"
-    esxi_hostname: "{{ inventory_hostname }}"
-  delegate_to: localhost
-  register: vmnic_info
-  changed_when: false
-  failed_when: false
+# VMware Cloud Foundation: Dynamic vmnic uplink discovery & uniformity enforcement
+#
+# Flow summary:
+# 1. Collect vmnic info for all management hosts (Connected adapters only) in a single run_once operation.
+# 2. Build per-host mapping of logical network -> ordered unique vmnic devices (preserves provided MAC order, connected-only) via Jinja JSON templates + from_json.
+# 3. Validate every logical network shares identical device ordering across all hosts (hard fail on inconsistency; no minimum uplink count enforced).
+# 4. Export a canonical per-network uplink pair map (management uplinks are simply the pair for the 'vcf-mgmt' network) plus uplink1/uplink2 convenience vars for mgmt.
+# 5. Provide per-network individual variables <network>_uplink1_vmnic_name / <network>_uplink2_vmnic_name for downstream tasks.
+# 6. Produce a structured validation summary fact (vcf_uplink_validation_summary) capturing reference host, networks checked, inconsistencies list, pass flag, and timestamp.
+#
+# Debugging: enable vcf.validation_debug (propagates to debug_vmnic_mapping) to see intermediate structures and exported maps.
 
-- name: Debug vmnic_info
+- name: Preflight | Ensure management server instance data is present
+  assert:
+    that:
+      - management_server_instance_group_data.serverInstances is defined
+      - (management_server_instance_group_data.serverInstances | length) > 0
+    fail_msg: "No management serverInstances available for vmnic mapping."
+  run_once: true
+
+- name: Preflight | Build list of management hosts
+  set_fact:
+    mgmt_hosts: "{{ management_server_instance_group_data.serverInstances | map(attribute='host') | list }}"
+  run_once: true
+
+- name: Debug | Management hosts list
   debug:
-    var: vmnic_info
-  when: vmnic_info is defined and (debug_vmnic_mapping | default(false))
+    var: mgmt_hosts
+  when: debug_vmnic_mapping | default(false)
+  run_once: true
+
+- name: Gather vmnic info for all management hosts
+  community.vmware.vmware_host_vmnic_info:
+    hostname: "{{ hostvars[item].ansible_host }}"
+    username: "{{ hostvars[item].ansible_user | default('root') }}"
+    password: "{{ hostvars[item].ansible_password }}"
+    validate_certs: "{{ esxi_validate_certs | default(false) }}"
+    esxi_hostname: "{{ item }}"
+  delegate_to: localhost
+  register: all_vmnic_info_raw
+  loop: "{{ mgmt_hosts }}"
+  run_once: true
+  failed_when: false
+  changed_when: false
+
+- name: Normalize vmnic info dict (host -> vmnic_details list)
+  set_fact:
+    all_vmnic_info: >-
+      {{ dict(
+          (all_vmnic_info_raw.results | default([]))
+          | selectattr('hosts_vmnics_info', 'defined')
+          | map(attribute='hosts_vmnics_info')
+          | map('dict2items') | list | sum(start=[])
+          | map(attribute='key') | list
+          | zip(
+              (all_vmnic_info_raw.results | default([]))
+              | selectattr('hosts_vmnics_info', 'defined')
+              | map(attribute='hosts_vmnics_info')
+              | map('dict2items') | list | sum(start=[])
+              | map(attribute='value') | list
+          )
+        )
+      }}
+  when: all_vmnic_info_raw is defined
+  run_once: true
+
+- name: Debug | Raw vmnic aggregation
+  debug:
+    var: all_vmnic_info
+  when: debug_vmnic_mapping | default(false)
+  run_once: true
+
+- name: Build host -> network -> uplink devices mapping (in-memory template render)
+  # Renders Jinja JSON template and parses directly
+  set_fact:
+    host_network_uplink_devices: >-
+      {{ lookup('template', 'vmnics/host_network_uplink_devices.json.j2') | from_json }}
+  when: all_vmnic_info is defined
+  run_once: true
+
+- name: Debug | Host network uplink device matrix
+  debug:
+    var: host_network_uplink_devices
+  when: debug_vmnic_mapping | default(false)
+  run_once: true
+
+- name: Validate | Ensure each logical network has identical uplink device ordering across hosts
+  vars:
+    # networks to check (only those present in first host map)
+    reference_host: "{{ (host_network_uplink_devices.keys() | list)[0] }}"
+    reference_networks: "{{ host_network_uplink_devices[reference_host].keys() | list }}"
+  when: host_network_uplink_devices is defined
+  run_once: true
+  block:
+    - name: Build inconsistencies list
+      set_fact:
+        uplink_inconsistencies: >-
+          {%- set issues = [] -%}
+          {%- for net in reference_networks -%}
+            {%- set ref_list = host_network_uplink_devices[reference_host][net] | default([]) -%}
+            {%- for h, nets in host_network_uplink_devices.items() -%}
+              {%- set cur_list = nets.get(net, []) -%}
+              {%- if cur_list != ref_list -%}
+                {%- set _ = issues.append({'network': net, 'host': h, 'expected': ref_list, 'found': cur_list}) -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {{ issues }}
+      run_once: true
+
+    - name: Build validation summary fact
+      set_fact:
+        vcf_uplink_validation_summary:
+          reference_host: "{{ reference_host }}"
+          networks_checked: "{{ reference_networks }}"
+          inconsistent: "{{ uplink_inconsistencies | default([]) }}"
+          passed: "{{ (uplink_inconsistencies | default([])) | length == 0 }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+      run_once: true
+
+    - name: Debug | Uplink inconsistencies
+      debug:
+        var: uplink_inconsistencies
+      when: debug_vmnic_mapping | default(false)
+      run_once: true
+
+    - name: Fail if inconsistencies detected
+      fail:
+        msg: >-
+          Uplink vmnic device inconsistency detected across management hosts:
+          {{ uplink_inconsistencies | to_nice_json }}
+      when: uplink_inconsistencies | length > 0
+      run_once: true
+
+- name: Set final exported uplink variables (mgmt network) from reference host
+  vars:
+    _ref_host: "{{ (host_network_uplink_devices.keys() | list)[0] }}"
+    _mgmt_devices: "{{ host_network_uplink_devices[_ref_host]['vcf-mgmt'] | default([]) }}"
+  set_fact:
+    uplink1_vmnic_name: "{{ _mgmt_devices[0] if (_mgmt_devices | length) > 0 else '' }}"
+    uplink2_vmnic_name: "{{ _mgmt_devices[1] if (_mgmt_devices | length) > 1 else '' }}"
+  when: host_network_uplink_devices is defined
+  run_once: true
+
+- name: Debug | Exported uplink variables
+  debug:
+    msg:
+      - "uplink1_vmnic_name (mgmt): {{ uplink1_vmnic_name }}"
+      - "uplink2_vmnic_name (mgmt): {{ uplink2_vmnic_name }}"
+  when: debug_vmnic_mapping | default(false)
+  run_once: true
+
+- name: Build per-network uplink pairs map (in-memory)
+  set_fact:
+    vcf_uplink_pairs: >-
+      {{ lookup('template', 'vmnics/vcf_uplink_pairs.json.j2') | from_json }}
+  when: host_network_uplink_devices is defined
+  run_once: true
+
+- name: Set individual per-network uplink variables
+  set_fact:
+    "{{ (item.key | regex_replace('[^A-Za-z0-9_]', '_')) }}_uplink1_vmnic_name": "{{ item.value.uplink1 }}"
+    "{{ (item.key | regex_replace('[^A-Za-z0-9_]', '_')) }}_uplink2_vmnic_name": "{{ item.value.uplink2 }}"
+  loop: "{{ vcf_uplink_pairs | dict2items }}"
+  when: vcf_uplink_pairs is defined
+  run_once: true
+
+- name: Debug | All network uplink pairs
+  debug:
+    var: vcf_uplink_pairs
+  when: debug_vmnic_mapping | default(false)
+  run_once: true

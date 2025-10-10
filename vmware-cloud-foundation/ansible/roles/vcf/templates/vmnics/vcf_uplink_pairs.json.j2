@@ -1,0 +1,9 @@
+{# JSON map: network -> {uplink1: dev, uplink2: dev} #}
+{%- set ref_host = (host_network_uplink_devices.keys() | list)[0] -%}
+{%- set pairs = {} -%}
+{%- for net_name, devices in host_network_uplink_devices[ref_host].items() -%}
+  {%- set first_dev = devices | first | default('') -%}
+  {%- set second_dev = (devices | length > 1) | ternary(devices[1], '') -%}
+  {%- set _ = pairs.update({ net_name: {'uplink1': first_dev, 'uplink2': second_dev} }) -%}
+{%- endfor -%}
+{{ pairs | to_json }}

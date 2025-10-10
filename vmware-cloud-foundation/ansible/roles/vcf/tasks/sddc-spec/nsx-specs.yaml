@@ -1,6 +1,13 @@
 ---
 # NSX-T specification
 
+- name: Build | Extract key IP allocations for NSX Managers
+  set_fact:
+    nsx_manager_vip_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-vip') | first | default({}) }}"
+    nsx_manager_node1_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node1') | first | default({}) }}"
+    nsx_manager_node2_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node2') | first | default({}) }}"
+    nsx_manager_node3_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-node3') | first | default({}) }}"
+
 - name: Build | NSX spec
   set_fact:
     nsx_spec:

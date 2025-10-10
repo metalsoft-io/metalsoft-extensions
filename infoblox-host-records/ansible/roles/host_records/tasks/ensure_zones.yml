@@ -30,7 +30,7 @@
   set_fact:
     _zones_to_create: "{{ _required_zones }}"
 
-- name: Create forward zone {{ item }} if missing
+- name: Create forward zones if missing
   nios_zone:
     name: "{{ item }}"
     state: present

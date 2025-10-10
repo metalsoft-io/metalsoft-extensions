@@ -73,7 +73,7 @@ def run():
         if cr.status_code >= 300:
             if 'parent was not found' in cr.text.lower() or 'parent was not found' in cr.reason.lower():
                 m.fail_json(msg=(
-                    f"CREATE failed {cr.status_code} parent zone missing. Consider enabling auto_create_forward_zones=true or creating zone manually. Raw: {cr.text}"))
+                    f"CREATE failed {cr.status_code} parent zone missing. The required DNS zone must be created manually in Infoblox before creating host records. Raw: {cr.text}"))
             m.fail_json(msg=f"CREATE failed {cr.status_code} {cr.text}")
         existing = get()
         m.exit_json(changed=True, record=existing)
@@ -98,7 +98,7 @@ def run():
         if ur.status_code >= 300:
             if 'parent was not found' in ur.text.lower():
                 m.fail_json(msg=(
-                    f"UPDATE failed {ur.status_code} parent zone missing for {name}. Create zone or enable auto_create_forward_zones. Raw: {ur.text}"))
+                    f"UPDATE failed {ur.status_code} parent zone missing for {name}. The required DNS zone must be created manually in Infoblox. Raw: {ur.text}"))
             m.fail_json(msg=f"UPDATE failed {ur.status_code} {ur.text}")
         changed = True
         existing = get()

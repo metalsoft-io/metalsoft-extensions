@@ -4,7 +4,7 @@ infoblox_hostname: "192.168.1.55"
 infoblox_username: "admin"
 infoblox_password: "infoblox"
 infoblox_validate_certs: false
-infoblox_wapi_version: "2.12"
+infoblox_wapi_version: "2.13"
 infoblox_dns_view: "default"
 
 # When true create reverse PTR for each IPv4
@@ -31,10 +31,6 @@ delete_only: false
 
 # Automatically attempt to load a variables.json file from playbook directory when true
 auto_load_variables_file: true
-
-# Force compatibility lightweight host record module instead of official collection (auto for WAPI <2.13)
-force_compat_host_record: false
-auto_create_forward_zones: true
 
 # Include host records derived from wildcard names (e.g. *.apps.example). Default false skips them.
 include_wildcard_host_records: false

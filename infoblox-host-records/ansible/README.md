@@ -10,7 +10,9 @@ A minimal Ansible implementation that manages ONLY Infoblox host records (and op
 - Optional IPv4 and IPv6 PTR creation (enabled via `create_ptr` / `create_ipv6_ptr`) with per-address looping.
 - Supports deletion workflow using record status `deleting`.
 - Pure host-record focus (no standalone A/AAAA/PTR management).
- - Always uses native Infoblox host record module (fallback removed by request). A minimal `return_fields` list is specified to improve backward compatibility.
+- **IMPORTANT: Zone management has been removed. All required DNS zones must be created manually in Infoblox before creating host records.**
+- **IMPORTANT: Fallback and compat modes have been removed. Only native Infoblox host record module is used.**
+- Requires WAPI version 2.13 or higher for full functionality.
 
 ## Variables
 Provide these (env, inventory, or `-e`):
@@ -20,17 +22,14 @@ Provide these (env, inventory, or `-e`):
 | infoblox_hostname | yes | Infoblox grid member or VIP |
 | infoblox_username | yes | API username |
 | infoblox_password | yes | API password |
-| infoblox_wapi_version | no | Default `2.12` |
+| infoblox_wapi_version | no | Default `2.13` (required minimum) |
 | infoblox_dns_view | no | DNS view for lookups (default `default`) |
-| auto_create_forward_zones | no | Create forward zones if absent (default false) |
 | create_ptr | no | Create PTR for each IPv4 (default true) |
 | create_ipv6_ptr | no | Create PTR for each IPv6 (default false) |
 | delete_only | no | Skip create when true; still perform deletions |
 | force_state | no | Force all records to given state (present/absent) |
 | host_records_domain | no | Domain used when synthesizing from IP-only input |
 | auto_load_variables_file | no | When true (default) auto `include_vars: variables.json` if file exists |
-| force_compat_host_record | no | Force use of lightweight internal compat host record module |
-| host_record_use_compat (derived) | n/a | True when WAPI < 2.13 or `force_compat_host_record` is true; selects compat module |
 | include_wildcard_host_records | no | Include wildcard A records (names starting with *.) when deriving from clusterDNSRecordSet/serverInstanceDNSRecordSet (default false) |
 | ttl (per item) | n/a | Carried from source A record when available |
 | zone_name (per item) | n/a | Captured from source record `zoneName` when provided |
@@ -71,11 +70,12 @@ ansible-playbook host_records_playbook.yml \
 ```
 
 ## Notes
-- Reverse zones must already exist for PTR creation; this role does not create zones.
+- **CRITICAL: All required DNS zones must be created manually in Infoblox before running this playbook. This role no longer creates zones automatically.**
+- Reverse zones must already exist for PTR creation.
 - For bulk customizations, predefine `host_records` before role include to bypass normalization.
 - Provide `ipv4_list` / `ipv6_list` directly for exact control; omit single-value keys if supplying lists (they will be inferred).
 - Tested logically with provided JSON schemas; adjust `infoblox_wapi_version` if running newer grid.
-- Minimum recommended WAPI remains 2.13; for earlier versions the role auto-switches to internal compat module avoiding unsupported return fields.
+- Requires WAPI version 2.13 or higher. Fallback and compat modes have been removed for simplicity.
 
 ## License
 MIT (adjust as needed)

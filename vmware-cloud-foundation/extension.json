@@ -78,6 +78,12 @@
             "options": {}
         },
         {
+            "label": "ova_url",
+            "name": "ova_url",
+            "inputType": "ExtensionInputString",
+            "options": {}
+        },
+        {
             "label": "nsx_manager_size",
             "name": "nsx_manager_size",
             "inputType": "ExtensionInputString",

@@ -137,10 +137,37 @@
     msg: "Air-gapped mode: Using release image {{ release_image_override }}"
   when: extensionInstanceVariables.airgapped_deployment | default(false) | bool
 
-# Validate the registry for air-gapped deployments
-- name: Validate mirror registry accessibility
+# Validate the registry for air-gapped deployments with authentication
+- name: Prepare pull secret for registry validation
+  set_fact:
+    pull_secret_json: "{{ extensionInstanceVariables.pull_secret if extensionInstanceVariables.pull_secret is mapping else extensionInstanceVariables.pull_secret | from_json }}"
+  when:
+  - extensionInstanceVariables.airgapped_deployment | default(false) | bool
+  - not iso_exists.stat.exists
+
+- name: Validate mirror registry accessibility with authentication
   shell: |
-    /usr/local/bin/oc adm release info {{ release_image_override }} --insecure=true
+    unset BASH_XTRACEFD
+    set -e
+    TMPDIR=$(mktemp -d)
+    cat > $TMPDIR/config.json << 'EOF'
+    {{ pull_secret_json | to_json }}
+    EOF
+    echo "Testing registry: {{ release_image_override }}"
+    echo "Config file created at: $TMPDIR/config.json"
+
+    # Try using skopeo first (better error messages)
+    if command -v skopeo &> /dev/null; then
+      echo "Using skopeo to validate registry..."
+      skopeo inspect --tls-verify=false --authfile=$TMPDIR/config.json docker://{{ release_image_override }}
+    else
+      echo "Using oc to validate registry..."
+      /usr/local/bin/oc adm release info {{ release_image_override }} --insecure=true --registry-config=$TMPDIR/config.json
+    fi
+
+    rm -rf $TMPDIR
+  args:
+    executable: /bin/bash
   register: registry_validation
   failed_when: registry_validation.rc != 0
   when:

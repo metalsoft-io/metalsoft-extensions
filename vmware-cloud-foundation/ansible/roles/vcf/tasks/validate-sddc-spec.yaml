@@ -14,3 +14,7 @@
 - name: Import | Network Configuration Validation
   ansible.builtin.import_tasks: validations/validate-networks.yaml
   tags: ['validation', 'network']
+
+- name: Import | Cloud-Builder Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-cba.yaml
+  tags: ['validation', 'cba']

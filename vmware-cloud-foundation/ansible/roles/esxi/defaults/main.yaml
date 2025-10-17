@@ -3,4 +3,12 @@ esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }
 esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
 esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
 
-esxi_print_facts: "{{ extensionInstanceVariables.esxi_print_facts | default(true) | bool }}"
+esxi_validate_certs: "{{ extensionInstanceVariables.esxi_validate_certs | default(false) | bool }}"
+
+esxi_print_facts: "{{ extensionInstanceVariables.esxi_print_facts | default(vcf.validation_debug | default(false)) | bool }}"
+esxi_print_ssh_thumbprints: "{{ extensionInstanceVariables.esxi_print_ssh_thumbprints | default(vcf.validation_debug | default(false)) | bool }}"
+esxi_print_ssl_thumbprints: "{{ extensionInstanceVariables.esxi_print_ssl_thumbprints | default(vcf.validation_debug | default(false)) | bool }}"
+
+esxi_vswitch_name: "{{ extensionInstanceVariables.esxi_vswitch_name | default('vSwitch0') }}"
+esxi_vm_mgmt_portgroup_name: "{{ extensionInstanceVariables.esxi_portgroup_name | default('VM Network') }}"
+esxi_vm_mgmt_vlan_id: "{{ vm_mgmt_network.vlan_id | default(0) }}"

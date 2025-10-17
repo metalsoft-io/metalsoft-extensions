@@ -18,7 +18,7 @@
     service_name: "{{ item }}"
     state: start
     service_policy: true
-    validate_certs: false
+    validate_certs: "{{ esxi_validate_certs }}"
   with_items:
     - TSM-SSH
     - TSM

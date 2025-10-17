@@ -40,6 +40,12 @@
     msg: "Waiting for Cloud-Builder Appliance API to be available at https://{{ cba.ipv4_address }}. This may take several minutes..."
   delegate_to: localhost
 
+- name: Debug | Cloud-Builder deployed from OVA URL
+  ansible.builtin.debug:
+    msg: "Cloud-Builder deployment initiated using OVA URL: {{ ova_url }} (raw='{{ raw_ova_url | default('') }}' derived='{{ derived_ova_url | default('') }}')"
+  when: vcf.validation_debug | default(false) | bool
+  delegate_to: localhost
+
 - name: Polling the Cloud-Builder Appliance API
   ansible.builtin.uri:
     url: https://{{ cba.ipv4_address }}
@@ -55,3 +61,6 @@
   register: cba_wait_initialize_result
   until: cba_wait_initialize_result is succeeded
   delegate_to: localhost
+
+- name: Include Cloud-Builder verification tasks
+  include_tasks: verify-cloud-builder.yaml

@@ -34,7 +34,7 @@
 
     - name: Give some time for the validation to start
       ansible.builtin.pause:
-        seconds: 5
+        seconds: 10
 
     - name: Cloud-Builder Appliance API CALL | Querying validation status - mgmt workload domain
       ansible.builtin.uri:

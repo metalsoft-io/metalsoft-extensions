@@ -11,6 +11,9 @@
 - name: Import set ESXi host NTP playbook
   ansible.builtin.import_tasks: set-ntp.yaml
 
+- name: Import set ESXi host 'VM Network' network configuration playbook
+  ansible.builtin.import_tasks: set-vm-network.yaml
+
 - name: Test SSH connectivity
   ansible.builtin.ping:
   when: esxi_print_facts | default(false) | bool

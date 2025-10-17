@@ -5,7 +5,7 @@
     username: "{{ esxi_username }}"
     password: "{{ esxi_password }}"
     esxi_hostname: "{{ esxi_hostname }}"
-    validate_certs: false
+    validate_certs: "{{ esxi_validate_certs }}"
     ntp_servers: "{{ ntp_servers }}"
     verbose: true
   delegate_to: localhost
@@ -16,7 +16,7 @@
     username: "{{ esxi_username }}"
     password: "{{ esxi_password }}"
     esxi_hostname: "{{ esxi_hostname }}"
-    validate_certs: false
+    validate_certs: "{{ esxi_validate_certs }}"
     service_name: ntpd
     service_policy: on
     state: present

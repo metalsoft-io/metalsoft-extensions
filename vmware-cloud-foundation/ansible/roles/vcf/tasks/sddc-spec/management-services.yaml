@@ -22,6 +22,7 @@
       hostname: "{{ cba_config.fqdn | default('') | split('.') | first }}"
       admin_username: "{{ management_server_instance_group_custom_variables.cba_admin_username | default('admin') }}"
       admin_password: "{{ extensionInstanceVariables.cba_admin_password | default('VMw@re1!VMw@re1!') }}"
+      root_username: "root"
       root_password: "{{ extensionInstanceVariables.cba_root_password | default('VMw@re1!VMw@re1!') }}"
       ipv4_address: "{{ cba_config.ip | default('') }}"
       ipv4_netmask: "{{ cba_config.netmask | default('') }}"

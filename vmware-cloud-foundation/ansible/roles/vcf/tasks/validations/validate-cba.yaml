@@ -1,0 +1,87 @@
+---
+# Cloud-Builder (CBA) specific preflight validations
+
+- name: Validate | CBA network parameters present
+  ansible.builtin.assert:
+    that:
+      - cba is defined
+      - cba.ipv4_address is defined and cba.ipv4_address | length > 0
+      - cba.ipv4_netmask is defined and cba.ipv4_netmask | length > 0
+      - cba.ipv4_gateway is defined and cba.ipv4_gateway | length > 0
+      - cba.hostname is defined and cba.hostname | length > 0
+    fail_msg: >-
+      Missing one or more Cloud-Builder network parameters.
+      cba.hostname='{{ cba.hostname | default('') }}' cba.ipv4_address='{{ cba.ipv4_address | default('') }}'
+      cba.ipv4_netmask='{{ cba.ipv4_netmask | default('') }}' cba.ipv4_gateway='{{ cba.ipv4_gateway | default('') }}'
+      Ensure management_ip_allocations contains an entry tagged role=cloud-builder.
+    success_msg: "CBA network parameters look OK for hostname {{ cba.hostname }}"
+
+- name: Validate | Effective OVA URL present & well-formed
+  vars:
+    effective_empty: "{{ ova_url | default('') == '' }}"  # ova_url already mapped to effective value
+  ansible.builtin.assert:
+    that:
+      - not effective_empty
+      - ova_url is match('^https?://')
+    fail_msg: >-
+      Effective OVA URL is missing or malformed. raw_ova_url='{{ raw_ova_url | default('') }}' derived_ova_url='{{ derived_ova_url | default('') }}'
+      repository_base_url='{{ repository_base_url | default('') }}' vcf_version='{{ vcf_version | default('') }}' ova_name='{{ ova_name | default('') }}'
+      Resolution:
+        1) Provide a full extensionInstanceVariables.ova_url (https://.../something.ova)
+        OR
+        2) Ensure repository_base_url, vcf_version, and ova_name produce a valid derived_ova_url.
+    success_msg: "Effective OVA URL '{{ ova_url }}' appears valid"
+
+- name: Debug | Show resolved ova_url (only when validation_debug enabled)
+  ansible.builtin.debug:
+    msg: "Resolved ova_url={{ ova_url | default('UNDEFINED') }}"
+  when: vcf.validation_debug | default(false) | bool
+
+# Optional reachability probe (disabled by default). Enable by setting cba_url_probe=true.
+- name: Probe | OVA URL reachability (HEAD/GET)
+  vars:
+    local_cba_url_probe_retries: "{{ cba_url_probe_retries | default(5) }}"
+    local_cba_url_probe_delay: "{{ cba_url_probe_delay | default(6) }}"  # ~30s default
+    local_cba_url_probe_method: "{{ cba_url_probe_method | default('HEAD') | upper }}"
+    local_expected_status_codes: "{{ local_cba_url_probe_method == 'GET' | ternary([200, 206], [200]) }}"
+    local_range_header: "{{ local_cba_url_probe_method == 'GET' | ternary({'Range': 'bytes=0-0'}, {}) }}"
+  ansible.builtin.uri:
+    url: "{{ ova_url }}"
+    method: "{{ local_cba_url_probe_method }}"
+    status_code: "{{ local_expected_status_codes }}"
+    headers: "{{ local_range_header }}"
+    return_content: false
+    validate_certs: false
+    timeout: 20
+  when: cba_url_probe | default(false) | bool and (ova_url | default('') != '')
+  register: cba_ova_probe
+  retries: "{{ local_cba_url_probe_retries }}"
+  delay: "{{ local_cba_url_probe_delay }}"
+  until: cba_ova_probe is succeeded
+  failed_when: cba_ova_probe.status | default(0) not in local_expected_status_codes
+
+- name: Debug | OVA URL probe response
+  ansible.builtin.debug:
+    var: cba_ova_probe
+  when: cba_url_probe | default(false) | bool and vcf.validation_debug | default(false) | bool
+
+# Optional datastore existence pre-check (enabled by default)
+- name: Probe | Datastore info (all datastores)
+  community.vmware.vmware_datastore_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ cba.validate_certs | default(false) }}"
+  delegate_to: localhost
+  register: cba_esxi_datastores
+  when: cba_datastore_precheck | default(true) | bool
+
+- name: Validate | CBA datastore exists on ESXi host
+  ansible.builtin.assert:
+    that:
+      - cba_esxi_datastores.datastores | default([]) | selectattr('name','equalto', cba.datastore) | list | length > 0
+    fail_msg: >-
+      Datastore '{{ cba.datastore }}' not found on ESXi host {{ esxi_hostname }}.
+      Available datastores: {{ cba_esxi_datastores.datastores | map(attribute='name') | join(', ') }}
+    success_msg: "Datastore '{{ cba.datastore }}' found on ESXi host {{ esxi_hostname }}"
+  when: cba_datastore_precheck | default(true) | bool

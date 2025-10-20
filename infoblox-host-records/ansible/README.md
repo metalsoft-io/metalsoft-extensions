@@ -77,5 +77,11 @@ ansible-playbook host_records_playbook.yml \
 - Tested logically with provided JSON schemas; adjust `infoblox_wapi_version` if running newer grid.
 - Requires WAPI version 2.13 or higher. Fallback and compat modes have been removed for simplicity.
 
+
+## to create the zip file
+
+zip infoblox-hosts.zip -r collections library roles host_records_playbook.yml 
+
+
 ## License
 MIT (adjust as needed)

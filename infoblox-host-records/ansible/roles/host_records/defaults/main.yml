@@ -1,8 +1,10 @@
 ---
 # Default variables for host_records role
-infoblox_hostname: "192.168.1.55"
+#infoblox_hostname: "localhost"
+infoblox_hostname: "10.255.146.53"
 infoblox_username: "admin"
-infoblox_password: "infoblox"
+infoblox_password: "infoblox123"
+#infoblox_port: 1443
 infoblox_validate_certs: false
 infoblox_wapi_version: "2.13"
 infoblox_dns_view: "default"

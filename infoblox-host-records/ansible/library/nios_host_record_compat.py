@@ -18,7 +18,9 @@ def run():
     name = p['name']
     provider = p['provider']
     wapi = str(provider.get('wapi_version','2.12'))
-    base = f"https://{provider['host']}/wapi/v{wapi}"
+    host = provider['host']
+    port = provider.get('port', 443)
+    base = f"https://{host}:{port}/wapi/v{wapi}"
     view = provider.get('view', 'default')
     sess = requests.Session()
     sess.auth = (provider['username'], provider['password'])

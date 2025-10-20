@@ -17,16 +17,16 @@
              if (host_item.ipv6_list is defined and host_item.ipv6_list is not none)
              else ([host_item.ipv6] if (host_item.ipv6 is defined and host_item.ipv6 is not none and (host_item.ipv6|string)|length>0) else [])
          ) | list }}
-  nios_host_record:
+  nios_host_record_compat:
     name: "{{ host_item.host_name }}"
     ipv4addrs: "{{ (_ipv4_list | map('community.general.dict_kv', 'ipv4addr') | list) if _ipv4_list|length>0 else omit }}"
     ipv6addrs: "{{ (_ipv6_list | map('community.general.dict_kv', 'ipv6addr') | list) if _ipv6_list|length>0 else omit }}"
     state: "{{ record_state }}"
     ttl: "{{ host_item.ttl | default(3600) }}"
     comment: "managed-by=metalsoft"
-    use_dns_ea_inheritance: "{{ (infoblox_wapi_version | regex_replace('[^0-9.]','')) is version('2.13', '>=') | ternary(true, omit) }}"
     provider:
       host: "{{ infoblox_hostname }}"
+      port: "{{ infoblox_port | default(443) }}"
       username: "{{ infoblox_username }}"
       password: "{{ infoblox_password }}"
       validate_certs: "{{ infoblox_validate_certs }}"
@@ -47,6 +47,7 @@
     provider:
       host: "{{ infoblox_hostname }}"
       username: "{{ infoblox_username }}"
+      port: "{{ infoblox_port | default(443) }}"
       password: "{{ infoblox_password }}"
       validate_certs: "{{ infoblox_validate_certs }}"
       wapi_version: "{{ infoblox_wapi_version }}"
@@ -62,6 +63,7 @@
     state: "{{ record_state }}"
     provider:
       host: "{{ infoblox_hostname }}"
+      port: "{{ infoblox_port | default(443) }}"
       username: "{{ infoblox_username }}"
       password: "{{ infoblox_password }}"
       validate_certs: "{{ infoblox_validate_certs }}"

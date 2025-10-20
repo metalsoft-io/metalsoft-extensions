@@ -1,8 +1,8 @@
 {
   "kind": "ExtensionDefinition",
   "schemaVersion": "1.1",
-  "name": "infoblox-automation-hosts-records",
-  "label": "infobloxautomation-host-records",
+  "name": "infobloxautomationhostsrecords",
+  "label": "infobloxautomationhostrecords",
   "extensionType": "workflow",
   "vendor": "MetalSoft",
   "extensionVersion": "1.0.0",
@@ -43,7 +43,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
@@ -56,7 +56,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
@@ -69,7 +69,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
@@ -82,7 +82,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
@@ -95,7 +95,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
@@ -108,23 +108,10 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "infoblox-configuration",
-            "playbook": "infoblox-extension.yaml"
+            "playbook": "host_records_playbook.yml"
           }
         }
       ]
-    },
-    {               
-      "stage": "serverInstanceUpdate",
-      "tasks": [
-          {
-              "label": "update-ip-records-for-instance",
-              "taskType": "ExtensionTaskAnsible",
-              "options": {
-                  "asset": "infoblox-configuration",
-                  "playbook": "infoblox-extension.yaml"
-              }
-          }   
-      ]       
-    }  
+    }
   ]
 }

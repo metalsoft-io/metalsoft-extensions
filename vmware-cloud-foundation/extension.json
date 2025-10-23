@@ -6,7 +6,7 @@
     "extensionType": "application",
     "vendor": "MetalSoft",
     "extensionVersion": "1.0",
-    "description": "VMware Cloud Foundation (VCF)",
+    "description": "VMware Cloud Foundation (VCF) - consolidated architecture model",
     "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
     "dependencies": {
         "controllerVersion": "release-v7.0",
@@ -23,12 +23,6 @@
             "options": {}
         },
         {
-            "label": "vi_workload_domain_cluster_node_server_type",
-            "name": "vi_workload_domain_cluster_node_server_type",
-            "inputType": "ExtensionInputServerType",
-            "options": {}
-        },
-        {
             "label": "mgmt_domain_instance_count",
             "name": "mgmt_domain_instance_count",
             "inputType": "ExtensionInputInteger",
@@ -39,37 +33,12 @@
             }
         },
         {
-            "label": "vi_workload_domain_instance_count",
-            "name": "vi_workload_domain_instance_count",
-            "inputType": "ExtensionInputInteger",
-            "defaultValue": 0,
-            "options": {
-                "minValue": 0,
-                "maxValue": 10
-            }
-        },
-        {
             "label": "mgmt_domain_cluster_node_os_template",
             "name": "mgmt_domain_cluster_node_os_template",
             "inputType": "ExtensionInputOsTemplate",
             "options": {
                 "osFamily": "ESXi"
             }
-        },
-        {
-            "label": "vi_workload_domain_cluster_node_os_template",
-            "name": "vi_workload_domain_cluster_node_os_template",
-            "inputType": "ExtensionInputOsTemplate",
-            "options": {
-                "osFamily": "ESXi"
-            }
-        },
-        {
-            "label": "deployment_architecture_model",
-            "name": "deployment_architecture_model",
-            "inputType": "ExtensionInputString",
-            "defaultValue": "consolidated",
-            "options": {}
         },
         {
             "label": "repository_base_url",
@@ -434,7 +403,7 @@
             "label": "vcf",
             "name": "vcf",
             "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.1.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.2.zip"
         }
     ],
     "onCreate": [

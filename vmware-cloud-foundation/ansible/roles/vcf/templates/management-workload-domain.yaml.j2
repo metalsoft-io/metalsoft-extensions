@@ -1,8 +1,8 @@
 workflowType: "{{ vcf.platform | default('VCF') }}"
-skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation }}
-deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys }}
-ceipEnabled: {{ vcf.ceip_enabled }}
-fipsEnabled: {{ vcf.fips_enabled }}
+skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation | bool }}
+deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys | bool }}
+ceipEnabled: {{ vcf.ceip_enabled | bool }}
+fipsEnabled: {{ vcf.fips_enabled | bool }}
 taskName: {{ vcf.task_name }}
 
 ntpServers: {{ ntp_servers }}
@@ -26,19 +26,15 @@ proxySpec:
   transferProtocol: "{{ proxy_spec.transferProtocol }}"
 {% endif %}
 
-{% if
-  (not vcf.deploy_without_license_keys | bool)
-  and (vcf.license.esxi is defined)
-  and (vcf.license.esxi)
-%}
+{% if licenses_required and (vcf.license.esxi | default('') | trim | length > 0) %}
 esxLicense: "{{ vcf.license.esxi }}"
 {% endif %}
 
-{% if sddc_manager_spec.management_pool_name is defined and sddc_manager_spec.management_pool_name %}
-managementPoolName: "{{ sddc_manager_spec.management_pool_name }}"
+{% if management_pool_name is defined %}
+managementPoolName: "{{ management_pool_name }}"
 {% endif %}
 
-sddcId: "{{ sddc_manager_spec.id }}"
+sddcId: "{{ sddc_id }}"
 
 sddcManagerSpec:
   hostname: "{{ sddc_manager_spec.hostname }}"
@@ -76,3 +72,6 @@ vcenterSpec:
   vcenterHostname: "{{ vcenter_spec.vcenter_hostname }}"
   rootVcenterPassword: "{{ vcenter_spec.root_password }}"
   vmSize: "{{ vcenter_spec.vm_size }}"
+{% if vcenter_spec.license_file | trim | length > 0 %}
+  licenseFile: "{{ vcenter_spec.license_file }}"
+{% endif %}

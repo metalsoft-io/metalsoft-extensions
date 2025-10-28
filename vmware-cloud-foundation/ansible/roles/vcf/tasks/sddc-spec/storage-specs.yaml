@@ -4,7 +4,8 @@
 - name: Build | VSAN spec
   set_fact:
     vsan_spec:
-      datastore_name: m-cl1-ds1
-      vsan_dedup: "{{ extensionInstanceVariables.m_vsan_dedup | default(false) | bool }}"
-      hcl_file: "{{ extensionInstanceVariables.m_vsan_hcl_file | default('') }}"
-      esa_config: "{{ extensionInstanceVariables.m_vsan_esa_enabled | default(false) | bool }}"
+      datastore_name: "{{ extensionInstanceVariables.vsan_datastore_name | default(sddc_id + '-cl1-ds1') }}"
+      vsan_dedup: "{{ extensionInstanceVariables.vsan_dedup_enabled | default(false) | bool }}"
+      hcl_file: "{{ extensionInstanceVariables.vsan_hcl_file | default('') }}"
+      esa_config: "{{ extensionInstanceVariables.vsan_esa_enabled | default(false) | bool }}"
+      license_file: "{{ vcf.license.vsan if (vcf.license is defined and vcf.license.vsan is defined) else '' }}"

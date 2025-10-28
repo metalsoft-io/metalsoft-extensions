@@ -11,6 +11,7 @@
 - name: Build | NSX spec
   set_fact:
     nsx_spec:
+      nsxt_license: "{{ vcf.license.nsx if (vcf.license is defined and vcf.license.nsx is defined) else '' }}"
       nsxt_manager_size: "{{ extensionInstanceVariables.nsx_manager_size | default('medium') }}"
       nsxt_manager_vip:
         ipv4_address: "{{ nsx_manager_vip_config.ip | default('') }}"
@@ -32,7 +33,7 @@
       nsxt_manager_admin_password: "{{ extensionInstanceVariables.nsx_manager_admin_password | default('VMw@re1!VMw@re1!') }}"
       nsxt_manager_audit_password: "{{ extensionInstanceVariables.nsx_manager_audit_password | default('VMw@re1!VMw@re1!') }}"
       nsxt_host_overlay_tep_ip_pool:
-        name: m-cl1-tep1
+        name: "{{ nsx_host_overlay_ip_pool_name }}"
         description: "{{ nsx_host_overlay_tep_ip_pool_description | default('ESXi Host Overlay TEP IP Pool') }}"
         subnet_ip_rage:
           start: "{{ nsx_network_subnet.startIp | default('') }}"

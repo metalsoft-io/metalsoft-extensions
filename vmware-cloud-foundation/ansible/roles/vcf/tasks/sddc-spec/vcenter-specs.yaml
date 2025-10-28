@@ -24,3 +24,4 @@
       vcenter_fqdn: "{{ management_vcenter_server_config.fqdn | default('vcenter.vmware.local') }}"
       vcenter_hostname: "{{ management_vcenter_server_config.fqdn | default('') | split('.') | first }}"
       root_password: "{{ extensionInstanceVariables.vcenter_root_password | default('VMw@re1!VMw@re1!') }}"
+      license_file: "{{ vcf.license.vcenter if (vcf.license is defined and vcf.license.vcenter is defined) else '' }}"

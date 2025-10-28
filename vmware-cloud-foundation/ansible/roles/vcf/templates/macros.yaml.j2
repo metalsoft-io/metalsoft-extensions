@@ -51,7 +51,7 @@
 
 {# Macro to render host specification #}
 {% macro render_host_spec(host, hostvars, extensionInstanceRecordSet, esxi_standard_switch_name) %}
-- association: "{{ extensionInstanceRecordSet.extensionInstanceName | default('mgmt-cluster') }}"
+- association: "{{ extensionInstanceRecordSet.siteLabel | default(extensionInstanceRecordSet.extensionInstanceName) }}"
   ipAddressPrivate:
     ipAddress: "{{ hostvars[host].ansible_host }}"
   hostname: "{{ host }}"

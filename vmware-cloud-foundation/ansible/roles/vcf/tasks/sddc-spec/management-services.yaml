@@ -44,8 +44,6 @@
 - name: Build | SDDC Manager spec
   set_fact:
     sddc_manager_spec:
-      id: "{{ extensionInstanceRecordSet.extensionInstanceName | default('test') }}-m"
-      management_pool_name: "m-np1"
       hostname_fqdn: "{{ sddc_manager_config.fqdn | default('sddc-manager.vmware.local') }}"
       hostname: "{{ sddc_manager_config.fqdn | default('') | split('.') | first }}"
       local_user_password: "{{ extensionInstanceVariables.sddc_local_admin_password | default('VMw@re1!VMw@re1!') }}"

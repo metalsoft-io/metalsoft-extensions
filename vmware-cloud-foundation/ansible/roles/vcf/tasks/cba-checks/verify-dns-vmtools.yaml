@@ -20,8 +20,8 @@
   register: cba_dns_forward_lookup
   retries: 5
   delay: 10
-  until: cba_dns_forward_lookup.exit_code == 0
-  failed_when: cba_dns_forward_lookup.exit_code != 0
+  until: cba_dns_forward_lookup.exit_code | default(-1) == 0
+  failed_when: cba_dns_forward_lookup.exit_code | default(-1) != 0
 
 - name: Test DNS resolution - Reverse lookup (PTR record) for IP
   community.vmware.vmware_vm_shell:
@@ -39,8 +39,18 @@
   register: cba_dns_reverse_lookup
   retries: 5
   delay: 10
-  until: cba_dns_reverse_lookup.exit_code == 0
-  failed_when: cba_dns_reverse_lookup.exit_code != 0
+  until: cba_dns_reverse_lookup.exit_code | default(-1) == 0
+  failed_when: cba_dns_reverse_lookup.exit_code | default(-1) != 0
+
+- name: Debug | DNS forward lookup result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_dns_forward_lookup
+  when: vcf.validation_debug | default(false) | bool
+
+- name: Debug | DNS reverse lookup result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_dns_reverse_lookup
+  when: vcf.validation_debug | default(false) | bool
 
 - name: Summarize DNS verification result
   ansible.builtin.debug:
@@ -50,4 +60,4 @@
       - "IP Address: {{ cba.ipv4_address }}"
       - "Forward lookup (A): nslookup succeeded {{ cba_dns_forward_lookup.cmd_line }}"
       - "Reverse lookup (PTR): nslookup succeeded {{ cba_dns_reverse_lookup.cmd_line }}"
-      - "Method: VMware Tools (exit code verification)"
+      - "Method: VMware Tools (exit_code=0 verification)"

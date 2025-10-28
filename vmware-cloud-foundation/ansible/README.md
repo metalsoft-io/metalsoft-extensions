@@ -21,7 +21,7 @@ dns_searchpath: The DNS search path for the environment.
 ```yaml
 # Proxy Configuration Variables
 # If your environment requires a proxy for Internet access, you can configure the following variables:
-proxy_enabled: Boolean to enable or disable proxy settings.
+proxy_enabled: Boolean to enable or disable proxy settings. Defaults to false.
 proxy_host: The hostname of the proxy server.
 proxy_port: The port number of the proxy server. Defaults to 3128.
 proxy_username: The username for proxy authentication.

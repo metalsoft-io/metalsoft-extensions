@@ -131,25 +131,25 @@
       network_type_vm_mgmt:
         type_name: VM_MANAGEMENT
         teaming_policy: "{{ extensionInstanceVariables.m_vm_mgmt_teaming_policy | default('loadbalance_loadbased') }}"
-        port_group_key: m-cl1-vds1-vm-mgmt
+        port_group_key: "{{ vm_management_portgroup_name }}"
         standby_uplinks: "{{ m_vm_mgmt_standby_uplinks | default([]) }}"
         active_uplinks: "{{ m_vm_mgmt_active_uplinks | default(['uplink1', 'uplink2']) }}"
       network_type_esxi_mgmt:
         type_name: MANAGEMENT
         teaming_policy: "{{ extensionInstanceVariables.m_esxi_mgmt_teaming_policy | default('loadbalance_loadbased') }}"
-        port_group_key: m-cl1-vds1-esxi-mgmt
+        port_group_key: "{{ esxi_management_portgroup_name }}"
         standby_uplinks: "{{ m_esxi_mgmt_standby_uplinks | default([]) }}"
         active_uplinks: "{{ m_esxi_mgmt_active_uplinks | default(['uplink1', 'uplink2']) }}"
       network_type_vmotion:
         type_name: VMOTION
         teaming_policy: "{{ extensionInstanceVariables.m_vmotion_teaming_policy | default('loadbalance_loadbased') }}"
-        port_group_key: m-cl1-vds1-vmotion
+        port_group_key: "{{ vmotion_portgroup_name }}"
         standby_uplinks: "{{ m_vmotion_standby_uplinks | default([]) }}"
         active_uplinks: "{{ m_vmotion_active_uplinks | default(['uplink1', 'uplink2']) }}"
       network_type_vsan:
         type_name: VSAN
         teaming_policy: "{{ extensionInstanceVariables.m_vsan_teaming_policy | default('loadbalance_loadbased') }}"
-        port_group_key: m-cl1-vds1-vsan
+        port_group_key: "{{ vsan_portgroup_name }}"
         standby_uplinks: "{{ m_vsan_standby_uplinks | default([]) }}"
         active_uplinks: "{{ m_vsan_active_uplinks | default(['uplink1', 'uplink2']) }}"
 

@@ -27,7 +27,7 @@
 
 - name: Set time sync service fact
   ansible.builtin.set_fact:
-    cba_time_sync_service: "{{ 'ntpd' if cba_ntpd_check.exit_code == 0 else 'NONE' }}"
+    cba_time_sync_service: "{{ 'ntpd' if cba_ntpd_check.exit_code | default(-1) == 0 else 'NONE' }}"
 
 - name: Show detected time sync service
   ansible.builtin.debug:
@@ -59,8 +59,18 @@
   register: cba_ntp_peers
   retries: "{{ cba_ntp_retries }}"
   delay: "{{ cba_ntp_delay }}"
-  until: cba_ntp_peers.exit_code == 0
-  failed_when: cba_ntp_peers.exit_code != 0
+  until: cba_ntp_peers.exit_code | default(-1) == 0
+  failed_when: cba_ntp_peers.exit_code | default(-1) != 0
+
+- name: Debug | ntpd check result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_ntpd_check
+  when: vcf.validation_debug | default(false) | bool
+
+- name: Debug | ntp peers result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_ntp_peers
+  when: vcf.validation_debug | default(false) | bool
 
 - name: Summarize NTP verification result
   ansible.builtin.debug:

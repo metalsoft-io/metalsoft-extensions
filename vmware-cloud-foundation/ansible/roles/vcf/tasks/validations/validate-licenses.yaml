@@ -1,7 +1,15 @@
 ---
 # License Configuration Validation Tasks
-# This file contains validation for VMware Cloud Foundation license requirements
-# including ESXi, vSAN, NSX, and vCenter Server licenses
+# Enforces all-or-none license key usage. If all four license keys are present,
+# they are automatically used (licenses_required=true). Partial sets are invalid.
+
+- name: Assert | No partial license key set
+  tags: ['validation', 'license']
+  ansible.builtin.assert:
+    that:
+      - not (partial_license_keys_set | bool)
+    fail_msg: "Partial license key set detected. Provide all (esxi, vsan, nsx, vcenter) or none."
+    success_msg: "No partial license key set."
 
 - name: Validate | VCF License Configuration
   tags: ['validation', 'license']
@@ -18,4 +26,4 @@
       - vcf.license.vcenter | length > 0
     fail_msg: "VCF licenses (esxi, vsan, nsx, vcenter) are required"
     success_msg: "VCF licenses are set"
-  when: not vcf.deploy_without_license_keys | bool
+  when: licenses_required | bool

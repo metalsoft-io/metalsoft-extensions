@@ -9,3 +9,6 @@ vsanSpec:
   datastoreName: "{{ vsan_spec.datastore_name }}"
   esaConfig:
     enabled: {{ vsan_spec.esa_config }}
+{% if vsan_spec.license_file | trim | length > 0 %}
+  licenseFile: "{{ vsan_spec.license_file }}"
+{% endif %}

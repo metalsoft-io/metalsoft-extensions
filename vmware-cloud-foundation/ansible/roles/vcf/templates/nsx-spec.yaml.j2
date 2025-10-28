@@ -24,3 +24,6 @@ nsxtSpec:
         end: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.end}}"
       cidr: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.cidr}}"
       gateway: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.gateway}}"
+{% if licenses_required and (vcf.license.nsx | default('') | trim | length > 0) %}
+  nsxtLicense: "{{ vcf.license.nsx }}"
+{% endif %}

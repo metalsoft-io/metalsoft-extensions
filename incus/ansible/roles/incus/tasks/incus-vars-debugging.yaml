@@ -24,10 +24,10 @@
     msg: "incus_cluster_node_dns_servers: {{ incus_cluster_node_dns_servers }}"
   when: incus_cluster_node_dns_servers is defined
 
-- name: Debugging var | incus_ui_installing
+- name: Debugging var | incus_install_ui
   ansible.builtin.debug:
-    msg: "incus_ui_installing: {{ incus_ui_installing }}"
-  when: incus_ui_installing is defined
+    msg: "incus_install_ui: {{ incus_install_ui }}"
+  when: incus_install_ui is defined
 
 - name: Debugging var | incus_storage_driver
   ansible.builtin.debug:

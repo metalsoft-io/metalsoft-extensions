@@ -15,7 +15,7 @@
       - incus-ui-canonical
     install_recommends: false
     state: present
-  when: incus_ui_installing | bool
+  when: incus_install_ui | bool
 
 - name: Install optional packages
   ansible.builtin.apt:

@@ -1,0 +1,51 @@
+---
+# Based on ansible-lint config
+extends: default
+
+ignore: |
+  .cache
+  .tox
+  .ansible
+  tests/output
+  scripts
+  .venv
+  .git
+
+rules:
+  # Rules to control the number of spaces around operators
+  braces:
+    min-spaces-inside: 0 # No spaces required inside braces
+    max-spaces-inside: 1 # Maximum one space inside braces
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+  commas:
+    max-spaces-before: 0
+    max-spaces-after: 1
+  hyphens:
+    max-spaces-after: 1
+  comments:
+    require-starting-space: true
+    min-spaces-from-content: 1
+  comments-indentation: false
+
+  # Rules to control indentation
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+
+  # Rules to control lines
+  line-length:
+    max: 200 # Maximum 150 characters per line
+    allow-non-breakable-words: true # Allow long words without breaks
+    allow-non-breakable-inline-mappings: true # Allow long inline mappings without breaks
+  empty-lines:
+    max: 2 # Maximum two consecutive empty lines allowed
+
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  trailing-spaces: enable # Ensure no trailing spaces at the end of lines

@@ -1,0 +1,60 @@
+---
+- name: Debugging var | incus_bootstrap_config_dir
+  ansible.builtin.debug:
+    msg: "incus_bootstrap_config_dir: {{ incus_bootstrap_config_dir }}"
+  when: incus_bootstrap_config_dir is defined
+
+- name: Debugging var | incus_host_architecture
+  ansible.builtin.debug:
+    msg: "incus_host_architecture: {{ incus_host_architecture }}"
+  when: incus_host_architecture is defined
+
+- name: Debugging var | incus_cluster_enabled
+  ansible.builtin.debug:
+    msg: "incus_cluster_enabled: {{ incus_cluster_enabled }}"
+  when: incus_cluster_enabled is defined
+
+- name: Debugging var | incus_branch_release
+  ansible.builtin.debug:
+    msg: "incus_branch_release: {{ incus_branch_release }}"
+  when: incus_branch_release is defined
+
+- name: Debugging var | incus_cluster_node_dns_servers
+  ansible.builtin.debug:
+    msg: "incus_cluster_node_dns_servers: {{ incus_cluster_node_dns_servers }}"
+  when: incus_cluster_node_dns_servers is defined
+
+- name: Debugging var | incus_ui_installing
+  ansible.builtin.debug:
+    msg: "incus_ui_installing: {{ incus_ui_installing }}"
+  when: incus_ui_installing is defined
+
+- name: Debugging var | incus_storage_driver
+  ansible.builtin.debug:
+    msg: "incus_storage_driver: {{ incus_storage_driver }}"
+  when: incus_storage_driver is defined
+
+- name: Debugging var | incus_core_https_port
+  ansible.builtin.debug:
+    msg: "incus_core_https_port: {{ incus_core_https_port }}"
+  when: incus_core_https_port is defined
+
+- name: Debugging var | incus_core_https_address
+  ansible.builtin.debug:
+    msg: "incus_core_https_address: {{ incus_core_https_address }}"
+  when: incus_core_https_address is defined
+
+- name: Debugging var | incus_images_auto_update_interval
+  ansible.builtin.debug:
+    msg: "incus_images_auto_update_interval: {{ incus_images_auto_update_interval }}"
+  when: incus_images_auto_update_interval is defined
+
+- name: Debugging var | incus_cluster_scale_up_enabled
+  ansible.builtin.debug:
+    msg: "incus_cluster_scale_up_enabled: {{ incus_cluster_scale_up_enabled }}"
+  when: incus_cluster_scale_up_enabled is defined
+
+- name: Debugging var | incus_cluster_scale_down_enabled
+  ansible.builtin.debug:
+    msg: "incus_cluster_scale_down_enabled: {{ incus_cluster_scale_down_enabled }}"
+  when: incus_cluster_scale_down_enabled is defined

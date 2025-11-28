@@ -1,0 +1,29 @@
+---
+- name: Deploy Incus
+  hosts: incus_cluster
+  become: true
+  gather_facts: true
+  roles:
+    - role: incus
+      tags: incus
+
+- name: Initialize Incus
+  hosts: incus_cluster[0]
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Initialize Incus cluster | Bootstrap first server
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: incus-init.yaml
+
+- name: Bootstrap additional servers
+  hosts: incus_cluster[1:]
+  serial: 1
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Join Incus cluster
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: incus-join-server.yaml

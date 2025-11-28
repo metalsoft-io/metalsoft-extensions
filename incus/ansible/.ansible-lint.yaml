@@ -1,0 +1,21 @@
+---
+# .ansible-lint
+# Ansible Lint configuration file
+profile: basic
+
+exclude_paths:
+  - .git/
+  - .venv/
+  - scripts/
+  - tmp/
+
+# Offline mode disables installation of requirements.yml and schema refreshing
+offline: true
+
+# List of rules to ignore
+skip_list:
+  - yaml[truthy]
+  - var-naming[no-role-prefix]
+
+# Know issue:
+# https://github.com/ansible/ansible-lint/issues/4596

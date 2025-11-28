@@ -1,0 +1,52 @@
+---
+- name: Choose member server where to run the command
+  ansible.builtin.set_fact:
+    incus_cluster_member_server_cmd_run: |-
+      {%- set candidates = groups['incus_cluster'] | default([]) -%}
+      {%- set other = candidates | difference([inventory_hostname]) | list -%}
+      {%- if other | length > 0 -%}
+      {{- other[0] -}}
+      {%- else -%}
+      {{- '' -}}
+      {%- endif -%}
+
+- name: Debug | incus_cluster_member_server_cmd_run
+  ansible.builtin.debug:
+    msg: "{{ incus_cluster_member_server_cmd_run }}"
+
+- name: Debug | incus_cluster candidates
+  ansible.builtin.debug:
+    msg: |
+      candidates: {{ groups['incus_cluster'] | default([]) }}
+      other_candidates: {{ (groups['incus_cluster'] | default([]) | difference([inventory_hostname]) | list) }}
+
+- name: Fail when no other cluster member available
+  ansible.builtin.fail:
+    msg: |
+      Cannot scale cluster to zero: no other cluster member available to run cluster commands.
+      Ensure `groups['incus_cluster']` contains at least one host other than the node being removed.
+  when: incus_cluster_member_server_cmd_run == ''
+
+- name: Check server status
+  ansible.builtin.command: incus --force-local cluster list -f json
+  register: incus_cluster_status
+  delegate_to: "{{ incus_cluster_member_server_cmd_run }}"
+  changed_when: false # always run the command
+
+- name: Debug | incus_cluster_status
+  ansible.builtin.debug:
+    msg: "{{ incus_cluster_status.stdout | from_json }}"
+
+- name: Set fact | incus_cluster_member_server_query_condition
+  ansible.builtin.set_fact:
+    incus_cluster_member_server_query_condition: >-
+      {{
+        incus_cluster_status.stdout
+        | from_json
+        | json_query('[?server_name==`' + inventory_hostname + '`].status')
+        | first
+      }}
+
+- name: Debug | incus_cluster_member_server_query_condition
+  ansible.builtin.debug:
+    msg: "query: {{ incus_cluster_member_server_query_condition }}"

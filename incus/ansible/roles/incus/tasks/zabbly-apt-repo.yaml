@@ -1,0 +1,20 @@
+---
+- name: Ensure apt keyring path exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/
+    mode: "0755"
+    state: directory
+
+- name: Add Zabbly repository key
+  ansible.builtin.copy:
+    src: zabbly.asc
+    dest: /etc/apt/keyrings/zabbly.asc
+    mode: "0644"
+  notify: Update apt
+
+- name: Add Zabbly package source
+  ansible.builtin.template:
+    src: incus.sources.j2
+    dest: "/etc/apt/sources.list.d/zabbly-incus-{{ incus_branch_release }}.sources"
+    mode: "0644"
+  notify: Update apt

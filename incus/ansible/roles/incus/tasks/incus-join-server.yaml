@@ -1,0 +1,60 @@
+---
+- name: Generate timestamp
+  ansible.builtin.set_fact:
+    timestamp: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+- name: Create Incus config directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ incus_bootstrap_config_dir }}"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+    recurse: true
+
+- name: Generate trust token | used to add client TLS certificate to the server trust store
+  ansible.builtin.command:
+    cmd: "incus --force-local --quiet config trust add {{ inventory_hostname }}"
+  register: incus_client_certificate_trust_token
+  delegate_to: "{{ groups['incus_cluster'][0] }}"
+  changed_when: true
+
+- name: Set fact | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
+  ansible.builtin.set_fact:
+    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus_cluster'][0]].ansible_fqdn }}"
+    incus_cluster_first_server_ip: "{{ hostvars[groups['incus_cluster'][0]].ansible_host }}"
+
+- name: Debug | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
+  ansible.builtin.debug:
+    msg:
+      incus_cluster_first_server_hostname: "{{ incus_cluster_first_server_hostname }}"
+      incus_cluster_first_server_ip: "{{ incus_cluster_first_server_ip }}"
+
+# yamllint disable rule:line-length
+- name: Adding the new server as a client to the first member server in the cluster
+  ansible.builtin.command: >
+    incus --force-local remote add {{ incus_cluster_first_server_hostname }} {{ incus_cluster_first_server_ip }} --accept-certificate --token {{ incus_client_certificate_trust_token.stdout }}
+  register: incus_client_server_certificate_add
+  changed_when: true
+# yamllint enable rule:line-length
+
+- name: Generate cluster add token for the new server
+  ansible.builtin.command: "incus --force-local --quiet cluster add {{ inventory_hostname }}"
+  register: incus_cluster_join_token
+  delegate_to: "{{ groups['incus_cluster'][0] }}"
+  changed_when: true
+
+- name: Create Incus init join pressed config file
+  ansible.builtin.template:
+    src: incus-cluster-join-bootstrap-aditional-server-config.yaml.j2
+    dest: "{{ incus_bootstrap_config_dir }}/incus-init-join-pressed-{{ timestamp }}.yaml"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Join additional servers
+  ansible.builtin.shell:
+    cmd: "set -o pipefail && cat {{ incus_bootstrap_config_dir }}/incus-init-join-pressed-{{ timestamp }}.yaml | incus --force-local admin init --preseed"
+    executable: /bin/bash
+  register: incus_cluster_init_join
+  changed_when: true

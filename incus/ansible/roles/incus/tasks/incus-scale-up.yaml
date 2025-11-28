@@ -1,0 +1,19 @@
+---
+- name: Allow Incus to run a large number of instances
+  ansible.builtin.import_tasks: server-settings.yaml
+
+- name: Add Incus repository
+  ansible.builtin.import_tasks: zabbly-apt-repo.yaml
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Install Incus from a package
+  ansible.builtin.import_tasks: incus-zabbly-apt-install.yaml
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Fail if the Incus package is not installed
+  ansible.builtin.fail:
+    msg: "Incus package is not installed. Only Ubuntu and Debian are supported."
+  when: (ansible_distribution != 'Ubuntu') and (ansible_distribution != 'Debian')
+
+- name: Join Incus cluster
+  ansible.builtin.include_tasks: incus-join-server.yaml

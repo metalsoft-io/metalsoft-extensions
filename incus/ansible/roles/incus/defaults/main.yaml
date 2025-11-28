@@ -69,9 +69,9 @@ incus_branch_release: >-
   stable
   {%- endif -%}
 
-incus_ui_installing: >-
-  {%- if extensionInstanceVariables.ui_installing is defined -%}
-  {{ extensionInstanceVariables.ui_installing | bool }}
+incus_install_ui: >-
+  {%- if extensionInstanceVariables.install_ui is defined -%}
+  {{ extensionInstanceVariables.install_ui | bool }}
   {%- else -%}
   true
   {%- endif -%}

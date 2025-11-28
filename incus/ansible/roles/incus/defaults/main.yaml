@@ -1,0 +1,129 @@
+---
+incus_vars_debugging_enabled: >-
+  {%- if extensionInstanceVariables.vars_debugging_enabled is defined -%}
+  {{ extensionInstanceVariables.vars_debugging_enabled | bool }}
+  {%- else -%}
+  false
+  {%- endif -%}
+
+incus_cluster_node_dns_servers: >-
+  {{ extensionInstanceVariables.cluster_node_dns_servers
+      if extensionInstanceVariables.cluster_node_dns_servers is defined and extensionInstanceVariables.cluster_node_dns_servers | length
+      else (extensionInstanceRecordSet.dnsResolvers
+            if extensionInstanceRecordSet.dnsResolvers is defined and extensionInstanceRecordSet.dnsResolvers | length
+            else ['1.1.1.1', '8.8.8.8']) }}
+
+incus_host_architecture_groups:
+  x86_64: amd64
+  aarch64: arm64
+  armv7l: arm
+
+incus_toolset_paths:
+  incus_agent: /opt/incus/agent
+  incus_bin: /opt/incus/bin
+  incus_doc: /opt/incus/doc
+  incus_lib: /opt/incus/lib
+  incus_share: /opt/incus/share
+  incus_ui: /opt/incus/ui
+
+incus_client_config_paths: "/root/.config/incus/config.yml"
+
+incus_run_paths:
+  incus_backup: /var/lib/incus/backup
+  incus_bootstrap_config: /var/lib/incus/bootstrap-config
+  incus_containers: /var/lib/incus/containers
+  incus_containers_snapshots: /var/lib/incus/containers-snapshots
+  incus_database: /var/lib/incus/database
+  incus_devices: /var/lib/incus/devices
+  incus_disks: /var/lib/incus/disks
+  incus_guestapi: /var/lib/incus/guestapi
+  incus_images: /var/lib/incus/images
+  incus_networks: /var/lib/incus/networks
+  incus_security: /var/lib/incus/security
+  incus_shmounts: /var/lib/incus/shmounts
+  incus_storage_pools: /var/lib/incus/storage-pools
+  incus_virtual_machines: /var/lib/incus/virtual-machines
+  incus_virtual_machines_snapshots: /var/lib/incus/virtual-machines-snapshots
+
+incus_bootstrap_config_dir: "{{ incus_run_paths.incus_bootstrap_config }}"
+
+incus_host_architecture: >-
+  {%- if ansible_architecture in incus_host_architecture_groups -%}
+  {{ incus_host_architecture_groups[ansible_architecture] }}
+  {%- else -%}
+  {{ ansible_architecture }}
+  {%- endif -%}
+
+incus_cluster_enabled: >-
+  {%- if extensionInstanceVariables.cluster_enabled is defined -%}
+  {{ extensionInstanceVariables.cluster_enabled | bool }}
+  {%- else -%}
+  false
+  {%- endif -%}
+
+# possible values: daily, stable or lts-6.0
+incus_branch_release: >-
+  {%- if extensionInstanceVariables.branch_release is defined and extensionInstanceVariables.branch_release != "" -%}
+  {{ extensionInstanceVariables.branch_release }}
+  {%- else -%}
+  stable
+  {%- endif -%}
+
+incus_ui_installing: >-
+  {%- if extensionInstanceVariables.ui_installing is defined -%}
+  {{ extensionInstanceVariables.ui_installing | bool }}
+  {%- else -%}
+  true
+  {%- endif -%}
+
+# possible values: dir, btrfs, lvm, lvmcluster, zfs, ceph, cephfs or cephobject
+incus_storage_driver: >-
+  {%- if extensionInstanceVariables.storage_driver is defined and extensionInstanceVariables.storage_driver | length -%}
+  {{ extensionInstanceVariables.storage_driver }}
+  {%- else -%}
+  dir
+  {%- endif -%}
+
+incus_core_https_port: >-
+  {%- if extensionInstanceVariables.core_https_port is defined and extensionInstanceVariables.core_https_port | length -%}
+  {{ extensionInstanceVariables.core_https_port }}
+  {%- else -%}
+  8443
+  {%- endif -%}
+
+incus_core_https_address: "{{ ansible_default_ipv4.address }}:{{ incus_core_https_port }}"
+
+incus_images_auto_update_interval: >-
+  {%- if extensionInstanceVariables.images_auto_update_interval is defined -%}
+  {{ extensionInstanceVariables.images_auto_update_interval }}
+  {%- else -%}
+  6
+  {%- endif -%}
+
+incus_cluster_scale_up_enabled: >-
+  {%- if groups['incus_cluster_scale_up'] is defined and groups['incus_cluster_scale_up'] | length -%}
+  true
+  {%- else -%}
+  false
+  {%- endif -%}
+
+incus_cluster_scale_down_enabled: >-
+  {%- if groups['incus_cluster_scale_down'] is defined and groups['incus_cluster_scale_down'] | length -%}
+  true
+  {%- else -%}
+  false
+  {%- endif -%}
+
+incus_cluster_member_force_remove_enabled: >-
+  {%- if extensionInstanceVariables.cluster_member_force_remove_enabled is defined -%}
+  {{ extensionInstanceVariables.cluster_member_force_remove_enabled | bool }}
+  {%- else -%}
+  false
+  {%- endif -%}
+
+incus_cluster_member_upgrade_enabled: >-
+  {%- if extensionInstanceVariables.cluster_member_upgrade_enabled is defined -%}
+  {{ extensionInstanceVariables.cluster_member_upgrade_enabled | bool }}
+  {%- else -%}
+  false
+  {%- endif -%}

@@ -1,0 +1,27 @@
+---
+- name: Incus cluster | server status
+  ansible.builtin.include_tasks: server-status.yaml
+
+- name: Evacuate cluster member
+  ansible.builtin.command: "incus --force-local cluster evacuate --force {{ inventory_hostname }}"
+  register: incus_cluster_evacuate_member
+  delegate_to: "{{ incus_cluster_member_server_cmd_run }}"
+  when: (incus_cluster_member_server_query_condition | default('') | lower) == 'online'
+  changed_when: (incus_cluster_member_server_query_condition | default('') | lower) == 'online'
+
+- name: Incus cluster | server status
+  ansible.builtin.include_tasks: server-status.yaml
+
+- name: Remove cluster member
+  ansible.builtin.command: "incus --force-local cluster remove {{ inventory_hostname }}"
+  register: incus_cluster_remove_member
+  delegate_to: "{{ incus_cluster_member_server_cmd_run }}"
+  when: (incus_cluster_member_server_query_condition | default('') | lower) == 'evacuated'
+  changed_when: (incus_cluster_member_server_query_condition | default('') | lower) == 'evacuated'
+
+- name: Remove cluster member | force
+  ansible.builtin.command: "incus --force-local cluster remove --force {{ inventory_hostname }}"
+  register: incus_cluster_remove_member_force
+  delegate_to: "{{ incus_cluster_member_server_cmd_run }}"
+  when: (incus_cluster_member_server_query_condition | default('') | lower) == 'offline' and incus_cluster_member_force_remove_enabled
+  changed_when: (incus_cluster_member_server_query_condition | default('') | lower) == 'offline' and incus_cluster_member_force_remove_enabled

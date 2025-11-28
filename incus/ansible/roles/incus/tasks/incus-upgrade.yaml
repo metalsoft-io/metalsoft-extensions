@@ -1,0 +1,35 @@
+---
+- name: Update apt repo and cache on all Debian/Ubuntu boxes
+  ansible.builtin.apt:
+    force_apt_get: true
+    update_cache: true
+    cache_valid_time: 1800
+
+- name: Upgrade all packages on servers
+  ansible.builtin.apt:
+    force_apt_get: true
+    upgrade: dist
+    purge: true
+
+- name: Clean unused packages
+  ansible.builtin.apt:
+    force_apt_get: true
+    autoremove: true
+    purge: true
+
+- name: Clean leftover packages
+  ansible.builtin.apt:
+    force_apt_get: true
+    autoclean: true
+
+- name: Wait for incus server to come back online
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      incus cluster list -f json | jq '.[] | select(.status == "Online") | .server_name' | grep -q {{ inventory_hostname }}
+    executable: /bin/bash
+  register: incus_server_online
+  until: incus_server_online.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false

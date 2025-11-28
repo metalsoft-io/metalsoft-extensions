@@ -1,0 +1,23 @@
+---
+- name: Upgrade Incus cluster
+  hosts: incus_cluster
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Set fact | incus_cluster_member_upgrade_enabled
+      ansible.builtin.set_fact:
+        incus_cluster_member_upgrade_enabled: >-
+          {%- if extensionInstanceVariables.cluster_member_upgrade_enabled is defined -%}
+          {{ extensionInstanceVariables.cluster_member_upgrade_enabled | bool }}
+          {%- else -%}
+          false
+          {%- endif -%}
+    - name: Apply all updates | one server at a time
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: incus-upgrade.yaml
+      when:
+        - (groups.get('incus_cluster') | default([]) | length) > 0
+        - ansible_facts['distribution'] | default('') | lower in ['ubuntu', 'debian']
+        - (incus_cluster_member_upgrade_enabled | default(false))

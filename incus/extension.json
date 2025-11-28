@@ -1,0 +1,213 @@
+{
+    "kind": "ExtensionDefinition",
+    "schemaVersion": "1.1",
+    "name": "Incus",
+    "label": "incus",
+    "extensionType": "application",
+    "vendor": "MetalSoft",
+    "extensionVersion": "1.0.0",
+    "description": "Provide the installation and lifecycle management of an Incus cluster with various options",
+    "icon": "https://avatars.githubusercontent.com/u/2301756?s=200&v=4",
+    "dependencies": {
+        "controllerVersion": "release-v7.1",
+        "osTemplates": [
+            "incus-ubuntu-22-04-cluster-node",
+            "incus-ubuntu-24-04-cluster-node"
+        ]
+    },
+    "inputs": [
+        {
+            "label": "cluster_server_type",
+            "name": "cluster_server_type",
+            "inputType": "ExtensionInputServerType",
+            "options": {
+                "vendor": "Dell"
+            }
+        },
+        {
+            "label": "cluster_instance_count",
+            "name": "cluster_instance_count",
+            "inputType": "ExtensionInputInteger",
+            "defaultValue": 1,
+            "options": {
+                "minValue": 1,
+                "maxValue": 50
+            }
+        },
+        {
+            "label": "cluster_node_os_template",
+            "name": "cluster_node_os_template",
+            "inputType": "ExtensionInputOsTemplate",
+            "options": {
+                "osFamily": "Ubuntu"
+            }
+        },
+        {
+            "label": "cluster_enabled",
+            "name": "cluster_enabled",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": true,
+            "options": {}
+        },
+        {
+            "label": "branch_release",
+            "name": "branch_release",
+            "inputType": "ExtensionInputString",
+            "defaultValue": "stable",
+            "options": {}
+        },
+        {
+            "label": "cluster_node_dns_servers",
+            "name": "cluster_node_dns_servers",
+            "inputType": "ExtensionInputString",
+            "options": {}
+        },
+        {
+            "label": "install_ui",
+            "name": "install_ui",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": true,
+            "options": {}
+        },
+        {
+            "label": "storage_driver",
+            "name": "storage_driver",
+            "inputType": "ExtensionInputString",
+            "defaultValue": "dir",
+            "options": {}
+        },
+        {
+            "label": "core_https_port",
+            "name": "core_https_port",
+            "inputType": "ExtensionInputInteger",
+            "defaultValue": 8443,
+            "hidden": true,
+            "options": {}
+        },
+        {
+            "label": "separate_api_and_cluster_traffic",
+            "name": "separate_api_and_cluster_traffic",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "hidden": true,
+            "options": {}
+        },
+        {
+            "label": "images_auto_update_interval",
+            "name": "images_auto_update_interval",
+            "inputType": "ExtensionInputInteger",
+            "defaultValue": 6,
+            "options": {
+                "minValue": 1,
+                "maxValue": 72
+            }
+        },
+        {
+            "label": "cluster_member_upgrade_enabled",
+            "name": "cluster_member_upgrade_enabled",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        },
+        {
+            "label": "cluster_member_force_remove_enabled",
+            "name": "cluster_member_force_remove_enabled",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        },
+        {
+            "label": "vars_debugging_enabled",
+            "name": "vars_debugging_enabled",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        }
+    ],
+    "outputs": [],
+    "infrastructure": {
+        "instanceArrays": [
+            {
+                "label": "incus_cluster",
+                "instanceCount": "#/input/cluster_instance_count",
+                "serverType": "#/input/cluster_server_type",
+                "osTemplate": "#/input/cluster_node_os_template",
+                "logicalNetworks": [
+                    {
+                        "label": "incus-mgmt",
+                        "networkConnection": {
+                            "tagged": true,
+                            "accessMode": "l2",
+                            "redundancy": {
+                                "mode": "active-active",
+                                "implementation": {
+                                    "implementationType": "distributed-link-aggregation"
+                                }
+                            },
+                            "providesDefaultRoute": true,
+                            "dns": {
+                                "provisionInstanceDnsRecords": true
+                            }
+                        }
+                    }
+                ],
+                "tags": [
+                    "incus_cluster"
+                ]
+            }
+        ],
+        "logicalNetworks": [
+            {
+                "label": "incus-mgmt",
+                "profileLabel": "incus-mgmt"
+            }
+        ]
+    },
+    "assets": [
+        {
+            "label": "incus-ansible-bundle",
+            "name": "incus-ansible-bundle",
+            "assetType": "Bundle",
+            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-1.0.0.zip"
+        }
+    ],
+    "onCreate": [
+        {
+            "stage": "preDeploy",
+            "tasks": []
+        },
+        {
+            "stage": "postDeploy",
+            "tasks": [
+                {
+                    "label": "initial-incus-deployment",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "incus-ansible-bundle",
+                        "playbook": "deploy.yaml",
+                        "executionTimeout": 3600,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
+        }
+    ],
+    "onEdit": [
+        {
+            "stage": "postDeploy",
+            "tasks": [
+                {
+                    "label": "upgrade-incus",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "incus-ansible-bundle",
+                        "playbook": "upgrade.yaml",
+                        "executionTimeout": 3600,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
+        }
+    ],
+    "onDelete": []
+}

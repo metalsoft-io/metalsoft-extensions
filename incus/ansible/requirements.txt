@@ -1,0 +1,7 @@
+Jinja2
+ansible
+argcomplete
+ansible-lint
+PyYAML
+netaddr
+jmespath

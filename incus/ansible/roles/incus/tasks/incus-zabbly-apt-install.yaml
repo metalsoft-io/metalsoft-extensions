@@ -1,0 +1,61 @@
+---
+- name: Install the Incus package | Ubuntu 20.04 | 22.04 | 24.04
+  ansible.builtin.apt:
+    name:
+      - incus
+      - qemu-system
+    install_recommends: false
+    update_cache: true
+    state: present
+  when: (ansible_facts['os_family'] == "Ubuntu") or (ansible_facts['os_family'] == "Debian")
+
+- name: Install the Incus UI package
+  ansible.builtin.apt:
+    name:
+      - incus-ui-canonical
+    install_recommends: false
+    state: present
+  when: incus_ui_installing | bool
+
+- name: Install optional packages
+  ansible.builtin.apt:
+    name:
+      - jq
+    state: present
+
+- name: Install btrfs tools
+  ansible.builtin.apt:
+    name:
+      - btrfs-progs
+    install_recommends: false
+    state: present
+  when: incus_storage_driver == 'btrfs'
+
+- name: Install ceph tools
+  ansible.builtin.apt:
+    name:
+      - ceph-common
+    install_recommends: false
+    state: present
+  when: incus_storage_driver == 'ceph'
+
+- name: Install LVM tools
+  ansible.builtin.apt:
+    name:
+      - lvm2
+    install_recommends: false
+    state: present
+  when: incus_storage_driver == 'lvm'
+
+- name: Install ZFS tools
+  ansible.builtin.apt:
+    name:
+      - zfsutils-linux
+    install_recommends: false
+    state: present
+  when: incus_storage_driver == 'zfs'
+
+- name: Init Incus client config directory
+  ansible.builtin.command: incus version
+  register: incus_version
+  changed_when: true

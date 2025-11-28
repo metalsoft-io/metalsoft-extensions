@@ -1,0 +1,58 @@
+# Cluster settings
+cluster:
+  server_name: {{ inventory_hostname }}
+  enabled: {{ incus_cluster_enabled }}
+
+# Daemon settings
+config:
+  # Core configuration - https://linuxcontainers.org/incus/docs/main/server_config/#core-configuration
+  core.https_address: {{ incus_core_https_address }}
+  core.https_allowed_credentials: false
+  core.shutdown_timeout: 5
+  core.syslog_socket: false
+  core.trust_ca_certificates: true
+  # Cluster configuration - https://linuxcontainers.org/incus/docs/main/server_config/#cluster-configuration
+  cluster.healing_threshold: 0
+{% if separate_api_and_cluster_traffic is defined and separate_api_and_cluster_traffic | bool %}
+  cluster.https_address: {{ ansible_default_ipv4.address }}:8444
+{% else %}
+  cluster.https_address: {{ incus_core_https_address }}
+{% endif %}
+  cluster.images_minimal_replica: 3
+  cluster.join_token_expiry: 1H
+  cluster.max_standby: 2
+  cluster.max_voters: 3
+  cluster.offline_threshold: 20
+  # Images configuration - https://linuxcontainers.org/incus/docs/main/server_config/#images-configuration
+  images.auto_update_cached: true
+  images.auto_update_interval: {{ incus_images_auto_update_interval }}
+  images.compression_algorithm: gzip
+  # images.default_architecture: x86_64
+  images.remote_cache_expiry: 10
+
+# Storage pools
+storage_pools:
+- name: default
+  driver: {{ incus_storage_driver }}
+
+# Network devices
+networks:
+- name: incusbr0
+  type: bridge
+  config:
+    ipv4.address: auto
+    ipv6.address: none
+
+# Profiles
+profiles:
+- name: default
+  devices:
+    root:
+      path: /
+      pool: default
+      type: disk
+    eth0:
+      name: eth0
+      nictype: bridged
+      parent: incusbr0
+      type: nic

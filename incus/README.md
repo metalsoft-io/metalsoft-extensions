@@ -10,7 +10,7 @@ For details on MetalSoft extensions, see the official [documentation](https://do
   - At least one host is required for a basic Incus deployment.
   - Each host must have a healthy hardware status with no errors.
   - Each host must provide a minimum of two network interfaces.
-- OS templates for Incus (see MetalSoft Ubuntu templates: <https://github.com/metalsoft-io/os-templates/tree/main/Ubuntu/24.04>).
+- OS templates for Incus (see MetalSoft Ubuntu templates: <https://github.com/metalsoft-io/os-templates/tree/main/Ubuntu/24.04/incus-cluster-node>).
 
 ## Configuration
 

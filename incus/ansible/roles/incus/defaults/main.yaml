@@ -101,14 +101,14 @@ incus_images_auto_update_interval: >-
   {%- endif -%}
 
 incus_cluster_scale_up_enabled: >-
-  {%- if groups['incus_cluster_scale_up'] is defined and groups['incus_cluster_scale_up'] | length -%}
+  {%- if groups['incus_scale_up'] is defined and groups['incus_scale_up'] | length -%}
   true
   {%- else -%}
   false
   {%- endif -%}
 
 incus_cluster_scale_down_enabled: >-
-  {%- if groups['incus_cluster_scale_down'] is defined and groups['incus_cluster_scale_down'] | length -%}
+  {%- if groups['incus_scale_down'] is defined and groups['incus_scale_down'] | length -%}
   true
   {%- else -%}
   false

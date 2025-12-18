@@ -2,8 +2,3 @@ cluster:
   enabled: true
   server_address: "{{ ansible_host }}:8443"
   cluster_token: {{ incus_cluster_join_token.stdout }}
-  member_config:
-  - entity: storage-pool
-    name: default
-    key: source
-    value: ""

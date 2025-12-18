@@ -5,11 +5,11 @@
     "label": "incus",
     "extensionType": "application",
     "vendor": "MetalSoft",
-    "extensionVersion": "1.0.0",
+    "extensionVersion": "1.0.1",
     "description": "Provide the installation and lifecycle management of an Incus cluster with various options",
     "icon": "https://avatars.githubusercontent.com/u/2301756?s=200&v=4",
     "dependencies": {
-        "controllerVersion": "release-v7.1",
+        "controllerVersion": "release-v7.2",
         "osTemplates": [
             "incus-ubuntu-22-04-cluster-node",
             "incus-ubuntu-24-04-cluster-node"
@@ -128,7 +128,7 @@
     "infrastructure": {
         "instanceArrays": [
             {
-                "label": "incus_cluster",
+                "label": "incus",
                 "instanceCount": "#/input/cluster_instance_count",
                 "serverType": "#/input/cluster_server_type",
                 "osTemplate": "#/input/cluster_node_os_template",
@@ -168,7 +168,7 @@
             "label": "incus-ansible-bundle",
             "name": "incus-ansible-bundle",
             "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-1.0.0.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-1.0.1.zip"
         }
     ],
     "onCreate": [
@@ -194,6 +194,21 @@
     ],
     "onEdit": [
         {
+            "stage": "preDeploy",
+            "tasks": [
+                {
+                    "label": "scale-incus",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "incus-ansible-bundle",
+                        "playbook": "scale.yaml",
+                        "executionTimeout": 1800,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
+        },
+        {
             "stage": "postDeploy",
             "tasks": [
                 {
@@ -203,6 +218,21 @@
                         "asset": "incus-ansible-bundle",
                         "playbook": "upgrade.yaml",
                         "executionTimeout": 3600,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
+        },
+        {
+            "stage": "postDeploy",
+            "tasks": [
+                {
+                    "label": "scale-incus",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "incus-ansible-bundle",
+                        "playbook": "scale.yaml",
+                        "executionTimeout": 1800,
                         "executionTimeoutTick": 30
                     }
                 }

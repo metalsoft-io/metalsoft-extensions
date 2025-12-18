@@ -2,7 +2,7 @@
 - name: Choose member server where to run the command
   ansible.builtin.set_fact:
     incus_cluster_member_server_cmd_run: |-
-      {%- set candidates = groups['incus_cluster'] | default([]) -%}
+      {%- set candidates = groups['incus'] | default([]) -%}
       {%- set other = candidates | difference([inventory_hostname]) | list -%}
       {%- if other | length > 0 -%}
       {{- other[0] -}}
@@ -17,14 +17,14 @@
 - name: Debug | incus_cluster candidates
   ansible.builtin.debug:
     msg: |
-      candidates: {{ groups['incus_cluster'] | default([]) }}
-      other_candidates: {{ (groups['incus_cluster'] | default([]) | difference([inventory_hostname]) | list) }}
+      candidates: {{ groups['incus'] | default([]) }}
+      other_candidates: {{ (groups['incus'] | default([]) | difference([inventory_hostname]) | list) }}
 
 - name: Fail when no other cluster member available
   ansible.builtin.fail:
     msg: |
       Cannot scale cluster to zero: no other cluster member available to run cluster commands.
-      Ensure `groups['incus_cluster']` contains at least one host other than the node being removed.
+      Ensure `groups['incus']` contains at least one host other than the node being removed.
   when: incus_cluster_member_server_cmd_run == ''
 
 - name: Check server status

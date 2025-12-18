@@ -1,6 +1,6 @@
 ---
 - name: Deploy Incus
-  hosts: incus_cluster
+  hosts: incus
   become: true
   gather_facts: true
   roles:
@@ -8,7 +8,7 @@
       tags: incus
 
 - name: Initialize Incus
-  hosts: incus_cluster[0]
+  hosts: incus[0]
   become: true
   gather_facts: true
   tasks:
@@ -18,7 +18,7 @@
         tasks_from: incus-init.yaml
 
 - name: Bootstrap additional servers
-  hosts: incus_cluster[1:]
+  hosts: incus[1:]
   serial: 1
   become: true
   gather_facts: true

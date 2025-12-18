@@ -12,17 +12,51 @@
     group: root
     recurse: true
 
+- name: Get local incus version
+  ansible.builtin.command:
+    cmd: "incus --version"
+  register: incus_local_version
+  changed_when: false
+  failed_when: false
+
+- name: Get first server incus version
+  ansible.builtin.command:
+    cmd: "incus --version"
+  register: incus_first_version
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: false
+  failed_when: false
+
+- name: Set fact | short incus version (local)
+  ansible.builtin.set_fact:
+    incus_local_version_short: '{{ incus_local_version.stdout | default("") | regex_search("\d+\.\d+") }}'
+
+- name: Set fact | short incus version (first server)
+  ansible.builtin.set_fact:
+    incus_first_version_short: '{{ incus_first_version.stdout | default("") | regex_search("\d+\.\d+") }}'
+
+- name: Debug | incus versions | local and first server
+  ansible.builtin.debug:
+    msg:
+      incus_local_version_short: "{{ incus_local_version_short }}"
+      incus_first_version_short: "{{ incus_first_version_short }}"
+
+- name: Fail early on incus version mismatch
+  ansible.builtin.fail:
+    msg: "Incus version mismatch: local_incus_server={{ incus_local_version_short }} first_incus_server={{ incus_first_version_short }}; install matching version or upgrade/downgrade before joining."
+  when: incus_local_version_short != incus_first_version_short and incus_first_version_short is defined and incus_local_version_short is defined
+
 - name: Generate trust token | used to add client TLS certificate to the server trust store
   ansible.builtin.command:
     cmd: "incus --force-local --quiet config trust add {{ inventory_hostname }}"
   register: incus_client_certificate_trust_token
-  delegate_to: "{{ groups['incus_cluster'][0] }}"
+  delegate_to: "{{ groups['incus'][0] }}"
   changed_when: true
 
 - name: Set fact | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
   ansible.builtin.set_fact:
-    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus_cluster'][0]].ansible_fqdn }}"
-    incus_cluster_first_server_ip: "{{ hostvars[groups['incus_cluster'][0]].ansible_host }}"
+    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus'][0]].ansible_fqdn }}"
+    incus_cluster_first_server_ip: "{{ hostvars[groups['incus'][0]].ansible_host }}"
 
 - name: Debug | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
   ansible.builtin.debug:
@@ -30,23 +64,33 @@
       incus_cluster_first_server_hostname: "{{ incus_cluster_first_server_hostname }}"
       incus_cluster_first_server_ip: "{{ incus_cluster_first_server_ip }}"
 
-# yamllint disable rule:line-length
+- name: Check if remote is already configured
+  ansible.builtin.command:
+    cmd: "incus --force-local remote list --format=json"
+  register: incus_remote_list
+  changed_when: false
+  failed_when: false
+
+- name: Set fact | incus_remote_present
+  ansible.builtin.set_fact:
+    incus_remote_present: "{{ incus_cluster_first_server_hostname in (incus_remote_list.stdout | default('{}') | from_json).keys() }}"
+
 - name: Adding the new server as a client to the first member server in the cluster
   ansible.builtin.command: >
     incus --force-local remote add {{ incus_cluster_first_server_hostname }} {{ incus_cluster_first_server_ip }} --accept-certificate --token {{ incus_client_certificate_trust_token.stdout }}
   register: incus_client_server_certificate_add
   changed_when: true
-# yamllint enable rule:line-length
+  when: not incus_remote_present
 
 - name: Generate cluster add token for the new server
   ansible.builtin.command: "incus --force-local --quiet cluster add {{ inventory_hostname }}"
   register: incus_cluster_join_token
-  delegate_to: "{{ groups['incus_cluster'][0] }}"
+  delegate_to: "{{ groups['incus'][0] }}"
   changed_when: true
 
 - name: Create Incus init join pressed config file
   ansible.builtin.template:
-    src: incus-cluster-join-bootstrap-aditional-server-config.yaml.j2
+    src: incus-cluster-join-bootstrap-additional-server-config.yaml.j2
     dest: "{{ incus_bootstrap_config_dir }}/incus-init-join-pressed-{{ timestamp }}.yaml"
     mode: "0644"
     owner: root

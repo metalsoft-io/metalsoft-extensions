@@ -1,21 +1,21 @@
 ---
-- name: Get facts | incus_cluster
-  hosts: incus_cluster
+- name: Get facts | incus nodes
+  hosts: incus
   gather_facts: true
   tasks: []
 
 - name: Scale up cluster
-  hosts: incus_cluster_scale_up
+  hosts: incus_scale_up
   become: true
   tasks:
     - name: Scale up cluster
       ansible.builtin.include_role:
         name: incus
         tasks_from: incus-scale-up.yaml
-      when: groups['incus_cluster_scale_up'] is defined and (groups['incus_cluster_scale_up'] | length > 0)
+      when: groups['incus_scale_up'] is defined and (groups['incus_scale_up'] | length > 0)
 
 - name: Scale down cluster | one node at a time
-  hosts: incus_cluster_scale_down
+  hosts: incus_scale_down
   become: true
   serial: 1
   tasks:
@@ -23,4 +23,4 @@
       ansible.builtin.include_role:
         name: incus
         tasks_from: incus-scale-down.yaml
-      when: groups['incus_cluster_scale_down'] is defined and (groups['incus_cluster_scale_down'] | length > 0)
+      when: groups['incus_scale_down'] is defined and (groups['incus_scale_down'] | length > 0)

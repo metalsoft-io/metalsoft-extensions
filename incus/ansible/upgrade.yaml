@@ -1,6 +1,6 @@
 ---
 - name: Upgrade Incus cluster
-  hosts: incus_cluster
+  hosts: incus
   become: true
   gather_facts: true
   serial: 1
@@ -18,6 +18,6 @@
         name: incus
         tasks_from: incus-upgrade.yaml
       when:
-        - (groups.get('incus_cluster') | default([]) | length) > 0
+        - (groups.get('incus') | default([]) | length) > 0
         - ansible_facts['distribution'] | default('') | lower in ['ubuntu', 'debian']
         - (incus_cluster_member_upgrade_enabled | default(false))

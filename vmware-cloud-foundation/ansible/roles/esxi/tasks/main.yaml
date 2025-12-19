@@ -20,6 +20,7 @@
   ignore_errors: true
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+  delegate_to: localhost
 
 - name: Gather Ansible facts
   ansible.builtin.setup:
@@ -28,6 +29,7 @@
   ignore_errors: true
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_python_interpreter: /bin/python
 
 - name: Print ESXi host Ansible facts
   ansible.builtin.debug:

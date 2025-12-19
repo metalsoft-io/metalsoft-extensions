@@ -6,7 +6,7 @@
     cluster_spec:
       name: "{{ vcenter_cluster_name }}"
       evc_mode: "{{ extensionInstanceVariables.cluster_evc_mode | default('n/a') }}"
-      image_enabled: "{{ extensionInstanceVariables.m_cl1_cluster_image_enabled | default(true) | bool }}"
+      image_enabled: "{{ extensionInstanceVariables.cluster_image_enabled | default(true) | bool }}"
       vm_folders:
         management: "{{ management_vm_folder_name }}"
         networking: "{{ networking_vm_folder_name }}"

@@ -11,7 +11,7 @@
       tags: esxi
 
 - name: Deploy VMware Cloud Foundation
-  hosts: vcf_cluster[0]
+  hosts: management[0]
   gather_facts: false
   collections:
     - community.vmware

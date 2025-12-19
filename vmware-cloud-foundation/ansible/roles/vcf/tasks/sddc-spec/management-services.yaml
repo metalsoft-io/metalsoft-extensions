@@ -4,7 +4,7 @@
   set_fact:
     management_server_instance_group_custom_variables: >
       {{ {}
-         | combine((vcf_cluster | default({}, true)), recursive=True)
+         | combine((management | default({}, true)), recursive=True)
          | combine(((management_server_instance_group_data | default({})).customVariables | default({}, true)), recursive=True)
       }}
 

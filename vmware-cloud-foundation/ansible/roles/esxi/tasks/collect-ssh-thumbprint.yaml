@@ -36,7 +36,7 @@
 - name: Aggregate ESXi SSH thumbprints into a dict
   ansible.builtin.set_fact:
     esxi_ssh_thumbprints: "{{ esxi_ssh_thumbprints | default({}) | combine({item: (hostvars[item].esxi_ssh_thumbprint | default(''))}) }}"
-  loop: "{{ groups.get('vcf_cluster', groups['all']) }}"
+  loop: "{{ groups.get('management', groups['all']) }}"
   run_once: true
 
 - name: Debug aggregated ESXi SSH thumbprints (optional)

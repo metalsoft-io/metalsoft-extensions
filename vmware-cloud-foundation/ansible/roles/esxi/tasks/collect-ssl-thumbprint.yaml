@@ -37,7 +37,7 @@
 - name: Aggregate ESXi SSL thumbprints into a dict
   ansible.builtin.set_fact:
     esxi_ssl_thumbprints: "{{ esxi_ssl_thumbprints | default({}) | combine({item: (hostvars[item].esxi_ssl_thumbprint | default(''))}) }}"
-  loop: "{{ groups.get('vcf_cluster', groups['all']) }}"
+  loop: "{{ groups.get('management', groups['all']) }}"
   run_once: true
 
 - name: Debug aggregated ESXi SSL thumbprints (optional)

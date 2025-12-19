@@ -5,6 +5,6 @@
 {% from 'macros.yaml.j2' import render_host_spec %}
 
 hostSpecs:
-{% for host in groups['vcf_cluster'] %}
+{% for host in groups['management'] %}
 {{ render_host_spec(host, hostvars, extensionInstanceRecordSet, esxi_standard_switch_name) | indent(2, True) }}
 {% endfor %}

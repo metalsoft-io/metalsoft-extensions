@@ -4,7 +4,6 @@
     hostname: "{{ esxi_hostname }}"
     username: "{{ esxi_username }}"
     password: "{{ esxi_password }}"
-    esxi_hostname: "{{ esxi_hostname }}"
     validate_certs: "{{ esxi_validate_certs }}"
     dns_servers: "{{ dns_servers }}"
     type: "static"

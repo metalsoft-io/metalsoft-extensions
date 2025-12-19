@@ -1,0 +1,7 @@
+[
+{% for host in groups['management_scale_down'] %}
+    {
+        "fqdn": "{{ host }}"
+    }
+{% endfor %}
+]

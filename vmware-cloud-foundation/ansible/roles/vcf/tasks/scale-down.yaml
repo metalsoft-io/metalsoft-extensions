@@ -1,0 +1,25 @@
+---
+- name: Import vmnics-to-uplinks.yaml
+  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
+
+- name: Build SDDC specification
+  ansible.builtin.import_tasks: build-sddc-spec.yaml
+
+- name: Validate SDDC specification
+  ansible.builtin.import_tasks: validate-sddc-spec.yaml
+
+- name: Import compact cluster tasks
+  block:
+    - name: Import get-api-authorization.yaml
+      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: Import remove-hosts-from-cluster.yaml
+      ansible.builtin.import_tasks: sddc-manager/remove-hosts-from-cluster.yaml
+
+- name: Import host decommissioning tasks
+  block:
+    - name: Import get-api-authorization.yaml
+      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: Import host-decommission.yaml
+      ansible.builtin.import_tasks: sddc-manager/host-decommission.yaml

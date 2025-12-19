@@ -1,0 +1,27 @@
+---
+- name: Scale up cluster
+  hosts: management_scale_up
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Scale up cluster
+      when: groups['management_scale_up'] is defined and (groups['management_scale_up'] | length > 0)
+      block:
+        - name: Pre-configure new ESXi hosts
+          ansible.builtin.include_role:
+            name: esxi
+        - name: Include scale up tasks
+          ansible.builtin.include_role:
+            name: vcf
+            tasks_from: scale-up.yaml
+
+- name: Scale down cluster
+  hosts: management_scale_down
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Scale down cluster
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: scale-down.yaml
+      when: groups['management_scale_down'] is defined and (groups['management_scale_down'] | length > 0)

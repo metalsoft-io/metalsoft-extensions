@@ -60,7 +60,6 @@ vcf:
   task_name: "{{ extensionInstanceVariables.task_name | default('workflowconfig/workflowspec-ems.json') }}"
   dv_switch_version: "{{ extensionInstanceVariables.distributed_vsphere_switch_version | default('8.0.0') }}"
   validation_debug: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
-  api_call_debug_localfile: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
 
 # License key presence evaluation helpers
 # Collect trimmed license keys

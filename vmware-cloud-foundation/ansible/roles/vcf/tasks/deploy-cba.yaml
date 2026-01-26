@@ -20,6 +20,8 @@
     disk_provisioning: "{{ cba.disk_provisioning }}"
     inject_ovf_env: true
     url: "{{ ova_url }}"
+    networks:
+      "Network 1": "VM Network"
     properties:
       FIPS_ENABLE: "False"
       guestinfo.ADMIN_USERNAME: "{{ cba.admin_username }}"

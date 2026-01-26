@@ -116,7 +116,18 @@
           networks_checked: "{{ reference_networks }}"
           inconsistent: "{{ uplink_inconsistencies | default([]) }}"
           passed: "{{ (uplink_inconsistencies | default([])) | length == 0 }}"
-          timestamp: "{{ ansible_date_time.iso8601 }}"
+          timestamp: >-
+            {{
+              (
+                ansible_facts['date_time'].iso8601
+                if (ansible_facts is defined and ansible_facts['date_time'] is defined)
+                else (
+                  ansible_date_time.iso8601
+                  if ansible_date_time is defined
+                  else lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')
+                )
+              )
+            }}
       run_once: true
 
     - name: Debug | Uplink inconsistencies

@@ -3,14 +3,6 @@
 
 - name: Bring up | Validate configuration
   block:
-    - name: Prepare the management-workload-domain.yaml.j2 file for debugging
-      ansible.builtin.copy:
-        content: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') }}"
-        dest: management-workload-domain.yaml
-      become: true
-      when: vcf.api_call_debug_localfile
-      delegate_to: localhost
-
     - name: Cloud-Builder Appliance API CALL | Validate configuration - mgmt workload domain
       ansible.builtin.uri:
         url: https://{{ cba.ipv4_address }}/v1/sddcs/validations

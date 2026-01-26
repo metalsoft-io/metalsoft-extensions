@@ -1,25 +1,31 @@
 ---
-- name: Import vmnics-to-uplinks.yaml
-  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
-
 - name: Build SDDC specification
   ansible.builtin.import_tasks: build-sddc-spec.yaml
 
-- name: Validate SDDC specification
-  ansible.builtin.import_tasks: validate-sddc-spec.yaml
-
-- name: Import compact cluster tasks
+- name: Include determine-host-id.yaml
   block:
-    - name: Import get-api-authorization.yaml
-      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+    - name: Include SDDC Manager | Get API Authorization task | get API authorization
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
 
-    - name: Import remove-hosts-from-cluster.yaml
-      ansible.builtin.import_tasks: sddc-manager/remove-hosts-from-cluster.yaml
+    - name: Include SDDC Manager | Hosts API task | determine host ID
+      ansible.builtin.include_tasks: sddc-manager/hosts/determine-host-id.yaml
 
-- name: Import host decommissioning tasks
+- name: Include compact cluster tasks
+  when: host_id_to_remove is defined
   block:
-    - name: Import get-api-authorization.yaml
-      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+    - name: Include get-api-authorization.yaml
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+      when: sddc_manager_access_token is not defined
 
-    - name: Import host-decommission.yaml
-      ansible.builtin.import_tasks: sddc-manager/host-decommission.yaml
+    - name: Include remove-hosts-from-cluster.yaml
+      ansible.builtin.include_tasks: sddc-manager/remove-hosts-from-cluster.yaml
+
+- name: Include host decommissioning tasks
+  when: host_id_to_remove is defined
+  block:
+    - name: Include get-api-authorization.yaml
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+      when: sddc_manager_access_token is not defined
+
+    - name: Include host-decommission.yaml
+      ansible.builtin.include_tasks: sddc-manager/host-decommission.yaml

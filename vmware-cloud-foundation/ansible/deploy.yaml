@@ -2,8 +2,6 @@
 - name: Setup ESXi Hosts
   hosts: all
   gather_facts: false
-  become: true
-  become_user: root
   collections:
     - community.vmware
   roles:

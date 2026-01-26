@@ -13,3 +13,6 @@
 
 - name: Import Management Workload Domain playbook
   ansible.builtin.import_tasks: deploy-mgmt-workload-domain.yaml
+
+# - name: Import VMware Aria Suite Lifecycle playbook
+#   ansible.builtin.import_tasks: deploy-aria-suite.yaml

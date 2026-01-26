@@ -1,0 +1,9 @@
+---
+- name: Include SDDC Manager | Hosts API task | get hosts
+  ansible.builtin.include_tasks: get-hosts.yaml
+
+- name: Set fact | host_id_to_remove
+  ansible.builtin.set_fact:
+    host_id_to_remove: "{{ item.id }}"
+  loop: "{{ sddc_manager_hosts_response.json.elements }}"
+  when: item.fqdn is defined and (item.fqdn == inventory_hostname)

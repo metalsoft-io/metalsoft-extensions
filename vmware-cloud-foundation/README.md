@@ -32,7 +32,7 @@ Key variables that define the MetalSoft infrastructure are:
 
 ```yaml
 mgmt_domain_cluster_node_server_type: Represents the server type for the VCF management domain.
-mgmt_domain_instance_count: Number of nodes in the VCF management domain (default and minimum: 4).
+mgmt_domain_instance_count: Number of nodes in the VCF management domain (default and minimum: 4). Modifying this value triggers horizontal scaling (scale-out/scale-in) for the management domain.
 mgmt_domain_cluster_node_os_template: OS template name for VCF management domain nodes.
 ```
 

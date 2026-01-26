@@ -1,26 +1,6 @@
 ---
-# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/latest/hosts/
-- name: SDDC Manager API | Get Hosts
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/hosts"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_hosts_response
-  vars:
-    ansible_python_interpreter: /bin/python
-
-- name: Debug SDDC Manager Hosts
-  ansible.builtin.debug:
-    var: sddc_manager_hosts_response
-  when: sddc_manager.api_call_debug | bool
+- name: Include SDDC Manager | Hosts API task | get hosts
+  ansible.builtin.import_tasks: hosts/get-hosts.yaml
 
 - name: Set fact | management_network_pool_id
   set_fact:
@@ -54,6 +34,7 @@
     return_content: yes
     validate_certs: "{{ sddc_manager.validate_certs }}"
   register: sddc_manager_host_validation_response
+  delegate_to: "{{ groups['management'][0] }}"
   vars:
     ansible_python_interpreter: /bin/python
 
@@ -80,6 +61,7 @@
   until: sddc_manager_host_validation_status_response.json.executionStatus in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED']
   retries: 30
   delay: 10
+  delegate_to: "{{ groups['management'][0] }}"
   vars:
     ansible_python_interpreter: /bin/python
 
@@ -113,6 +95,7 @@
   register: sddc_manager_host_commission_response
   when: (sddc_manager_host_validation_status_response.json.executionStatus == 'COMPLETED') and
         (sddc_manager_host_validation_status_response.json.resultStatus == 'SUCCEEDED')
+  delegate_to: "{{ groups['management'][0] }}"
   vars:
     ansible_python_interpreter: /bin/python
 
@@ -121,7 +104,15 @@
     var: sddc_manager_host_commission_response
   when: sddc_manager.api_call_debug | bool
 
-- name: SDDC Manager API | Commission Hosts Task Status
+- name: Include SDDC Manager | Get Task API | get task by ID
+  ansible.builtin.include_tasks: tasks/get-task.yaml
+  vars:
+    sddc_manager_task_id: "{{ sddc_manager_host_commission_response.json.id }}"
+  when:
+    - sddc_manager_host_commission_response is defined
+    - sddc_manager_host_commission_response.json.id is defined
+
+- name: SDDC Manager API | Commission Hosts Status
   ansible.builtin.uri:
     url: "https://{{ sddc_manager_spec.hostname }}/v1/hosts/{{ sddc_manager_host_commission_response.json.id }}"
     method: GET
@@ -140,6 +131,7 @@
   delay: 20
   when: (sddc_manager_host_commission_response is defined and
          sddc_manager_host_commission_response.json.id is defined)
+  delegate_to: "{{ groups['management'][0] }}"
   vars:
     ansible_python_interpreter: /bin/python
 

@@ -5,22 +5,7 @@
   delegate_to: localhost
   vars:
     target_host: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
-  shell: |
-    set -e
-    target="{{ target_host }}"
-    # Collect ONLY RSA host key, output a single line
-    scan_output=$(ssh-keyscan -T 5 -t rsa "$target" 2>/dev/null || true)
-    if [ -z "$scan_output" ]; then
-      echo "ERROR: ssh-keyscan (rsa) produced no output for $target" >&2
-      exit 1
-    fi
-    # Convert to SHA256 fingerprint (OpenSSH format) and extract field 2
-    fp=$(echo "$scan_output" | ssh-keygen -l -f - -E sha256 | awk 'NR==1 {print $2}')
-    if [ -z "$fp" ] || ! echo "$fp" | grep -q '^SHA256:' ; then
-      echo "ERROR: Failed to derive RSA SHA256 fingerprint for $target" >&2
-      exit 1
-    fi
-    echo "$fp"
+  script: "{{ role_path }}/files/get-ssh-fingerprint.sh {{ target_host }}"
   register: esxi_ssh_thumbprint_cmd
   changed_when: false
 

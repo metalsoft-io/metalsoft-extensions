@@ -1,0 +1,23 @@
+---
+- name: SDDC Manager API | Get Personalities
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.hostname }}/v1/personalities"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_personalities_response
+  delegate_to: "{{ groups['management'][0] }}"
+  vars:
+    ansible_python_interpreter: /bin/python
+
+- name: Debug SDDC Manager Personalities Response
+  ansible.builtin.debug:
+    var: sddc_manager_personalities_response
+  when: sddc_manager.api_call_debug | bool

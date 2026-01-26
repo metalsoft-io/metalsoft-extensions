@@ -18,7 +18,7 @@
       "label": "server_validation_ansible",
       "name": "server_validation_ansible",
       "assetType": "Bundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/server_validation.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/workflows/server-validation-v1.0.0.zip"
     }
   ],
   "onAssetChange": [
@@ -30,7 +30,7 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "server_validation_ansible",
-            "playbook": "server_validation_playbook.yaml"
+            "playbook": "main.yaml"
           }
         }
       ]

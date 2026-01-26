@@ -1,0 +1,68 @@
+---
+- name: Vendor specific server health validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Debug playbook directory
+      ansible.builtin.debug:
+        msg: "playbook_dir: {{ playbook_dir }}"
+
+    - name: Extract session ID using basename filter
+      ansible.builtin.set_fact:
+        session_id: "{{ playbook_dir | dirname | basename }}"
+
+    - name: Debug session ID
+      ansible.builtin.debug:
+        msg: "Extracted session_id: {{ session_id }}"
+      when: session_id is defined and debug_mode | default(false)
+
+    - name: Dynamically retrieve OOB password from secret store
+      ansible.builtin.uri:
+        url: "http://localhost/ansible/secret?name=password&folder={{ session_id }}"
+        method: GET
+        return_content: yes
+      register: oob_password_response
+      no_log: true
+
+    - name: Derive OOB credentials
+      ansible.builtin.set_fact:
+        oob_host: "{{ server.managementAddress }}"
+        oob_user: "{{ server.username }}"
+        oob_password: "{{ oob_password_response.content }}"
+        expected_serial: "{{ server.serialNumber | default('N/A') }}"
+        vendor_string: "{{ server.vendor | default('unknown') }}"
+      no_log: true
+
+    - name: Debug OOB connection info
+      ansible.builtin.debug:
+        msg: "Connecting to OOB {{ oob_host }} as {{ oob_user }} for server {{ expected_serial }} (vendor={{ vendor_string }})"
+      no_log: true
+
+    - name: Fail if OOB username not provided
+      ansible.builtin.fail:
+        msg: "Provide OOB username via -e oob_user=... or env OOB_USER"
+      when: oob_user is not defined
+
+    - name: Fail if OOB password not provided
+      ansible.builtin.fail:
+        msg: "Provide OOB password via -e oob_password=... or env OOB_PASSWORD"
+      when: oob_password is not defined
+
+    - name: Run Dell health role
+      ansible.builtin.include_role:
+        name: dell_health_check
+      when: "'dell' in vendor_string | lower"
+
+    - name: Run HP health role
+      ansible.builtin.include_role:
+        name: hp_health_check
+      when: "'hp' in vendor_string | lower"
+
+    - name: Skip – unsupported vendor
+      ansible.builtin.debug:
+        msg: "Vendor {{ vendor_string }} not supported (expected contains Dell / HP / HPE)."
+      when:
+        - "'dell' not in vendor_string | lower"
+        - "'hp' not in vendor_string | lower"

@@ -415,7 +415,7 @@
                             "role": "nsx-host-overlay-pool"
                         },
                         "ipVersion": "ipv4",
-                        "ipCount": 8
+                        "ipCount": 20
                     }
                 ]
             }
@@ -453,7 +453,18 @@
     "onEdit": [
         {
             "stage": "preDeploy",
-            "tasks": []
+            "tasks": [
+                {
+                    "label": "vcf-lifecycle-operations",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "vcf-ansible-bundle",
+                        "playbook": "scale.yaml",
+                        "executionTimeout": 1800,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
         },
         {
             "stage": "postDeploy",

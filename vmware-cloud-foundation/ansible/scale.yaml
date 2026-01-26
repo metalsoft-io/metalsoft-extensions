@@ -2,7 +2,6 @@
 - name: Scale up cluster
   hosts: management_scale_up
   gather_facts: false
-  become: true
   tasks:
     - name: Scale up cluster
       when: groups['management_scale_up'] is defined and (groups['management_scale_up'] | length > 0)
@@ -18,7 +17,7 @@
 - name: Scale down cluster
   hosts: management_scale_down
   gather_facts: false
-  become: true
+  serial: 1
   tasks:
     - name: Scale down cluster
       ansible.builtin.include_role:

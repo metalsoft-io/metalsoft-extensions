@@ -1,26 +1,6 @@
 ---
-# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/latest/clusters/
-- name: SDDC Manager API | Get the Clusters
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_clusters_response
-  vars:
-    ansible_python_interpreter: /bin/python
-
-- name: Debug SDDC Manager Clusters Response
-  ansible.builtin.debug:
-    var: sddc_manager_clusters_response
-  when: sddc_manager.api_call_debug | bool
+- name: Include SDDC Manager | Clusters API task | get clusters
+  ansible.builtin.import_tasks: clusters/get-clusters.yaml
 
 - name: Set fact | cluster ID by name
   ansible.builtin.set_fact:
@@ -28,27 +8,8 @@
   loop: "{{ sddc_manager_clusters_response.json.elements }}"
   when: item.name == vcenter_cluster_name
 
-- name: SDDC Manager API | Get the Cluster by ID
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_cluster_response
-  vars:
-    ansible_python_interpreter: /bin/python
-
-- name: Debug SDDC Manager | Get Cluster by ID Response
-  ansible.builtin.debug:
-    var: sddc_manager_cluster_response
-  when: sddc_manager.api_call_debug | bool
+- name: Include SDDC Manager | Clusters API task | get cluster by ID
+  ansible.builtin.import_tasks: clusters/get-cluster.yaml
 
 # If 'vcenter_cluster_image_enabled' is true, and sddc_manager_cluster_response.json.isImageBased is false,
 # then we need to set 'cluster_transition_state_required' to true to indicate that a transition
@@ -57,28 +18,9 @@
   ansible.builtin.set_fact:
     cluster_transition_state_required: "{{ vcenter_cluster_image_enabled and not sddc_manager_cluster_response.json.isImageBased }}"
 
-- name: SDDC Manager API | Get Personalities
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/personalities"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_personalities_response
+- name: Include SDDC Manager | Personalities API task | get personalities
+  ansible.builtin.import_tasks: personalities/get-personalities.yaml
   when: cluster_transition_state_required
-  vars:
-    ansible_python_interpreter: /bin/python
-
-- name: Debug SDDC Manager Personalities Response
-  ansible.builtin.debug:
-    var: sddc_manager_personalities_response
-  when: sddc_manager.api_call_debug | bool and cluster_transition_state_required
 
 - name: Set fact | personality name
   ansible.builtin.set_fact:
@@ -94,118 +36,61 @@
     ) }}
   when: (item.name == personality_name) and cluster_transition_state_required
 
-- name: SDDC Manager API | Validate Cluster Update Spec
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations"
-    method: POST
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    body_format: json
-    body: "{{ lookup('template', 'clusters/mgmt-cluster-update.json.j2') | from_json }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_cluster_validation_response
+- name: Set local variable | sddc_manager_cluster_update_template
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_update_template: 'clusters/cluster-expand.json.j2'
   vars:
     ansible_python_interpreter: /bin/python
+  when: sddc_manager_cluster_update_template is not defined
 
-- name: Debug SDDC Manager Cluster Validation Response
-  ansible.builtin.debug:
-    var: sddc_manager_cluster_validation_response
-  when: sddc_manager.api_call_debug | bool
+- name: Include SDDC Manager | Hosts API task | get hosts
+  ansible.builtin.import_tasks: hosts/get-hosts.yaml
 
-- name: SDDC Manager API | Check Cluster Update Validation Status
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations/{{ sddc_manager_cluster_validation_response.json.id }}"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_cluster_validation_status_response
-  until: sddc_manager_cluster_validation_status_response.json.executionStatus in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED']
-  retries: 30
-  delay: 10
+- name: Set fact | host_expansion_specs_list
+  ansible.builtin.set_fact:
+    host_expansion_specs_list: "{{ host_expansion_specs_list | default([]) + [host_item_spec] }}"
+  loop: "{{ groups['management_scale_up'] }}"
   vars:
-    ansible_python_interpreter: /bin/python
+    target_host_fqdn: "{{ hostvars[item].ansible_fqdn | default(item) }}"
+    sddc_host_info: >-
+      {{
+        sddc_manager_hosts_response.json.elements
+        | selectattr('fqdn', 'equalto', target_host_fqdn)
+        | first
+        | default({})
+      }}
+    current_vds_name: "{{ vcf.dvs_name | default('m-cl1-vds1') }}"
 
-- name: Debug SDDC Manager Cluster Validation Status Response
+    host_item_spec:
+      id: "{{ sddc_host_info.id }}"
+      licenseKey: "{{ vcf.license.esxi | default('') }}"
+      hostNetworkSpec:
+        vmNics:
+          - id: "{{ uplink1_vmnic_name | default('vmnic0') }}"
+            vdsName: "{{ current_vds_name }}"
+            moveToNvds: false
+            uplink: "uplink1"
+          - id: "{{ uplink2_vmnic_name | default('vmnic1') }}"
+            vdsName: "{{ current_vds_name }}"
+            moveToNvds: false
+            uplink: "uplink2"
+  when: sddc_host_info.id is defined and (sddc_host_info.status | default('')) == 'UNASSIGNED_USEABLE'
+  run_once: true
+
+- name: Debug host_expansion_specs_list
   ansible.builtin.debug:
-    var: sddc_manager_cluster_validation_status_response
-  when: sddc_manager.api_call_debug | bool
+    var: host_expansion_specs_list
+  run_once: true
 
-- name: Fail if cluster update validation failed
-  ansible.builtin.fail:
-    msg: "Add hosts to cluster validation failed: {{ sddc_manager_cluster_validation_status_response.json }}"
-  when: (sddc_manager_cluster_validation_status_response.json.executionStatus == 'FAILED') or
-        (sddc_manager_cluster_validation_status_response.json.executionStatus == 'CANCELLED') or
-        (sddc_manager_cluster_validation_status_response.json.executionStatus == 'SKIPPED') or
-        (sddc_manager_cluster_validation_status_response.json.resultStatus == 'FAILED') or
-        (sddc_manager_cluster_validation_status_response.json.resultStatus == 'FAILED_WITH_WARNINGS')
+- name: Execute SDDC Manager Cluster Expansion
+  when: host_expansion_specs_list is defined and (host_expansion_specs_list | length > 0)
+  delegate_to: "{{ groups['management'][0] }}"
+  block:
+    - name: Include SDDC Manager | Clusters API task | post cluster validation
+      ansible.builtin.import_tasks: clusters/post-cluster-validation.yaml
 
-- name: SDDC Manager API | Update Cluster | Expand a Cluster
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}"
-    method: PATCH
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    body_format: json
-    body: "{{ lookup('template', 'clusters/mgmt-cluster-update.json.j2') | from_json }}"
-    status_code:
-      - 202
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_expand_cluster_response
-  vars:
-    ansible_python_interpreter: /bin/python
+    - name: Include SDDC Manager | Clusters API task | get cluster validation status
+      ansible.builtin.import_tasks: clusters/get-cluster-validation-status.yaml
 
-- name: Debug SDDC Manager Expand Cluster Response
-  ansible.builtin.debug:
-    var: sddc_manager_expand_cluster_response
-  when: sddc_manager.api_call_debug | bool
-
-- name: SDDC Manager API | Check Cluster Create Validation Task Status
-  ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/validations/{{ sddc_manager_expand_cluster_response.json.id }}"
-    method: GET
-    headers:
-      Content-Type: "application/json"
-      Accept: "application/json"
-      Authorization: "Bearer {{ sddc_manager_access_token }}"
-    status_code:
-      - 200
-    follow_redirects: all
-    return_content: yes
-    validate_certs: "{{ sddc_manager.validate_certs }}"
-  register: sddc_manager_expand_cluster_status_response
-  until: sddc_manager_expand_cluster_status_response.json.status in ['SUCCESSFUL', 'FAILED', 'CANCELLED', 'COMPLETED_WITH_WARNING', 'SKIPPED'] and
-         sddc_manager_expand_cluster_status_response.json.resolutionStatus in ['RESOLVED']
-  retries: 120
-  delay: 10
-  vars:
-    ansible_python_interpreter: /bin/python
-
-- name: Debug SDDC Manager Expand Cluster Task Status Response
-  ansible.builtin.debug:
-    var: sddc_manager_expand_cluster_status_response
-  when: sddc_manager.api_call_debug | bool
-
-- name: Fail if expand cluster operation failed
-  ansible.builtin.fail:
-    msg: "Expand cluster operation failed: {{ sddc_manager_expand_cluster_status_response.json }}"
-  when: (sddc_manager_expand_cluster_status_response.json.status == 'FAILED') or
-        (sddc_manager_expand_cluster_status_response.json.status == 'CANCELLED') or
-        (sddc_manager_expand_cluster_status_response.json.status == 'SKIPPED') or
-        (sddc_manager_expand_cluster_status_response.json.status == 'COMPLETED_WITH_WARNING')
+    - name: Include SDDC Manager | Clusters API task | update cluster
+      ansible.builtin.import_tasks: clusters/patch-cluster.yaml

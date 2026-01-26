@@ -1,4 +1,34 @@
 ---
-- name: Debug Test
-  ansible.builtin.debug:
-    msg: "ToDo"
+- name: Include SDDC Manager | Clusters API task | get clusters
+  ansible.builtin.include_tasks: clusters/get-clusters.yaml
+
+- name: Set fact | cluster ID by name
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_id: "{{ item.id }}"
+    sddc_manager_host_id: "{{ host_id_to_remove }}"
+  loop: "{{ sddc_manager_clusters_response.json.elements }}"
+  when: >-
+    host_id_to_remove is defined
+    and (item.hosts is defined)
+    and (host_id_to_remove in (item.hosts | map(attribute='id') | list))
+
+- name: Include SDDC Manager | Clusters API task | get cluster by ID
+  ansible.builtin.include_tasks: clusters/get-cluster.yaml
+  when: sddc_manager_cluster_id is defined and sddc_manager_cluster_id != ''
+
+- name: Set local variable | sddc_manager_cluster_update_template
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_update_template: 'clusters/cluster-compact.json.j2'
+  when: sddc_manager_cluster_id is defined and sddc_manager_cluster_id != ''
+
+- name: Execute SDDC Manager Cluster Compaction
+  when: sddc_manager_cluster_id is defined and sddc_manager_cluster_id != ''
+  block:
+    - name: Include SDDC Manager | Clusters API task | post cluster validation
+      ansible.builtin.include_tasks: clusters/post-cluster-validation.yaml
+
+    - name: Include SDDC Manager | Clusters API task | get cluster validation status
+      ansible.builtin.include_tasks: clusters/get-cluster-validation-status.yaml
+
+    - name: Include SDDC Manager | Clusters API task | update cluster
+      ansible.builtin.include_tasks: clusters/patch-cluster.yaml

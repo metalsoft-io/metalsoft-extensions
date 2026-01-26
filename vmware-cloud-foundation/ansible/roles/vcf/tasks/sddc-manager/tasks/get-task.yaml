@@ -1,0 +1,35 @@
+---
+- name: SDDC Manager API | Check Task Status
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.hostname }}/v1/tasks/{{ sddc_manager_task_id }}"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_task_status_response
+  until: (sddc_manager_task_status_response.json.status | default('') | upper) in ['SUCCESSFUL', 'FAILED', 'CANCELLED', 'COMPLETED_WITH_WARNING', 'SKIPPED'] and
+         (sddc_manager_task_status_response.json.resolutionStatus | default('') | upper) in ['RESOLVED', 'UNRESOLVED']
+  retries: 120
+  delay: 10
+  delegate_to: "{{ groups['management'][0] }}"
+  when: sddc_manager_task_id is defined
+  vars:
+    ansible_python_interpreter: /bin/python
+
+- name: Debug SDDC Manager | Task Status Response
+  ansible.builtin.debug:
+    var: sddc_manager_task_status_response
+  when: sddc_manager.api_call_debug | bool
+
+- name: Fail if cluster operation failed
+  ansible.builtin.fail:
+    msg: "Cluster operation failed: {{ sddc_manager_task_status_response.json }}"
+  when:
+    - sddc_manager_task_status_response.json is defined
+    - (sddc_manager_task_status_response.json.status | default('') | upper) in ['FAILED', 'CANCELLED', 'SKIPPED', 'COMPLETED_WITH_WARNING']

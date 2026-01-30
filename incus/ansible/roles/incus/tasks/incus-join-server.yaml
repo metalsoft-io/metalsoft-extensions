@@ -46,16 +46,9 @@
     msg: "Incus version mismatch: local_incus_server={{ incus_local_version_short }} first_incus_server={{ incus_first_version_short }}; install matching version or upgrade/downgrade before joining."
   when: incus_local_version_short != incus_first_version_short and incus_first_version_short is defined and incus_local_version_short is defined
 
-- name: Generate trust token | used to add client TLS certificate to the server trust store
-  ansible.builtin.command:
-    cmd: "incus --force-local --quiet config trust add {{ inventory_hostname }}"
-  register: incus_client_certificate_trust_token
-  delegate_to: "{{ groups['incus'][0] }}"
-  changed_when: true
-
 - name: Set fact | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
   ansible.builtin.set_fact:
-    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus'][0]].ansible_fqdn }}"
+    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus'][0]]['ansible_facts']['fqdn'] }}"
     incus_cluster_first_server_ip: "{{ hostvars[groups['incus'][0]].ansible_host }}"
 
 - name: Debug | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
@@ -75,6 +68,14 @@
   ansible.builtin.set_fact:
     incus_remote_present: "{{ incus_cluster_first_server_hostname in (incus_remote_list.stdout | default('{}') | from_json).keys() }}"
 
+- name: Generate trust token | used to add client TLS certificate to the server trust store
+  ansible.builtin.command:
+    cmd: "incus --force-local --quiet config trust add {{ inventory_hostname }}"
+  register: incus_client_certificate_trust_token
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: true
+  when: not incus_remote_present
+
 - name: Adding the new server as a client to the first member server in the cluster
   ansible.builtin.command: >
     incus --force-local remote add {{ incus_cluster_first_server_hostname }} {{ incus_cluster_first_server_ip }} --accept-certificate --token {{ incus_client_certificate_trust_token.stdout }}
@@ -82,11 +83,64 @@
   changed_when: true
   when: not incus_remote_present
 
+- name: Check if server is already part of the cluster
+  ansible.builtin.command:
+    cmd: "incus cluster list --format=json"
+  register: incus_cluster_members
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: false
+  check_mode: false
+
+- name: Set fact | incus_server_already_member
+  ansible.builtin.set_fact:
+    incus_server_already_member: "{{ inventory_hostname in (incus_cluster_members.stdout | from_json | map(attribute='server_name') | list) }}"
+
+- name: Debug | incus_server_already_member
+  ansible.builtin.debug:
+    msg: "Server {{ inventory_hostname }} is already a member: {{ incus_server_already_member }}"
+
+- name: Get list of existing operations
+  ansible.builtin.command:
+    cmd: "incus operation list --format=json"
+  register: incus_operations_list
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: false
+  when: not incus_server_already_member
+
+- name: Identify stale join operations
+  ansible.builtin.set_fact:
+    incus_stale_operation_ids: >-
+      {{
+        incus_operations_list.stdout | default('[]') | from_json |
+        json_query(jmespath_query)
+      }}
+  vars:
+    jmespath_query: >-
+      [?
+        class=='token' &&
+        description=='Executing operation' &&
+        (
+          metadata.serverName=='{{ inventory_hostname }}' ||
+          metadata.request.name=='{{ inventory_hostname }}'
+        )
+      ].id
+  when: not incus_server_already_member
+
+- name: Cancel stale cluster join operations
+  ansible.builtin.command:
+    cmd: "incus operation delete {{ item }}"
+  loop: "{{ incus_stale_operation_ids }}"
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: true
+  failed_when: false
+  when: not incus_server_already_member and incus_stale_operation_ids | length > 0
+
 - name: Generate cluster add token for the new server
   ansible.builtin.command: "incus --force-local --quiet cluster add {{ inventory_hostname }}"
   register: incus_cluster_join_token
   delegate_to: "{{ groups['incus'][0] }}"
   changed_when: true
+  when: not incus_server_already_member
 
 - name: Create Incus init join pressed config file
   ansible.builtin.template:
@@ -95,10 +149,79 @@
     mode: "0644"
     owner: root
     group: root
+  when: not incus_server_already_member
+
+- name: Ensure Incus is in a good state before joining
+  when: not incus_server_already_member
+  block:
+    - name: Ensure Incus service is running
+      ansible.builtin.systemd:
+        name: incus
+        state: started
+        enabled: true
+
+    - name: Check if Incus daemon is responsive
+      ansible.builtin.command: timeout 10s incus info
+      register: incus_health_check
+      changed_when: false
+      retries: 3
+      delay: 5
+      until: incus_health_check.rc == 0
+  rescue:
+    - name: Reset Incus state if unresponsive
+      ansible.builtin.shell: |
+        echo "Incus unresponsive. Resetting state..."
+        pkill -9 incusd || true
+        rm -rf /var/lib/incus/database/*
+        rm -rf /var/lib/incus/storage-pools/default
+        systemctl restart incus
+      changed_when: true
+
+    - name: Wait for Incus to become responsive
+      ansible.builtin.command: timeout 10s incus info
+      register: incus_health_check_retry
+      changed_when: false
+      retries: 10
+      delay: 5
+      until: incus_health_check_retry.rc == 0
+
+- name: Clean up leftover default storage pool directory
+  ansible.builtin.file:
+    path: /var/lib/incus/storage-pools/default
+    state: absent
+  when: not incus_server_already_member
+
+- name: Verify connectivity to cluster leader
+  ansible.builtin.wait_for:
+    host: "{{ incus_cluster_first_server_ip }}"
+    port: 8443
+    state: started
+    timeout: 600
+    msg: "Timeout waiting for {{ incus_cluster_first_server_ip }}:8443"
+  when: not incus_server_already_member
 
 - name: Join additional servers
   ansible.builtin.shell:
-    cmd: "set -o pipefail && cat {{ incus_bootstrap_config_dir }}/incus-init-join-pressed-{{ timestamp }}.yaml | incus --force-local admin init --preseed"
+    cmd: >-
+      set -o pipefail &&
+      cat {{ incus_bootstrap_config_dir }}/incus-init-join-pressed-{{ timestamp }}.yaml |
+      timeout 300s incus --force-local admin init --preseed
     executable: /bin/bash
   register: incus_cluster_init_join
   changed_when: true
+  when: not incus_server_already_member
+
+- name: Wait for the server to be ONLINE in the cluster
+  ansible.builtin.command:
+    cmd: "incus cluster list --format=json"
+  register: incus_cluster_list_check
+  delegate_to: "{{ groups['incus'][0] }}"
+  changed_when: false
+  until: >-
+    (incus_cluster_list_check.stdout
+    | from_json
+    | json_query("[?server_name=='" ~ inventory_hostname ~ "'].status | [0]")
+    | default('')
+    | lower) == 'online'
+  retries: 20
+  delay: 10

@@ -8,13 +8,15 @@
 
 - name: Add Incus repository
   ansible.builtin.import_tasks: zabbly-apt-repo.yaml
-  when: ansible_distribution == 'Ubuntu'
+  when: ansible_facts['distribution'] == 'Ubuntu'
 
 - name: Install Incus from a package
   ansible.builtin.import_tasks: incus-zabbly-apt-install.yaml
-  when: ansible_distribution == 'Ubuntu'
+  when: ansible_facts['distribution'] == 'Ubuntu'
 
 - name: Fail if the Incus package is not installed
   ansible.builtin.fail:
     msg: "Incus package is not installed. Only Ubuntu and Debian are supported at this time."
-  when: (ansible_distribution != 'Ubuntu') and (ansible_distribution != 'Debian')
+  when:
+    - ansible_facts['distribution'] != 'Ubuntu'
+    - ansible_facts['distribution'] != 'Debian'

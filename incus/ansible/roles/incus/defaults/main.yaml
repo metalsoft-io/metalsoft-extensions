@@ -8,9 +8,13 @@ incus_vars_debugging_enabled: >-
 
 incus_cluster_node_dns_servers: >-
   {{ extensionInstanceVariables.cluster_node_dns_servers
-      if extensionInstanceVariables.cluster_node_dns_servers is defined and extensionInstanceVariables.cluster_node_dns_servers | length
+      if (extensionInstanceVariables.cluster_node_dns_servers is defined and
+          extensionInstanceVariables.cluster_node_dns_servers is not none and
+          extensionInstanceVariables.cluster_node_dns_servers | length)
       else (extensionInstanceRecordSet.dnsResolvers
-            if extensionInstanceRecordSet.dnsResolvers is defined and extensionInstanceRecordSet.dnsResolvers | length
+            if extensionInstanceRecordSet.dnsResolvers is defined and
+            extensionInstanceRecordSet.dnsResolvers is not none and
+            extensionInstanceRecordSet.dnsResolvers | length
             else ['1.1.1.1', '8.8.8.8']) }}
 
 incus_host_architecture_groups:
@@ -48,10 +52,10 @@ incus_run_paths:
 incus_bootstrap_config_dir: "{{ incus_run_paths.incus_bootstrap_config }}"
 
 incus_host_architecture: >-
-  {%- if ansible_architecture in incus_host_architecture_groups -%}
-  {{ incus_host_architecture_groups[ansible_architecture] }}
+  {%- if ansible_facts['architecture'] in incus_host_architecture_groups -%}
+  {{ incus_host_architecture_groups[ansible_facts['architecture']] }}
   {%- else -%}
-  {{ ansible_architecture }}
+  {{ ansible_facts['architecture'] }}
   {%- endif -%}
 
 incus_cluster_enabled: >-
@@ -78,20 +82,21 @@ incus_install_ui: >-
 
 # possible values: dir, btrfs, lvm, lvmcluster, zfs, ceph, cephfs or cephobject
 incus_storage_driver: >-
-  {%- if extensionInstanceVariables.storage_driver is defined and extensionInstanceVariables.storage_driver | length -%}
+  {%- if extensionInstanceVariables.storage_driver is defined and
+  extensionInstanceVariables.storage_driver is not none and extensionInstanceVariables.storage_driver | length -%}
   {{ extensionInstanceVariables.storage_driver }}
   {%- else -%}
   dir
   {%- endif -%}
 
 incus_core_https_port: >-
-  {%- if extensionInstanceVariables.core_https_port is defined and extensionInstanceVariables.core_https_port | length -%}
+  {%- if extensionInstanceVariables.core_https_port is defined and extensionInstanceVariables.core_https_port is not none -%}
   {{ extensionInstanceVariables.core_https_port }}
   {%- else -%}
   8443
   {%- endif -%}
 
-incus_core_https_address: "{{ ansible_default_ipv4.address }}:{{ incus_core_https_port }}"
+incus_core_https_address: "{{ ansible_facts['default_ipv4']['address'] }}:{{ incus_core_https_port }}"
 
 incus_images_auto_update_interval: >-
   {%- if extensionInstanceVariables.images_auto_update_interval is defined -%}
@@ -100,15 +105,15 @@ incus_images_auto_update_interval: >-
   6
   {%- endif -%}
 
-incus_cluster_scale_up_enabled: >-
-  {%- if groups['incus_scale_up'] is defined and groups['incus_scale_up'] | length -%}
+incus_cluster_scale_out_enabled: >-
+  {%- if groups['incus_scale_out'] is defined and groups['incus_scale_out'] is not none and groups['incus_scale_out'] | length -%}
   true
   {%- else -%}
   false
   {%- endif -%}
 
-incus_cluster_scale_down_enabled: >-
-  {%- if groups['incus_scale_down'] is defined and groups['incus_scale_down'] | length -%}
+incus_cluster_scale_in_enabled: >-
+  {%- if groups['incus_scale_in'] is defined and groups['incus_scale_in'] is not none and groups['incus_scale_in'] | length -%}
   true
   {%- else -%}
   false

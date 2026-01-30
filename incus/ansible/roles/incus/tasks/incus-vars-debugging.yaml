@@ -49,12 +49,12 @@
     msg: "incus_images_auto_update_interval: {{ incus_images_auto_update_interval }}"
   when: incus_images_auto_update_interval is defined
 
-- name: Debugging var | incus_cluster_scale_up_enabled
+- name: Debugging var | incus_cluster_scale_out_enabled
   ansible.builtin.debug:
-    msg: "incus_cluster_scale_up_enabled: {{ incus_cluster_scale_up_enabled }}"
-  when: incus_cluster_scale_up_enabled is defined
+    msg: "incus_cluster_scale_out_enabled: {{ incus_cluster_scale_out_enabled }}"
+  when: incus_cluster_scale_out_enabled is defined
 
-- name: Debugging var | incus_cluster_scale_down_enabled
+- name: Debugging var | incus_cluster_scale_in_enabled
   ansible.builtin.debug:
-    msg: "incus_cluster_scale_down_enabled: {{ incus_cluster_scale_down_enabled }}"
-  when: incus_cluster_scale_down_enabled is defined
+    msg: "incus_cluster_scale_in_enabled: {{ incus_cluster_scale_in_enabled }}"
+  when: incus_cluster_scale_in_enabled is defined

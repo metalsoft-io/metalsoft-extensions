@@ -2,7 +2,7 @@
 
 This repository contains the Ansible playbooks and roles for deploying an Incus cluster in conjunction with the MetalSoft extension defined in this directory.
 The playbooks are designed to be modular and reusable, allowing for easy customization and extension.
-The current implementation of the Ansible playbooks and roles provides the initial deployment of the Incus cluster on bare-metal servers, scale-up and scale-down of the cluster nodes, and upgrade of the Incus cluster nodes.
+The current implementation of the Ansible playbooks and roles provides the initial deployment of the Incus cluster on bare-metal servers, scale-out and scale-in of the cluster nodes, and upgrade of the Incus cluster nodes.
 
 ## Variables
 

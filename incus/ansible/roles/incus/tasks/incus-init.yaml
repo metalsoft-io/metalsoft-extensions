@@ -12,6 +12,29 @@
     group: root
     recurse: true
 
+- name: Check if Incus is already initialized
+  ansible.builtin.command:
+    cmd: "incus cluster list --format=json"
+  register: incus_cluster_list_check
+  changed_when: false
+  failed_when: false
+
+- name: Set fact | incus_already_initialized
+  ansible.builtin.set_fact:
+    incus_already_initialized: >-
+      {{
+        incus_cluster_list_check.rc == 0 and
+        (
+          incus_cluster_list_check.stdout
+          | from_json
+          | json_query("[?server_name=='" ~ inventory_hostname ~ "']")
+          | selectattr('status', 'equalto', 'Online')
+          | selectattr('message', 'equalto', 'Fully operational')
+          | list
+          | length > 0
+        )
+      }}
+
 - name: Create Incus init pressed config file
   ansible.builtin.template:
     src: incus-cluster-init-bootstrap-first-server-config.yaml.j2
@@ -19,6 +42,7 @@
     mode: "0644"
     owner: root
     group: root
+  when: not incus_already_initialized
 
 - name: Initialize Incus cluster
   ansible.builtin.shell:
@@ -26,3 +50,4 @@
     executable: /bin/bash
   register: incus_cluster_init
   changed_when: incus_cluster_init.rc == 0
+  when: not incus_already_initialized

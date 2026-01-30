@@ -4,23 +4,25 @@
   gather_facts: true
   tasks: []
 
-- name: Scale up cluster
-  hosts: incus_scale_up
+# Increase cluster size by adding one or more nodes.
+- name: Scale out cluster
+  hosts: incus_scale_out
   become: true
   tasks:
-    - name: Scale up cluster
+    - name: Scale out cluster
       ansible.builtin.include_role:
         name: incus
-        tasks_from: incus-scale-up.yaml
-      when: groups['incus_scale_up'] is defined and (groups['incus_scale_up'] | length > 0)
+        tasks_from: incus-scale-out.yaml
+      when: groups.get('incus_scale_out', []) | length > 0
 
-- name: Scale down cluster | one node at a time
-  hosts: incus_scale_down
+# Decrease cluster size by removing/decommissioning one or more nodes.
+- name: Scale in cluster | one node at a time
+  hosts: incus_scale_in
   become: true
   serial: 1
   tasks:
-    - name: Scale down cluster
+    - name: Scale in cluster
       ansible.builtin.include_role:
         name: incus
-        tasks_from: incus-scale-down.yaml
-      when: groups['incus_scale_down'] is defined and (groups['incus_scale_down'] | length > 0)
+        tasks_from: incus-scale-in.yaml
+      when: groups.get('incus_scale_in', []) | length > 0

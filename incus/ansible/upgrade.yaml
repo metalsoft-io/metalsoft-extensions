@@ -1,6 +1,6 @@
 ---
 - name: Upgrade Incus cluster
-  hosts: incus
+  hosts: "incus:!incus_scale_in:!incus_scale_out"
   become: true
   gather_facts: true
   serial: 1

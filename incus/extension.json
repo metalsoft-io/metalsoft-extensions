@@ -5,7 +5,7 @@
     "label": "incus",
     "extensionType": "application",
     "vendor": "MetalSoft",
-    "extensionVersion": "1.0.1",
+    "extensionVersion": "1.0.2",
     "description": "Provide the installation and lifecycle management of an Incus cluster with various options",
     "icon": "https://avatars.githubusercontent.com/u/2301756?s=200&v=4",
     "dependencies": {
@@ -168,7 +168,7 @@
             "label": "incus-ansible-bundle",
             "name": "incus-ansible-bundle",
             "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-1.0.1.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.0.2.zip"
         }
     ],
     "onCreate": [

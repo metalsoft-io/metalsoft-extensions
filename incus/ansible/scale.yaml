@@ -1,9 +1,4 @@
 ---
-- name: Get facts | incus nodes
-  hosts: incus
-  gather_facts: true
-  tasks: []
-
 # Increase cluster size by adding one or more nodes.
 - name: Scale out cluster
   hosts: incus_scale_out

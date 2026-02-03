@@ -46,6 +46,12 @@
     msg: "Incus version mismatch: local_incus_server={{ incus_local_version_short }} first_incus_server={{ incus_first_version_short }}; install matching version or upgrade/downgrade before joining."
   when: incus_local_version_short != incus_first_version_short and incus_first_version_short is defined and incus_local_version_short is defined
 
+- name: Gather facts from first server
+  ansible.builtin.setup:
+  delegate_to: "{{ groups['incus'][0] }}"
+  run_once: true
+  changed_when: false
+
 - name: Set fact | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
   ansible.builtin.set_fact:
     incus_cluster_first_server_hostname: "{{ hostvars[groups['incus'][0]]['ansible_facts']['fqdn'] }}"

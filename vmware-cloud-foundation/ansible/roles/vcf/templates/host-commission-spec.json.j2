@@ -1,5 +1,5 @@
 [
-{% for host in groups['management_scale_up'] %}
+{% for host in groups['management_scale_out'] %}
     {
         "fqdn": "{{ host }}",
         "username": "{{ hostvars[host].ansible_user }}",

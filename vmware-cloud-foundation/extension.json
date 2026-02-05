@@ -5,7 +5,7 @@
     "label": "vcf",
     "extensionType": "application",
     "vendor": "MetalSoft",
-    "extensionVersion": "1.0.4",
+    "extensionVersion": "1.0.5",
     "description": "VMware Cloud Foundation (VCF)",
     "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
     "dependencies": {
@@ -426,7 +426,7 @@
             "label": "vcf-ansible-bundle",
             "name": "vcf-ansible-bundle",
             "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.4.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.5.zip"
         }
     ],
     "onCreate": [

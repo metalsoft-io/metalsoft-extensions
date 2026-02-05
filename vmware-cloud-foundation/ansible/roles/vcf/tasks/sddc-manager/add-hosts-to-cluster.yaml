@@ -49,7 +49,7 @@
 - name: Set fact | host_expansion_specs_list
   ansible.builtin.set_fact:
     host_expansion_specs_list: "{{ host_expansion_specs_list | default([]) + [host_item_spec] }}"
-  loop: "{{ groups['management_scale_up'] }}"
+  loop: "{{ groups['management_scale_out'] }}"
   vars:
     target_host_fqdn: "{{ hostvars[item].ansible_fqdn | default(item) }}"
     sddc_host_info: >-

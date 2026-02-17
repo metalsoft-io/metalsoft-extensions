@@ -54,7 +54,8 @@
 
 - name: Set fact | incus_cluster_first_server_hostname and incus_cluster_first_server_ip
   ansible.builtin.set_fact:
-    incus_cluster_first_server_hostname: "{{ hostvars[groups['incus'][0]]['ansible_facts']['fqdn'] }}"
+    incus_cluster_first_server_hostname: >-
+      {{ hostvars[groups['incus'][0]]['ansible_facts']['ansible_fqdn'] | default(hostvars[groups['incus'][0]]['ansible_facts']['fqdn'] | default(groups['incus'][0])) }}
     incus_cluster_first_server_ip: "{{ hostvars[groups['incus'][0]].ansible_host }}"
 
 - name: Debug | incus_cluster_first_server_hostname and incus_cluster_first_server_ip

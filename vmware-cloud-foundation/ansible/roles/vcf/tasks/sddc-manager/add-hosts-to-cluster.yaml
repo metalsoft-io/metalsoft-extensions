@@ -82,6 +82,7 @@
 
 - name: Execute SDDC Manager Cluster Expansion
   when: host_expansion_specs_list is defined and (host_expansion_specs_list | length > 0)
+  run_once: true
   delegate_to: localhost
   block:
     - name: Include SDDC Manager | Clusters API task | post cluster validation

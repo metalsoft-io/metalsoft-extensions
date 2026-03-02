@@ -9,6 +9,7 @@
   ansible.builtin.import_tasks: validate-sddc-spec.yaml
 
 - name: Import host commissioning tasks
+  run_once: true
   block:
     - name: Import get-api-authorization.yaml
       ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml

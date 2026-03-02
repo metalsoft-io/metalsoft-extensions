@@ -15,6 +15,7 @@
         "sshThumbprint": "{{ hostvars[host].esxi_ssh_thumbprint | default('') }}",
         "sslThumbprint": "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}"
 {% endif %}
-    }
+    }{% if not loop.last %},{% endif %}
+
 {% endfor %}
 ]

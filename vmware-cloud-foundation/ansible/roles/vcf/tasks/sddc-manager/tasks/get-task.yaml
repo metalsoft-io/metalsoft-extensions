@@ -1,7 +1,7 @@
 ---
 - name: SDDC Manager API | Check Task Status
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/tasks/{{ sddc_manager_task_id }}"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/tasks/{{ sddc_manager_task_id }}"
     method: GET
     headers:
       Content-Type: "application/json"
@@ -17,10 +17,8 @@
          (sddc_manager_task_status_response.json.resolutionStatus | default('') | upper) in ['RESOLVED', 'UNRESOLVED']
   retries: 120
   delay: 10
-  delegate_to: "{{ groups['management'][0] }}"
+  delegate_to: localhost
   when: sddc_manager_task_id is defined
-  vars:
-    ansible_python_interpreter: /bin/python
 
 - name: Debug SDDC Manager | Task Status Response
   ansible.builtin.debug:

@@ -2,7 +2,7 @@
 # https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/latest/hosts/
 - name: SDDC Manager API | Get Hosts
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/hosts"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/hosts"
     method: GET
     headers:
       Content-Type: "application/json"
@@ -14,9 +14,7 @@
     return_content: yes
     validate_certs: "{{ sddc_manager.validate_certs }}"
   register: sddc_manager_hosts_response
-  delegate_to: "{{ groups['management'][0] }}"
-  vars:
-    ansible_python_interpreter: /bin/python
+  delegate_to: localhost
 
 - name: Debug SDDC Manager Hosts
   ansible.builtin.debug:

@@ -1,7 +1,7 @@
 ---
 - name: SDDC Manager API | Decommission Hosts
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/hosts"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/hosts"
     method: DELETE
     headers:
       Content-Type: "application/json"
@@ -15,9 +15,7 @@
     return_content: yes
     validate_certs: "{{ sddc_manager.validate_certs }}"
   register: sddc_manager_host_decommission_response
-  delegate_to: "{{ groups['management'][0] }}"
-  vars:
-    ansible_python_interpreter: /bin/python
+  delegate_to: localhost
 
 - name: Debug SDDC Manager Host Decommission Response
   ansible.builtin.debug:
@@ -30,4 +28,4 @@
     - sddc_manager_host_decommission_response is defined
     - sddc_manager_host_decommission_response.json.id is defined
   vars:
-    sddc_manager_task_id: "{{ sddc_manager_cluster_compact_response.json.id }}"
+    sddc_manager_task_id: "{{ sddc_manager_host_decommission_response.json.id }}"

@@ -1,7 +1,7 @@
 ---
 - name: SDDC Manager API | Get the Cluster by ID
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/clusters/{{ sddc_manager_cluster_id }}"
     method: GET
     headers:
       Content-Type: "application/json"
@@ -13,10 +13,8 @@
     return_content: yes
     validate_certs: "{{ sddc_manager.validate_certs }}"
   register: sddc_manager_cluster_response
-  delegate_to: "{{ groups['management'][0] }}"
+  delegate_to: localhost
   when: sddc_manager_cluster_id is defined and sddc_manager_cluster_id != ''
-  vars:
-    ansible_python_interpreter: /bin/python
 
 - name: Debug SDDC Manager | Get Cluster by ID Response
   ansible.builtin.debug:

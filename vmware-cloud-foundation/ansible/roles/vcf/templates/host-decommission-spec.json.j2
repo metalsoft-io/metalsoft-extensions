@@ -2,6 +2,7 @@
 {% for host in groups['management_scale_in'] %}
     {
         "fqdn": "{{ host }}"
-    }
+    }{% if not loop.last %},{% endif %}
+
 {% endfor %}
 ]

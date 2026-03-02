@@ -10,7 +10,7 @@
 
 - name: SDDC Manager API | Obtain access token
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/tokens"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/tokens"
     method: POST
     headers:
       Content-Type: "application/json"
@@ -25,9 +25,7 @@
     return_content: yes
     validate_certs: "{{ sddc_manager.validate_certs }}"
   register: sddc_manager_api_token_response
-  delegate_to: "{{ groups['management'][0] }}"
-  vars:
-    ansible_python_interpreter: /bin/python
+  delegate_to: localhost
 
 - name: Set access token fact
   set_fact:

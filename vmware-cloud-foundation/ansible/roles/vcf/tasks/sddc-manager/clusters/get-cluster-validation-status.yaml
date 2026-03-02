@@ -1,7 +1,7 @@
 ---
 - name: SDDC Manager API | Get Cluster Update Validation Status
   ansible.builtin.uri:
-    url: "https://{{ sddc_manager_spec.hostname }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations/{{ sddc_manager_cluster_validation_response_id }}"
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations/{{ sddc_manager_cluster_validation_response_id }}"
     method: GET
     headers:
       Content-Type: "application/json"
@@ -18,13 +18,11 @@
     ((sddc_manager_cluster_validation_status_response.json.executionStatus | default('') | upper) in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED'])
   retries: 30
   delay: 10
-  delegate_to: "{{ groups['management'][0] }}"
+  delegate_to: localhost
   when:
     - sddc_manager_cluster_id is defined
     - sddc_manager_cluster_validation_response_id is defined
     - sddc_manager_cluster_validation_response.json.executionStatus == 'IN_PROGRESS'
-  vars:
-    ansible_python_interpreter: /bin/python
 
 - name: Debug SDDC Manager | Cluster Validation Status Response
   ansible.builtin.debug:

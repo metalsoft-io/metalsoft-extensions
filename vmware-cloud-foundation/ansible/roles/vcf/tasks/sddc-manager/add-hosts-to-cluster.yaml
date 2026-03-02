@@ -39,8 +39,6 @@
 - name: Set local variable | sddc_manager_cluster_update_template
   ansible.builtin.set_fact:
     sddc_manager_cluster_update_template: 'clusters/cluster-expand.json.j2'
-  vars:
-    ansible_python_interpreter: /bin/python
   when: sddc_manager_cluster_update_template is not defined
 
 - name: Include SDDC Manager | Hosts API task | get hosts
@@ -84,7 +82,7 @@
 
 - name: Execute SDDC Manager Cluster Expansion
   when: host_expansion_specs_list is defined and (host_expansion_specs_list | length > 0)
-  delegate_to: "{{ groups['management'][0] }}"
+  delegate_to: localhost
   block:
     - name: Include SDDC Manager | Clusters API task | post cluster validation
       ansible.builtin.import_tasks: clusters/post-cluster-validation.yaml

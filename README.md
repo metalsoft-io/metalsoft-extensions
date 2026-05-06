@@ -1,6 +1,7 @@
-# metalsoft-extensions
+# Metalsoft Extensions
 
 MetalSoft extensions are a plug-in system used to extend the functionality of the MetalSoft platform
+[www.metalsoft.io](www.metalsoft.io)
 
 Refer to the MetalSoft documentation for more information:
 * [MetalSoft Extensions](https://docs.metalsoft.io/en/latest/content/developer_resources/extensions/managing_extensions.html)

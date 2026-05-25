@@ -1,0 +1,65 @@
+apiVersion: v1
+baseDomain: {{ _base_domain }}
+compute:
+  - hyperthreading: Enabled
+    name: worker
+    replicas: {{ _compute_nodes }}
+controlPlane:
+  hyperthreading: Enabled
+  name: master
+  replicas: {{ _control_plane_nodes }}
+metadata:
+  name: {{ _cluster_name }}
+{% set machine_network = namespace(networkAddress='', prefix=24) -%}
+{%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- for ip in instance.ipv4Ips -%}
+{%- if ip.isDefaultGateway and not machine_network.networkAddress -%}
+{%- set machine_network.networkAddress = ip.networkAddress -%}
+{%- set machine_network.prefix = ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor -%}
+{%- if not machine_network.networkAddress -%}
+{%- set machine_network.networkAddress = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].networkAddress -%}
+{%- set machine_network.prefix = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].maskBits -%}
+{%- endif -%}
+networking:
+  clusterNetwork:
+    - cidr: {{ _cluster_network }}
+      hostPrefix: 23
+  networkType: OVNKubernetes
+  serviceNetwork:
+    - {{ _service_network }}
+  machineNetwork:
+    - cidr: {{ machine_network.networkAddress }}/{{ machine_network.prefix }}
+{% if _control_plane_nodes == 1 and _compute_nodes == 0 -%}
+platform:
+  none: {}
+{% else -%}
+{%- set vips = namespace(api='', ingress='') -%}
+{%- for cluster_ip in extensionInstanceRecordSet.clusterIpv4Ips | default([]) -%}
+{%- if cluster_ip.tags and cluster_ip.tags.role == 'api-vip' -%}
+{%- set vips.api = cluster_ip.ip -%}
+{%- elif cluster_ip.tags and cluster_ip.tags.role == 'ingress-vip' -%}
+{%- set vips.ingress = cluster_ip.ip -%}
+{%- endif -%}
+{%- endfor -%}
+platform:
+  baremetal:
+    apiVIPs:
+      - {{ vips.api }}
+    ingressVIPs:
+      - {{ vips.ingress }}
+{% endif -%}
+fips: false
+pullSecret: '{{ _pull_secret | to_json }}'
+sshKey: "{{ ssh_key }}"
+{% if _airgapped_deployment -%}
+imageContentSources:
+  - mirrors:
+      - {{ _mirror_registry }}
+    source: quay.io/openshift-release-dev/ocp-release
+  - mirrors:
+      - {{ _mirror_registry }}
+    source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+{% endif -%}

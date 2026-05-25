@@ -1,0 +1,32 @@
+---
+deployment_id: "{{ extensionInstanceRecordSet.deploymentId }}"
+instance_id: "{{ ocp_instance_id | default('0') }}"
+image_name: "{{ cluster_name | default('ocp-agent') }}"
+deployment_uuid: "ocp-{{ extensionInstanceRecordSet.deploymentId }}-{{ ocp_instance_id | default('0') }}"
+
+runner_base_data_dir: "/runner"
+runner_tmp_dir: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+iso_filename: "ISO_{{ deployment_id }}_{{ instance_id }}_{{ image_name }}.iso"
+ocp_install_dir: "{{ runner_base_data_dir }}/iso/{{ deployment_uuid }}"
+iso_final_path: "{{ runner_base_data_dir }}/iso/{{ deployment_uuid }}/ISO_{{ deployment_id }}_{{ instance_id }}_{{ image_name }}.iso"
+context_json_file_path: "{{ runner_base_data_dir }}/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+
+_cluster_name: "{{ extensionInstanceRecordSet.extensionInstanceName }}"
+_base_domain: "{{ extensionInstanceVariables.base_domain | default(extensionInstanceRecordSet.baseDomain | default('metalsoft.local')) }}"
+_cluster_network: "{{ extensionInstanceVariables.cluster_network }}"
+_service_network: "{{ extensionInstanceVariables.service_network }}"
+_compute_nodes: "{{ extensionInstanceVariables.compute_nodes | int }}"
+_control_plane_nodes: "{{ extensionInstanceVariables.control_plane_nodes | int }}"
+_pull_secret: "{{ extensionInstanceVariables.pull_secret }}"
+_airgapped_deployment: "{{ extensionInstanceVariables.airgapped_deployment | default(false) | bool }}"
+_mirror_registry: "{{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}"
+_mtu: "{{ extensionInstanceVariables.mtu | default(1500) | int }}"
+_dns_resolver_ip: "{{ extensionInstanceRecordSet.dnsResolverIp }}"
+_ocp_version: "{{ extensionInstanceVariables.ocp_version }}"
+
+# Split mirror_registry into host and namespace path components
+# e.g. "registry.metalsoft.dev/ocp4/openshift4" → host="registry.metalsoft.dev", path="ocp4/openshift4"
+# Derived from _mirror_registry so the default fallback is always safe for non-airgapped deployments.
+# pull_secret must arrive as a Python dict ({"auths": {...}}), not as a base64 string.
+_mirror_registry_host: "{{ _mirror_registry.split('/')[0] }}"
+_mirror_registry_path: "{{ _mirror_registry.split('/')[1:] | join('/') }}"

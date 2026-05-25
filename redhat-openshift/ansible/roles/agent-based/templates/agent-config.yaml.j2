@@ -1,0 +1,70 @@
+apiVersion: v1alpha1
+kind: AgentConfig
+metadata:
+  name: {{ _cluster_name }}
+{% set rendezvous = namespace(ip='', gateway='', prefix=24) -%}
+{%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- for ip in instance.ipv4Ips -%}
+{%- if ip.isDefaultGateway and not rendezvous.ip -%}
+{%- set rendezvous.ip = ip.ip -%}
+{%- set rendezvous.gateway = ip.gateway -%}
+{%- set rendezvous.prefix = ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor -%}
+{%- if not rendezvous.ip -%}
+{%- set rendezvous.ip = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].ip -%}
+{%- endif -%}
+rendezvousIP: {{ rendezvous.ip }}
+hosts:
+{%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- set inst_data = namespace(ip='', gateway='', prefix=24, interface_mac='') -%}
+{%- for ip in instance.ipv4Ips -%}
+{%- if ip.isDefaultGateway and not inst_data.ip -%}
+{%- set inst_data.ip = ip.ip -%}
+{%- set inst_data.gateway = ip.gateway -%}
+{%- set inst_data.prefix = ip.maskBits -%}
+{%- endif -%}
+{%- endfor -%}
+{%- if not inst_data.ip -%}
+{%- set inst_data.ip = instance.ipv4Ips[0].ip -%}
+{%- set inst_data.gateway = instance.ipv4Ips[0].gateway -%}
+{%- set inst_data.prefix = instance.ipv4Ips[0].maskBits -%}
+{%- endif -%}
+{%- for physicalInterfaceNetworkConfig in instance.networkConfig.physicalInterfaceNetworkConfigs.values() -%}
+{%- for interfaceIpv4Address in physicalInterfaceNetworkConfig.ipv4Addresses -%}
+{%- if interfaceIpv4Address.ip == inst_data.ip and inst_data.interface_mac == '' -%}
+{%- set inst_data.interface_mac = physicalInterfaceNetworkConfig.macAddress -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor %}
+
+  - hostname: instance-{{ instance.serverInstanceId }}
+    role: {{ 'master' if instance.tags is defined and 'control-plane-node' in instance.tags else 'worker' }}
+    interfaces:
+      - name: ocp0
+        macAddress: {{ inst_data.interface_mac }}
+    networkConfig:
+      interfaces:
+        - name: ocp0
+          type: ethernet
+          state: up
+          mac-address: {{ inst_data.interface_mac }}
+          mtu: {{ _mtu }}
+          ipv4:
+            enabled: true
+            address:
+              - ip: {{ inst_data.ip }}
+                prefix-length: {{ inst_data.prefix }}
+            dhcp: false
+      dns-resolver:
+        config:
+          server:
+            - {{ _dns_resolver_ip }}
+      routes:
+        config:
+          - destination: 0.0.0.0/0
+            next-hop-address: {{ inst_data.gateway }}
+            next-hop-interface: ocp0
+            table-id: 254
+{%- endfor -%}

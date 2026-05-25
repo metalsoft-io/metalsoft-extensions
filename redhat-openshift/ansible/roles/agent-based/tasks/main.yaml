@@ -1,0 +1,210 @@
+---
+- name: Ensure OpenShift installation directories exist
+  file:
+    path: "{{ ocp_install_dir }}"
+    state: directory
+    mode: '0770'
+
+- name: Import SSH keys tasks
+  ansible.builtin.import_tasks:
+    file: ssh-keys.yaml
+
+- name: Check if ISO already exists
+  stat:
+    path: "{{ iso_final_path }}"
+  register: iso_exists
+
+- name: Validate mirror_registry is defined for airgapped deployments
+  ansible.builtin.fail:
+    msg: >-
+      extensionInstanceVariables.mirror_registry must be defined and non-empty
+      when airgapped_deployment is true
+  when:
+    - _airgapped_deployment | bool
+    - (extensionInstanceVariables.mirror_registry | default('')) == ''
+
+- name: Generate install-config.yaml in the installation directory
+  template:
+    src: install-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/install-config.yaml"
+    mode: '0644'
+
+- name: Generate agent-config.yaml in the installation directory
+  template:
+    src: agent-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/agent-config.yaml"
+    mode: '0644'
+
+- name: Write pull secret to installation directory
+  ansible.builtin.copy:
+    content: "{{ _pull_secret | to_json }}"
+    dest: "{{ ocp_install_dir }}/.pull-secret.json"
+    mode: '0600'
+  when: not iso_exists.stat.exists
+
+- name: Set registry validation and image build commands
+  ansible.builtin.set_fact:
+    registry_validation_commands: >-
+      {{
+        [
+          'REGISTRY_AUTH=$(jq -r \'.auths["' + _mirror_registry_host + '"].auth // empty\' '
+          + ocp_install_dir + '/.pull-secret.json 2>/dev/null || true);'
+          + ' HTTP_CODE=$(curl -sSk --max-time 10'
+          + ' -H "Authorization: Basic ${REGISTRY_AUTH:-}"'
+          + ' -o /dev/null -w "%{http_code}"'
+          + ' https://' + _mirror_registry_host + '/v2/);'
+          + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac',
+          'REGISTRY_AUTH=$(jq -r \'.auths["' + _mirror_registry_host + '"].auth // empty\' '
+          + ocp_install_dir + '/.pull-secret.json 2>/dev/null || true);'
+          + ' HTTP_CODE=$(curl -sSk --max-time 10'
+          + ' -H "Authorization: Basic ${REGISTRY_AUTH:-}"'
+          + ' -o /dev/null -w "%{http_code}"'
+          + ' https://' + _mirror_registry_host + '/v2/' + _mirror_registry_path + '/tags/list);'
+          + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac'
+        ]
+        if _airgapped_deployment
+        else [
+          'HTTP_CODE=$(curl -sSk --max-time 10 -o /dev/null -w "%{http_code}" https://quay.io/v2/);'
+          + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac',
+          'HTTP_CODE=$(curl -sSk --max-time 10 -o /dev/null -w "%{http_code}" https://registry.redhat.io/v2/);'
+          + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac'
+        ]
+      }}
+    agent_installation_image_commands:
+      - "/usr/local/bin/openshift-install agent create image --dir {{ ocp_install_dir }}"
+      - "mv {{ ocp_install_dir }}/agent.x86_64.iso {{ iso_final_path }}"
+  when: not iso_exists.stat.exists
+
+- name: Validate container registries connectivity
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ registry_validation_commands }}"
+  loop_control:
+    label: "{{ item }}"
+  register: registry_validation_results
+  ignore_errors: true
+  when: not iso_exists.stat.exists
+
+- name: Log registry validation results
+  ansible.builtin.debug:
+    msg: >-
+      Registry validation '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ registry_validation_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not iso_exists.stat.exists
+
+- name: Fail if any registry validation command failed
+  ansible.builtin.fail:
+    msg: >-
+      Registry validation failed for '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ registry_validation_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not iso_exists.stat.exists
+    - item.rc != 0
+
+- name: Get built-in release image from openshift-install binary
+  ansible.builtin.shell:
+    cmd: /usr/local/bin/openshift-install version | awk '/release image/{print $3}'
+  register: _ocp_release_image
+  when:
+    - not iso_exists.stat.exists
+    - _airgapped_deployment | bool
+
+- name: Verify release image digest is present in mirror
+  ansible.builtin.shell:
+    cmd: |
+      DIGEST=$(echo '{{ _ocp_release_image.stdout | trim }}' | sed 's/.*@//')
+      AUTH=$(jq -r '.auths["{{ _mirror_registry_host }}"].auth // empty' \
+             '{{ ocp_install_dir }}/.pull-secret.json' 2>/dev/null || true)
+      HTTP_CODE=$(curl -sSk --max-time 15 \
+        -H "Authorization: Basic ${AUTH:-}" \
+        -o /dev/null -w "%{http_code}" \
+        "https://{{ _mirror_registry_host }}/v2/{{ _mirror_registry_path }}/manifests/${DIGEST}")
+      case "$HTTP_CODE" in
+        200) ;;
+        404) echo "Mirror missing release manifest ${DIGEST}: image not found" >&2; exit 1;;
+        401) echo "Mirror auth failed for ${DIGEST}: check pull secret credentials" >&2; exit 1;;
+        *) echo "Mirror check failed for ${DIGEST}: HTTP ${HTTP_CODE}" >&2; exit 1;;
+      esac
+  register: _mirror_release_check
+  ignore_errors: true
+  when:
+    - not iso_exists.stat.exists
+    - _airgapped_deployment | bool
+    - (_ocp_release_image.stdout | trim) != ''
+
+- name: Fail if mirror does not have the release image
+  ansible.builtin.fail:
+    msg: >-
+      Mirror {{ _mirror_registry }} does not have the release image
+      {{ _ocp_release_image.stdout | trim }}.
+      Re-sync the mirror with:
+      oc adm release mirror
+      --from='{{ _ocp_release_image.stdout | trim }}'
+      --to={{ _mirror_registry }} --insecure=true
+  when:
+    - not iso_exists.stat.exists
+    - _airgapped_deployment | bool
+    - _mirror_release_check is defined
+    - not (_mirror_release_check.skipped | default(false))
+    - _mirror_release_check.rc != 0
+
+- name: Create the agent installation image
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ agent_installation_image_commands }}"
+  loop_control:
+    label: "{{ item }}"
+  register: agent_installation_image_results
+  ignore_errors: true
+  when: not iso_exists.stat.exists
+
+- name: Log agent installation image results
+  ansible.builtin.debug:
+    msg: >-
+      Agent image command '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ agent_installation_image_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not iso_exists.stat.exists
+
+- name: Fail if any agent installation image command failed
+  ansible.builtin.fail:
+    msg: >-
+      Agent image command failed '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ agent_installation_image_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not iso_exists.stat.exists
+    - item.rc != 0
+
+- name: Construct context JSON for ISO generation
+  copy:
+    content: |
+      {
+        "mount-and-boot": {
+          "iso": {
+            "path": "{{ iso_final_path }}"
+          },
+          "options": {
+            "sendSuccessMessageAfterBoot": true
+          },
+          "application": "openshift"
+        }
+      }
+    dest: "{{ context_json_file_path }}"
+    mode: '0644'

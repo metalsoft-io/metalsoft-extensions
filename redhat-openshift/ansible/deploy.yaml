@@ -1,0 +1,8 @@
+---
+- name: Deploy RedHat OpenShift
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  roles:
+    - agent-based

@@ -1,224 +1,229 @@
 {
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
   "name": "Red Hat OpenShift",
   "label": "openshift",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.0.0",
   "description": "Provide the installation and lifecycle management of a Red Hat OpenShift cluster",
-  "kind": "application",
-  "definition": {
-    "kind": "ExtensionDefinition",
-    "schemaVersion": "1.1",
-    "name": "Red Hat OpenShift",
-    "label": "openshift",
-    "extensionType": "application",
-    "vendor": "MetalSoft",
-    "extensionVersion": "1.0.0",
-    "description": "Provide the installation and lifecycle management of a Red Hat OpenShift cluster",
-    "icon": "https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg",
-    "dependencies": {
-      "controllerVersion": "release-v7.4",
-      "osTemplates": []
+  "icon": "https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg",
+  "dependencies": {
+    "controllerVersion": "release-v7.4",
+    "osTemplates": []
+  },
+  "inputs": [
+    {
+      "label": "control_plane_node_server_type",
+      "name": "control_plane_node_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
     },
-    "inputs": [
+    {
+      "label": "compute_node_server_type",
+      "name": "compute_node_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
+    },
+    {
+      "label": "control_plane_nodes",
+      "name": "control_plane_nodes",
+      "inputType": "ExtensionInputInteger",
+      "options": {
+        "minValue": 1
+      },
+      "defaultValue": 3
+    },
+    {
+      "label": "compute_nodes",
+      "name": "compute_nodes",
+      "inputType": "ExtensionInputInteger",
+      "options": {
+        "minValue": 0
+      },
+      "defaultValue": 0
+    },
+    {
+      "label": "base_domain",
+      "name": "base_domain",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "metalcloud.local"
+    },
+    {
+      "label": "mtu",
+      "name": "mtu",
+      "inputType": "ExtensionInputInteger",
+      "options": {},
+      "defaultValue": 1500
+    },
+    {
+      "label": "cluster_network",
+      "name": "cluster_network",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "10.128.0.0/14"
+    },
+    {
+      "label": "service_network",
+      "name": "service_network",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "172.30.0.0/16"
+    },
+    {
+      "label": "pull_secret",
+      "name": "pull_secret",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "options": {},
+      "defaultValue": "REDACTED"
+    },
+    {
+      "label": "airgapped_deployment",
+      "name": "airgapped_deployment",
+      "inputType": "ExtensionInputBoolean",
+      "options": {},
+      "defaultValue": false
+    },
+    {
+      "label": "mirror_registry",
+      "name": "mirror_registry",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "registry.metalsoft.dev/ocp4/openshift4"
+    },
+    {
+      "label": "ocp_version",
+      "name": "ocp_version",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "4.19.0"
+    }
+  ],
+  "outputs": [],
+  "infrastructure": {
+    "instanceArrays": [
       {
-        "label": "control_plane_node_server_type",
-        "name": "control_plane_node_server_type",
-        "inputType": "ExtensionInputServerType",
-        "options": {}
+        "label": "cp",
+        "instanceCount": "#/input/control_plane_nodes",
+        "serverType": "#/input/control_plane_node_server_type",
+        "logicalNetworks": [
+          {
+            "label": "internet-secondary",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "mtu": 1500,
+              "dns": {
+                "provisionInstanceDnsRecords": true,
+                "provisionLoadBalancingDnsRecord": true
+              }
+            }
+          }
+        ],
+        "tags": ["control-plane-node"]
       },
       {
-        "label": "compute_node_server_type",
-        "name": "compute_node_server_type",
-        "inputType": "ExtensionInputServerType",
-        "options": {}
-      },
-      {
-        "label": "control_plane_nodes",
-        "name": "control_plane_nodes",
-        "inputType": "ExtensionInputInteger",
-        "options": {
-          "minValue": 1
-        },
-        "defaultValue": 3
-      },
-      {
-        "label": "compute_nodes",
-        "name": "compute_nodes",
-        "inputType": "ExtensionInputInteger",
-        "options": {
-          "minValue": 0
-        },
-        "defaultValue": 0
-      },
-      {
-        "label": "base_domain",
-        "name": "base_domain",
-        "inputType": "ExtensionInputString",
-        "options": {},
-        "defaultValue": "metalcloud.local"
-      },
-      {
-        "label": "mtu",
-        "name": "mtu",
-        "inputType": "ExtensionInputInteger",
-        "options": {},
-        "defaultValue": 1500
-      },
-      {
-        "label": "cluster_network",
-        "name": "cluster_network",
-        "inputType": "ExtensionInputString",
-        "options": {},
-        "defaultValue": "10.128.0.0/14"
-      },
-      {
-        "label": "service_network",
-        "name": "service_network",
-        "inputType": "ExtensionInputString",
-        "options": {},
-        "defaultValue": "172.30.0.0/16"
-      },
-      {
-        "label": "pull_secret",
-        "name": "pull_secret",
-        "inputType": "ExtensionInputString",
-        "isPassword": true,
-        "options": {},
-        "defaultValue": "REDACTED"
-      },
-      {
-        "label": "airgapped_deployment",
-        "name": "airgapped_deployment",
-        "inputType": "ExtensionInputBoolean",
-        "options": {},
-        "defaultValue": false
-      },
-      {
-        "label": "mirror_registry",
-        "name": "mirror_registry",
-        "inputType": "ExtensionInputString",
-        "options": {},
-        "defaultValue": "registry.metalsoft.dev/ocp4/openshift4"
-      },
-      {
-        "label": "ocp_version",
-        "name": "ocp_version",
-        "inputType": "ExtensionInputString",
-        "options": {},
-        "defaultValue": "4.19.0"
+        "label": "compute",
+        "instanceCount": "#/input/compute_nodes",
+        "serverType": "#/input/compute_node_server_type",
+        "logicalNetworks": [
+          {
+            "label": "internet-secondary",
+            "profileLabel": "dummy",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "mtu": 1500,
+              "dns": {
+                "provisionInstanceDnsRecords": true,
+                "provisionLoadBalancingDnsRecord": false
+              }
+            }
+          }
+        ],
+        "tags": ["compute-node"]
       }
     ],
-    "outputs": [],
-    "infrastructure": {
-      "instanceArrays": [
-        {
-          "label": "cp",
-          "instanceCount": "#/input/control_plane_nodes",
-          "serverType": "#/input/control_plane_node_server_type",
-          "logicalNetworks": [
-            {
-              "label": "openshift-network",
-              "networkConnection": {
-                "tagged": false,
-                "accessMode": "l2",
-                "mtu": 1500,
-                "dns": {
-                  "provisionInstanceDnsRecords": true,
-                  "provisionLoadBalancingDnsRecord": true
-                }
+    "logicalNetworks": [
+      {
+        "label": "internet-secondary",
+        "profileLabel": "dummy",
+        "ipAllocations": [
+          {
+            "tags": {
+              "role": "api-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "api.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
               }
-            }
-          ],
-          "tags": [
-            "control-plane-node"
-          ]
+            ]
+          },
+          {
+            "tags": {
+              "role": "ingress-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "*.apps.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": false,
+                "ttl": 3600
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "openshift-ansible-bundle",
+      "name": "openshift-ansible-bundle",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-v1.0.0.zip"
+    },
+    {
+      "label": "monitor-installation",
+      "name": "Monitor OpenShift installation",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-monitor-v1.0.0.zip"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "installOpenshift",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "openshift-ansible-bundle",
+            "playbook": "deploy.yaml"
+          }
         },
         {
-          "label": "compute",
-          "instanceCount": "#/input/compute_nodes",
-          "serverType": "#/input/compute_node_server_type",
-          "logicalNetworks": [
-            {
-              "label": "openshift-network",
-              "networkConnection": {
-                "tagged": false,
-                "accessMode": "l2",
-                "mtu": 1500,
-                "dns": {
-                  "provisionInstanceDnsRecords": true,
-                  "provisionLoadBalancingDnsRecord": false
-                }
-              }
-            }
-          ],
-          "tags": [
-            "compute-node"
-          ]
-        }
-      ],
-      "logicalNetworks": [
-        {
-          "label": "openshift-network",
-          "profileLabel": "openshift-network-profile",
-          "ipAllocations": [
-            {
-              "tags": {
-                "role": "api-vip"
-              },
-              "ipVersion": "ipv4",
-              "dnsRecords": [
-                {
-                  "name": "api.{{CLUSTER_NAME}}.{{default_zone_name}}",
-                  "recordType": "A",
-                  "generatePtrRecord": true,
-                  "ttl": 3600
-                }
-              ]
-            },
-            {
-              "tags": {
-                "role": "ingress-vip"
-              },
-              "ipVersion": "ipv4",
-              "dnsRecords": [
-                {
-                  "name": "*.apps.{{CLUSTER_NAME}}.{{default_zone_name}}",
-                  "recordType": "A",
-                  "generatePtrRecord": false,
-                  "ttl": 3600
-                }
-              ]
-            }
-          ]
+          "label": "monitorInstallation",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "monitor-installation",
+            "playbook": "deploy.yaml"
+          }
         }
       ]
     },
-    "assets": [
-      {
-        "label": "openshift-ansible-bundle",
-        "name": "openshift-ansible-bundle",
-        "assetType": "AnsibleBundle",
-        "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-v1.0.0.zip"
-      }
-    ],
-    "onCreate": [
-      {
-        "stage": "postDeploy",
-        "tasks": [
-          {
-            "label": "installOpenshift",
-            "taskType": "ExtensionTaskAnsible",
-            "options": {
-              "asset": "openshift-ansible-bundle",
-              "playbook": "deploy.yaml"
-            }
-          }
-        ]
-      },
-      {
-        "stage": "preDeploy",
-        "tasks": []
-      }
-    ],
-    "onEdit": [],
-    "onDelete": []
-  }
+    {
+      "stage": "preDeploy",
+      "tasks": []
+    }
+  ],
+  "onEdit": [],
+  "onDelete": []
 }

@@ -1,0 +1,40 @@
+---
+# Create installation monitor script
+- name: Create installation monitor script
+  copy:
+    content: |
+      #!/bin/bash
+      echo "Monitoring OpenShift installation for deployment ID: {{ extensionInstanceRecordSet.deploymentId }}..."
+      INSTALL_DIR="$HOME/ocp-agent-baremetal-install-{{ extensionInstanceRecordSet.deploymentId }}"
+      SSH_KEY_PATH="{{ playbook_dir }}/ssh_key"
+
+      if [ ! -d "$INSTALL_DIR" ]; then
+        echo "ERROR: Installation directory not found at $INSTALL_DIR"
+        exit 1
+      fi
+
+      if [ ! -f "$SSH_KEY_PATH" ]; then
+        echo "WARNING: SSH private key not found at $SSH_KEY_PATH"
+        echo "The monitoring may fail if the installation requires SSH access"
+      fi
+
+      cd "$INSTALL_DIR"
+
+      # Set the SSH private key path for openshift-install
+      export OPENSHIFT_INSTALL_SSH_PRIVATE_KEY_PATH="$SSH_KEY_PATH"
+
+      echo "Using SSH private key from: $SSH_KEY_PATH"
+      echo "Starting OpenShift installation monitoring..."
+
+      openshift-install agent wait-for install-complete
+    dest: ~/monitor-installation-{{ extensionInstanceRecordSet.deploymentId }}.sh
+    mode: "0755"
+
+- name: Construct context JSON for ISO umount
+  copy:
+    content: |
+      {
+        "eject-mounted-iso": true
+      }
+    dest: "{{ context_json_file_path }}"
+    mode: "0644"

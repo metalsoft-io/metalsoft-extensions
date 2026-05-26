@@ -30,6 +30,12 @@
     dest: ~/monitor-installation-{{ extensionInstanceRecordSet.deploymentId }}.sh
     mode: "0755"
 
+- name: Run installation monitor script and wait for completion
+  command: ~/monitor-installation-{{ extensionInstanceRecordSet.deploymentId }}.sh
+  register: monitor_result
+  changed_when: false
+  timeout: 3600
+
 - name: Construct context JSON for ISO umount
   copy:
     content: |

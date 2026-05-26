@@ -104,12 +104,12 @@
   "infrastructure": {
     "instanceArrays": [
       {
-        "label": "ocp-cp",
+        "label": "ocpcp",
         "instanceCount": "#/input/number_masters",
         "serverType": "#/input/master_server_type",
         "logicalNetworks": [
           {
-            "label": "openshift-network",
+            "label": "internet",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
@@ -121,17 +121,15 @@
             }
           }
         ],
-        "tags": [
-          "master-node"
-        ]
+        "tags": ["master-node"]
       },
       {
-        "label": "ocp-worker",
+        "label": "ocpworker",
         "instanceCount": "#/input/number_workers",
         "serverType": "#/input/worker_server_type",
         "logicalNetworks": [
           {
-            "label": "openshift-network",
+            "label": "internet",
             "networkConnection": {
               "tagged": false,
               "accessMode": "l2",
@@ -143,15 +141,13 @@
             }
           }
         ],
-        "tags": [
-          "worker-node"
-        ]
+        "tags": ["worker-node"]
       }
     ],
     "logicalNetworks": [
       {
-        "label": "openshift-network",
-        "profileLabel": "openshift-network-profile",
+        "label": "internet",
+        "profileLabel": "vcf-mgmt",
         "ipAllocations": [
           {
             "tags": {

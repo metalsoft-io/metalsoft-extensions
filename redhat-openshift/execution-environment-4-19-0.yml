@@ -32,6 +32,8 @@ dependencies:
     collections:
       - name: community.general
         version: ">=9.0.0"
+      - name: infoblox.nios_modules
+        version: ">=1.0.0"
   python_interpreter:
     package_system: "python3.13"
     python_path: "/usr/bin/python3.13"

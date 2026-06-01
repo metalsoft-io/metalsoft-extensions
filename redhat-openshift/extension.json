@@ -191,7 +191,7 @@
       "label": "openshift-ansible-bundle",
       "name": "openshift-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-v1.0.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-v1.0.4.zip"
     }
   ],
   "onCreate": [

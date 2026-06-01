@@ -1,0 +1,80 @@
+---
+- name: Check if ISO already exists
+  ansible.builtin.stat:
+    path: "{{ iso_final_path }}"
+  register: iso_exists
+
+- name: Set release image override for air-gapped deployment
+  ansible.builtin.set_fact:
+    release_image_override: "{{ _mirror_registry }}:{{ _ocp_version }}"
+  when:
+    - not iso_exists.stat.exists
+    - _airgapped_deployment | bool
+
+- name: Set agent installation image commands
+  ansible.builtin.set_fact:
+    agent_installation_image_commands:
+      - "{{ _openshift_install_bin }} agent create image --dir {{ ocp_install_dir }}"
+      - "mv {{ ocp_install_dir }}/agent.x86_64.iso {{ iso_final_path }}"
+  when: not iso_exists.stat.exists
+
+- name: Create the agent installation image
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ agent_installation_image_commands }}"
+  loop_control:
+    label: "{{ item }}"
+  register: agent_installation_image_results
+  ignore_errors: true
+  when: not iso_exists.stat.exists
+  environment: >-
+    {{ {'OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE': release_image_override}
+       if _airgapped_deployment | bool else {} }}
+
+- name: Log agent installation image results
+  ansible.builtin.debug:
+    msg: >-
+      Agent image command '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ agent_installation_image_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not iso_exists.stat.exists
+
+- name: Fail if any agent installation image command failed
+  ansible.builtin.fail:
+    msg: >-
+      Agent image command failed '{{ item.item }}'
+      rc={{ item.rc }}
+      stdout={{ item.stdout }}
+      stderr={{ item.stderr }}
+  loop: "{{ agent_installation_image_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not iso_exists.stat.exists
+    - item.rc != 0
+
+- name: Read auth files for context JSON
+  ansible.builtin.set_fact:
+    _kubeadmin_password: "{{ lookup('file', ocp_install_dir + '/auth/kubeadmin-password') }}"
+    _kubeconfig: "{{ lookup('file', ocp_install_dir + '/auth/kubeconfig') }}"
+
+- name: Set context JSON payload
+  ansible.builtin.set_fact:
+    _context_payload:
+      mount-and-boot:
+        iso:
+          path: "{{ iso_final_path }}"
+        options:
+          sendSuccessMessageAfterBoot: true
+        application: openshift
+      auth-kubeadmin-password: "{{ _kubeadmin_password }}"
+      auth-kubeconfig: "{{ _kubeconfig }}"
+
+- name: Construct context JSON for ISO generation
+  ansible.builtin.copy:
+    content: "{{ _context_payload | to_nice_json }}"
+    dest: "{{ context_json_file_path }}"
+    mode: '0644'

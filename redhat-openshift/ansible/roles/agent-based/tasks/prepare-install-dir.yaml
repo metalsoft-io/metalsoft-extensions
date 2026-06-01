@@ -1,0 +1,22 @@
+---
+- name: Ensure OpenShift installation directory exists
+  ansible.builtin.file:
+    path: "{{ ocp_install_dir }}"
+    state: directory
+    mode: '0770'
+
+- name: Import SSH keys tasks
+  ansible.builtin.import_tasks:
+    file: ssh-keys.yaml
+
+- name: Generate install-config.yaml in the installation directory
+  ansible.builtin.template:
+    src: install-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/install-config.yaml"
+    mode: '0644'
+
+- name: Generate agent-config.yaml in the installation directory
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: "{{ ocp_install_dir }}/agent-config.yaml"
+    mode: '0644'

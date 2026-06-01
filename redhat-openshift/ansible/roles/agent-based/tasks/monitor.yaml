@@ -1,0 +1,128 @@
+---
+- name: Prepare installation directory
+  ansible.builtin.import_tasks:
+    file: prepare-install-dir.yaml
+
+- name: Read context JSON
+  ansible.builtin.slurp:
+    src: "{{ context_json_file_path }}"
+  register: _context_json_raw
+
+- name: Parse context JSON
+  ansible.builtin.set_fact:
+    _context_data: "{{ _context_json_raw.content | b64decode | from_json }}"
+
+- name: Ensure auth directory exists
+  ansible.builtin.file:
+    path: "{{ ocp_install_dir }}/auth"
+    state: directory
+    mode: '0750'
+
+- name: Restore kubeadmin-password from context JSON
+  ansible.builtin.copy:
+    content: "{{ _context_data['auth-kubeadmin-password'] }}"
+    dest: "{{ ocp_install_dir }}/auth/kubeadmin-password"
+    mode: '0600'
+
+- name: Restore kubeconfig from context JSON
+  ansible.builtin.copy:
+    content: "{{ _context_data['auth-kubeconfig'] }}"
+    dest: "{{ ocp_install_dir }}/auth/kubeconfig"
+    mode: '0600'
+
+- name: Determine rendezvous instance for log gathering
+  ansible.builtin.set_fact:
+    _rendezvous_instance: >-
+      {{
+        extensionInstanceRecordSet.serverInstances
+        | selectattr('tags', 'contains', 'control-plane-node')
+        | first
+      }}
+
+- name: Determine rendezvous IP for log gathering
+  ansible.builtin.set_fact:
+    _rendezvous_ip: >-
+      {{
+        _rendezvous_instance.ipv4Ips
+        | selectattr('isDefaultGateway', 'equalto', true)
+        | map(attribute='ip')
+        | first
+        | default(_rendezvous_instance.ipv4Ips[0].ip)
+      }}
+
+- name: Write rendezvousIP file
+  ansible.builtin.copy:
+    content: "{{ _rendezvous_ip }}"
+    dest: "{{ ocp_install_dir }}/rendezvousIP"
+    mode: '0644'
+
+- name: Wait for API to be available
+  ansible.builtin.uri:
+    url: "https://api.{{ _cluster_name }}.{{ _base_domain }}:6443/readyz"
+    validate_certs: false
+    return_content: true
+  register: _api_ready
+  until:
+    - "'ok' in _api_ready.content"
+    - _api_ready.status == 200
+  retries: "{{ _api_wait_retries }}"
+  delay: "{{ _api_wait_delay }}"
+
+- name: Wait for bootstrap complete
+  ansible.builtin.command:
+    cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for bootstrap-complete"
+    chdir: "{{ ocp_install_dir }}"
+  changed_when: false
+  retries: "{{ _bootstrap_wait_retries }}"
+  delay: "{{ _bootstrap_wait_delay }}"
+  register: _bootstrap_result
+  until: _bootstrap_result.rc == 0
+
+- name: Check installation and gather logs if it fails
+  block:
+    - name: Wait for install complete - without retries
+      ansible.builtin.command:
+        cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for install-complete"
+        chdir: "{{ ocp_install_dir }}"
+      when: not _retry_install_complete_check | bool
+      retries: "{{ _install_wait_retries }}"
+      delay: "{{ _install_wait_delay }}"
+      register: _install_result_no_retry
+      until: _install_result_no_retry.rc == 0
+
+    - name: Wait for install complete - with retries
+      ansible.builtin.command:
+        cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for install-complete"
+        chdir: "{{ ocp_install_dir }}"
+      when: _retry_install_complete_check | bool
+      register: _install_output
+      retries: "{{ _install_wait_retries }}"
+      delay: "{{ _install_wait_delay }}"
+      until:
+        "'Attempted to gather ClusterOperator status after wait failure: Listing ClusterOperator objects' not in _install_output.stderr
+        or
+        'No events logged from the Agent Rest API' in _install_output.stderr
+        or
+        'x509: certificate has expired or is not yet valid' in _install_output.stderr"
+
+  rescue:
+    - name: Gather logs from installation
+      ansible.builtin.command:
+        cmd: "{{ _openshift_install_bin }} --log-level=debug gather bootstrap --bootstrap {{ _rendezvous_ip }}"
+        chdir: "{{ runner_base_data_dir }}"
+      register: _gather_result
+      until: _gather_result.rc == 0
+      retries: 6
+      delay: 20
+      failed_when: false
+      changed_when: false
+
+    - name: Fail because installation was not completed
+      ansible.builtin.fail:
+        msg: "Installation was not completed"
+
+- name: Write eject-mounted-iso context JSON on successful installation
+  ansible.builtin.copy:
+    content: "{{ {'eject-mounted-iso': {}} | to_nice_json }}"
+    dest: "{{ context_json_file_path }}"
+    mode: '0644'

@@ -1,0 +1,11 @@
+---
+- name: Monitor OpenShift installation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Run monitoring tasks from agent-based role
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: monitor.yaml

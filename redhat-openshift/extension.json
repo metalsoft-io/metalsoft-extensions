@@ -205,14 +205,6 @@
             "asset": "openshift-ansible-bundle",
             "playbook": "deploy.yaml"
           }
-        },
-        {
-          "label": "monitorInstallation",
-          "taskType": "ExtensionTaskAnsible",
-          "options": {
-            "asset": "openshift-ansible-bundle",
-            "playbook": "monitor-installation.yaml"
-          }
         }
       ]
     },

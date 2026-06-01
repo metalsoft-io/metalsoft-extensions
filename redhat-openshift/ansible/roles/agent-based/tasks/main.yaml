@@ -1,16 +1,10 @@
 ---
-- name: Ensure OpenShift installation directories exist
-  file:
-    path: "{{ ocp_install_dir }}"
-    state: directory
-    mode: '0770'
-
-- name: Import SSH keys tasks
+- name: Prepare installation directory
   ansible.builtin.import_tasks:
-    file: ssh-keys.yaml
+    file: prepare-install-dir.yaml
 
 - name: Check if ISO already exists
-  stat:
+  ansible.builtin.stat:
     path: "{{ iso_final_path }}"
   register: iso_exists
 
@@ -42,7 +36,7 @@
     mode: '0600'
   when: not iso_exists.stat.exists
 
-- name: Set registry validation and image build commands
+- name: Set registry validation commands
   ansible.builtin.set_fact:
     registry_validation_commands: >-
       {{
@@ -70,9 +64,6 @@
           + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac'
         ]
       }}
-    agent_installation_image_commands:
-      - "/usr/local/bin/openshift-install agent create image --dir {{ ocp_install_dir }}"
-      - "mv {{ ocp_install_dir }}/agent.x86_64.iso {{ iso_final_path }}"
   when: not iso_exists.stat.exists
 
 - name: Validate container registries connectivity
@@ -112,7 +103,7 @@
 
 - name: Get built-in release image from openshift-install binary
   ansible.builtin.shell:
-    cmd: /usr/local/bin/openshift-install version | awk '/release image/{print $3}'
+    cmd: "{{ _openshift_install_bin }} version | awk '/release image/{print $3}'"
   register: _ocp_release_image
   when:
     - not iso_exists.stat.exists
@@ -157,54 +148,6 @@
     - not (_mirror_release_check.skipped | default(false))
     - _mirror_release_check.rc != 0
 
-- name: Create the agent installation image
-  ansible.builtin.shell: "{{ item }}"
-  loop: "{{ agent_installation_image_commands }}"
-  loop_control:
-    label: "{{ item }}"
-  register: agent_installation_image_results
-  ignore_errors: true
-  when: not iso_exists.stat.exists
-
-- name: Log agent installation image results
-  ansible.builtin.debug:
-    msg: >-
-      Agent image command '{{ item.item }}'
-      rc={{ item.rc }}
-      stdout={{ item.stdout }}
-      stderr={{ item.stderr }}
-  loop: "{{ agent_installation_image_results.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when: not iso_exists.stat.exists
-
-- name: Fail if any agent installation image command failed
-  ansible.builtin.fail:
-    msg: >-
-      Agent image command failed '{{ item.item }}'
-      rc={{ item.rc }}
-      stdout={{ item.stdout }}
-      stderr={{ item.stderr }}
-  loop: "{{ agent_installation_image_results.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when:
-    - not iso_exists.stat.exists
-    - item.rc != 0
-
-- name: Construct context JSON for ISO generation
-  copy:
-    content: |
-      {
-        "mount-and-boot": {
-          "iso": {
-            "path": "{{ iso_final_path }}"
-          },
-          "options": {
-            "sendSuccessMessageAfterBoot": true
-          },
-          "application": "openshift"
-        }
-      }
-    dest: "{{ context_json_file_path }}"
-    mode: '0644'
+- name: Include ISO creation tasks
+  ansible.builtin.import_tasks:
+    file: create-iso.yaml

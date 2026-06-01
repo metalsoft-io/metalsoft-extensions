@@ -4,6 +4,7 @@ metadata:
   name: {{ _cluster_name }}
 {% set rendezvous = namespace(ip='', gateway='', prefix=24) -%}
 {%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- if instance.tags is defined and 'control-plane-node' in instance.tags -%}
 {%- for ip in instance.ipv4Ips -%}
 {%- if ip.isDefaultGateway and not rendezvous.ip -%}
 {%- set rendezvous.ip = ip.ip -%}
@@ -11,9 +12,14 @@ metadata:
 {%- set rendezvous.prefix = ip.maskBits -%}
 {%- endif -%}
 {%- endfor -%}
+{%- endif -%}
 {%- endfor -%}
 {%- if not rendezvous.ip -%}
-{%- set rendezvous.ip = extensionInstanceRecordSet.serverInstances[0].ipv4Ips[0].ip -%}
+{%- for instance in extensionInstanceRecordSet.serverInstances -%}
+{%- if instance.tags is defined and 'control-plane-node' in instance.tags and not rendezvous.ip -%}
+{%- set rendezvous.ip = instance.ipv4Ips[0].ip -%}
+{%- endif -%}
+{%- endfor -%}
 {%- endif -%}
 rendezvousIP: {{ rendezvous.ip }}
 hosts:
@@ -39,7 +45,7 @@ hosts:
 {%- endfor -%}
 {%- endfor %}
 
-  - hostname: instance-{{ instance.serverInstanceId }}
+  - hostname: {{ instance.host }}
     role: {{ 'master' if instance.tags is defined and 'control-plane-node' in instance.tags else 'worker' }}
     interfaces:
       - name: ocp0

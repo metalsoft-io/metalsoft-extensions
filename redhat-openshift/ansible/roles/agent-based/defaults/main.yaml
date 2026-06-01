@@ -1,7 +1,7 @@
 ---
 deployment_id: "{{ extensionInstanceRecordSet.deploymentId }}"
 instance_id: "{{ ocp_instance_id | default('0') }}"
-image_name: "{{ cluster_name | default('ocp-agent') }}"
+image_name: "{{ _cluster_name | default('ocp-agent') }}"
 deployment_uuid: "ocp-{{ extensionInstanceRecordSet.deploymentId }}-{{ ocp_instance_id | default('0') }}"
 
 runner_base_data_dir: "/runner"
@@ -30,3 +30,17 @@ _ocp_version: "{{ extensionInstanceVariables.ocp_version }}"
 # pull_secret must arrive as a Python dict ({"auths": {...}}), not as a base64 string.
 _mirror_registry_host: "{{ _mirror_registry.split('/')[0] }}"
 _mirror_registry_path: "{{ _mirror_registry.split('/')[1:] | join('/') }}"
+
+_openshift_install_bin: /usr/local/bin/openshift-install
+
+_monitor_installation: false
+_retry_install_complete_check: false
+
+_api_wait_retries: 10
+_api_wait_delay: 60
+
+_bootstrap_wait_retries: 60
+_bootstrap_wait_delay: 60
+
+_install_wait_retries: 60
+_install_wait_delay: 60

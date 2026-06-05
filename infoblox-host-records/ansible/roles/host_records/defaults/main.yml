@@ -35,4 +35,4 @@ delete_only: false
 auto_load_variables_file: true
 
 # Include host records derived from wildcard names (e.g. *.apps.example). Default false skips them.
-include_wildcard_host_records: false
+include_wildcard_host_records: true

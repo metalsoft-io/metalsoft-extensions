@@ -16,6 +16,12 @@
   set_fact:
     host_records: "{{ host_records | default([]) }}"
 
+- name: Prepare server instance A records list (filtered)
+  set_fact:
+    _server_a_records: >-
+      {{ (serverInstanceDNSRecordSet.records | selectattr('type','equalto','A') | list) if (serverInstanceDNSRecordSet is defined and serverInstanceDNSRecordSet.records is defined) else [] }}
+  when: host_records | length == 0
+
 - name: Derive A records into host_records (loop build)
   set_fact:
     host_records: "{{ host_records + [_new_item] }}"
@@ -27,8 +33,8 @@
       state: "{{ _force_state if _force_state|length>0 else ('absent' if item.status == 'deleting' else 'present') }}"
       ttl: "{{ item.ttl | default(omit) }}"
       zone_name: "{{ item.zoneName | default('') }}"
-  when: host_records | length == 0 and serverInstanceDNSRecordSet is defined and serverInstanceDNSRecordSet.records is defined and item.type == 'A'
-  loop: "{{ serverInstanceDNSRecordSet.records }}"
+  when: (_server_a_records | default([])) | length > 0
+  loop: "{{ _server_a_records | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
 
@@ -50,7 +56,7 @@
       state: "{{ _force_state if _force_state|length>0 else ('absent' if item.status == 'deleting' else 'present') }}"
       ttl: "{{ item.ttl | default(omit) }}"
       zone_name: "{{ item.zoneName | default('') }}"
-  when: host_records | length == 0 and (_cluster_a_records | default([])) | length > 0 and (include_wildcard_host_records or not _is_wildcard)
+  when: (_cluster_a_records | default([])) | length > 0 and (include_wildcard_host_records or not _is_wildcard)
   loop: "{{ _cluster_a_records | default([]) }}"
   loop_control:
     label: "{{ item.name }}"

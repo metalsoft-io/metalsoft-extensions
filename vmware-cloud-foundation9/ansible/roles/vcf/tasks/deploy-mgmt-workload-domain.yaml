@@ -1,0 +1,221 @@
+---
+# - name: Deploy VMware Cloud Foundation management domain
+
+- name: Bring up | Validate configuration
+  block:
+    - name: Cloud-Builder Appliance API CALL | Validate configuration - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs/validations
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: POST
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200, 202]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ cba.api_retries }}"
+      delay: "{{ cba.api_retries_delay }}"
+      register: cba_api_post_validate_mgmt_workload_result
+      until: cba_api_post_validate_mgmt_workload_result is succeeded
+      delegate_to: localhost
+
+    - name: Give some time for the validation to start
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Cloud-Builder Appliance API CALL | Querying validation status - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs/validations/{{ cba_api_post_validate_mgmt_workload_result.json.id }}
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: GET
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+      retries: "{{ cba.validation_api_retries }}"
+      delay: "{{ cba.validation_api_retries_delay }}"
+      register: cba_api_get_validation_mgmt_workload_result
+      until: >
+        (cba_api_get_validation_mgmt_workload_result.json.executionStatus != 'IN_PROGRESS') and
+        (cba_api_get_validation_mgmt_workload_result.json.resultStatus != 'UNKNOWN')
+      failed_when: >
+        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'FAILED') or
+        (cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'FAILED') or
+        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'COMPLETED'
+        and cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'FAILED')
+      when: cba_api_post_validate_mgmt_workload_result is succeeded
+      delegate_to: localhost
+  rescue:
+    - name: Debug response | Cloud-Builder Appliance API CALL | Validate configuration - mgmt workload domain
+      ansible.builtin.debug:
+        var: cba_api_post_validate_mgmt_workload_result
+
+    - name: Debug response | Cloud-Builder Appliance API CALL | Querying validation status
+      ansible.builtin.debug:
+        var: cba_api_get_validation_mgmt_workload_result
+
+    - name: Debug template - management-workload-domain.yaml.j2
+      ansible.builtin.debug:
+        msg: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "Validation failed. Please check the logs for more information."
+
+- name: Bring up | Deploy task
+  block:
+    - name: Cloud-Builder Appliance API CALL | Deploy task - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: POST
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200, 202]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ cba.api_retries }}"
+      delay: "{{ cba.api_retries_delay }}"
+      register: cba_api_post_deploy_task_mgmt_workload_result
+      until: cba_api_post_deploy_task_mgmt_workload_result is succeeded
+      when: >
+        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'COMPLETED'
+        and cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'SUCCEEDED')
+      delegate_to: localhost
+
+    - name: Give some time for the task to start
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Cloud-Builder Appliance API CALL | GET Deploy task ID - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: GET
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+        body_format: json
+      retries: "{{ cba.api_retries }}"
+      delay: "{{ cba.api_retries_delay }}"
+      register: cba_api_get_deploy_task_id_mgmt_workload_result
+      until: cba_api_get_deploy_task_id_mgmt_workload_result is succeeded
+      when: >
+        (cba_api_post_deploy_task_mgmt_workload_result.json.errorCode is defined and
+        cba_api_post_deploy_task_mgmt_workload_result.json.errorCode == 'BRINGUP_ALREADY_EXISTS') and
+        ((cba_api_post_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE') or
+        (cba_api_post_deploy_task_mgmt_workload_result.json.status == 'IN_PROGRESS'))
+      delegate_to: localhost
+
+    - name: Cloud-Builder Appliance API CALL | Retry deploy task - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id }}
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: PATCH
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200, 202]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ cba.api_retries }}"
+      delay: "{{ cba.api_retries_delay }}"
+      register: cba_api_patch_deploy_task_mgmt_workload_result
+      until: cba_api_patch_deploy_task_mgmt_workload_result is succeeded
+      when: >
+        (cba_api_get_deploy_task_id_mgmt_workload_result is succeeded) and
+        (cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id is defined) and
+        (cba_api_post_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE')
+      delegate_to: localhost
+
+    - name: Cloud-Builder Appliance API CALL | Querying task status - deploy mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_post_deploy_task_mgmt_workload_result.json.id }}
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: GET
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+      retries: "{{ cba.deploy_task_api_retries }}"
+      delay: "{{ cba.deploy_task_api_retries_delay }}"
+      register: cba_api_get_deploy_task_mgmt_workload_result
+      until: cba_api_get_deploy_task_mgmt_workload_result.json.status != 'IN_PROGRESS'
+      failed_when: cba_api_get_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE'
+      when: >
+        (cba_api_post_deploy_task_mgmt_workload_result is succeeded) and
+        (cba_api_post_deploy_task_mgmt_workload_result.json.id is defined)
+      delegate_to: localhost
+
+    - name: Cloud-Builder Appliance API CALL | Querying retry task status - deploy mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id }}
+        user: "{{ cba.admin_username }}"
+        password: "{{ cba.admin_password }}"
+        method: GET
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        force_basic_auth: true
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ cba.validate_certs }}"
+      retries: "{{ cba.deploy_task_api_retries }}"
+      delay: "{{ cba.deploy_task_api_retries_delay }}"
+      register: cba_api_get_deploy_task_retry_mgmt_workload_result
+      until: cba_api_get_deploy_task_retry_mgmt_workload_result.json.status != 'IN_PROGRESS'
+      failed_when: cba_api_get_deploy_task_retry_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE'
+      when: >
+        (cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id is defined)
+      delegate_to: localhost
+  rescue:
+    - name: Debug response | Cloud-Builder Appliance API CALL | Deploy task
+      ansible.builtin.debug:
+        var: cba_api_post_deploy_task_mgmt_workload_result
+
+    - name: Debug response | Cloud-Builder Appliance API CALL | GET Deploy task ID
+      ansible.builtin.debug:
+        var: cba_api_get_deploy_task_id_mgmt_workload_result
+
+    - name: Debug response | Cloud-Builder Appliance API CALL | Retry deploy task
+      ansible.builtin.debug:
+        var: cba_api_patch_deploy_task_mgmt_workload_result
+
+    - name: Debug response | Cloud-Builder Appliance API CALL | Querying deploy task status
+      ansible.builtin.debug:
+        var: cba_api_get_deploy_task_mgmt_workload_result
+
+    - name: Debug response | Cloud-Builder Appliance API CALL | Querying retry deploy task status
+      ansible.builtin.debug:
+        var: cba_api_get_deploy_task_retry_mgmt_workload_result
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "Deploy task failed. Please check the logs for more information."

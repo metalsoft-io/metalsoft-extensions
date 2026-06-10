@@ -1,0 +1,28 @@
+---
+- name: SDDC Manager API | Validate Cluster Update Spec
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    body_format: json
+    body: "{{ lookup('template', sddc_manager_cluster_update_template) | from_json }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_cluster_validation_response
+  delegate_to: localhost
+
+- name: Set fact | sddc_manager_cluster_validation_response_id
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_validation_response_id: "{{ sddc_manager_cluster_validation_response.json.id }}"
+  when: sddc_manager_cluster_validation_response.json.id is defined
+
+- name: Debug SDDC Manager Cluster Validation Response
+  ansible.builtin.debug:
+    var: sddc_manager_cluster_validation_response
+  when: sddc_manager.api_call_debug | bool

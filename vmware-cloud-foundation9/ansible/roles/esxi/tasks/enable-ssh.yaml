@@ -1,0 +1,25 @@
+---
+# - name: Set authorized key in esxi host
+#   uri:
+#     url: https://{{ esxi_hostname }}/host/ssh_root_authorized_keys
+#     force_basic_auth: yes
+#     validate_certs: no
+#     method: PUT
+#     user: "{{ esxi_username }}"
+#     password: "{{ esxi_password }}"
+#     body: "{{ mgmt_ssh_key }}"
+
+- name: Start SSH service setting for an ESXi Host in given Cluster
+  vmware_host_service_manager:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ inventory_hostname }}"
+    service_name: "{{ item }}"
+    state: start
+    service_policy: true
+    validate_certs: "{{ esxi_validate_certs }}"
+  with_items:
+    - TSM-SSH
+    - TSM
+  delegate_to: localhost

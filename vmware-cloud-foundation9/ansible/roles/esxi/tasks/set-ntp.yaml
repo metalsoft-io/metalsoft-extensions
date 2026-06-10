@@ -1,0 +1,23 @@
+---
+- name: Configure NTP servers for an ESXi Hosts
+  community.vmware.vmware_host_ntp:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ esxi_hostname }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    ntp_servers: "{{ ntp_servers }}"
+    verbose: true
+  delegate_to: localhost
+
+- name: Set ntpd service policy to "Start and stop with host"
+  community.vmware.vmware_host_service_manager:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ esxi_hostname }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    service_name: ntpd
+    service_policy: on
+    state: present
+  delegate_to: localhost

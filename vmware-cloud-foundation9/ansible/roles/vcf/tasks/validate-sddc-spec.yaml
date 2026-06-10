@@ -1,0 +1,20 @@
+---
+- name: Import | Basic Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-basic.yaml
+  tags: ['validation', 'basic']
+
+- name: Import | Infrastructure Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-infrastructure.yaml
+  tags: ['validation', 'infrastructure']
+
+- name: Import | License Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-licenses.yaml
+  tags: ['validation', 'license']
+
+- name: Import | Network Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-networks.yaml
+  tags: ['validation', 'network']
+
+- name: Import | Cloud-Builder Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-cba.yaml
+  tags: ['validation', 'cba']

@@ -1,0 +1,79 @@
+---
+# Verify Cloud-Builder NTP synchronization via VMware Tools (no SSH/Python needed)
+
+- name: Initialize VMware Tools connection
+  ansible.builtin.include_tasks: init-vmtools.yaml
+
+- name: Set default NTP verification tuning vars
+  ansible.builtin.set_fact:
+    cba_ntp_retries: "{{ cba.ntp_retries | default(20) }}"
+    cba_ntp_delay: "{{ cba.ntp_delay | default(15) }}"
+
+- name: Check for ntpd service
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ target_esxi_hostname }}"
+    username: "{{ target_esxi_username }}"
+    password: "{{ target_esxi_password }}"
+    validate_certs: "{{ cba.validate_certs | default(false) }}"
+    vm_id: "{{ cba.hostname }}"
+    vm_username: "{{ cba.root_username | default('root') }}"
+    vm_password: "{{ cba.root_password | default('') }}"
+    vm_shell: /usr/bin/systemctl
+    vm_shell_args: "is-active ntpd"
+    wait_for_process: true
+  delegate_to: localhost
+  register: cba_ntpd_check
+  failed_when: false
+
+- name: Set time sync service fact
+  ansible.builtin.set_fact:
+    cba_time_sync_service: "{{ 'ntpd' if cba_ntpd_check.exit_code | default(-1) == 0 else 'NONE' }}"
+
+- name: Show detected time sync service
+  ansible.builtin.debug:
+    msg: "Detected time sync service: {{ cba_time_sync_service }}"
+
+- name: Fail if no time sync service detected
+  ansible.builtin.fail:
+    msg: |
+      No active time sync service detected on Cloud-Builder.
+      ntpd service is not running.
+
+      Please ensure 'guestinfo.ntp' was set during OVA deployment.
+      Check Cloud-Builder VM console for cloud-init errors.
+  when: cba_time_sync_service == 'NONE'
+
+- name: Check ntpd synchronization status
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ target_esxi_hostname }}"
+    username: "{{ target_esxi_username }}"
+    password: "{{ target_esxi_password }}"
+    validate_certs: "{{ cba.validate_certs | default(false) }}"
+    vm_id: "{{ cba.hostname }}"
+    vm_username: "{{ cba.root_username | default('root') }}"
+    vm_password: "{{ cba.root_password | default('') }}"
+    vm_shell: /usr/bin/ntpq
+    vm_shell_args: "-p"
+    wait_for_process: true
+  delegate_to: localhost
+  register: cba_ntp_peers
+  retries: "{{ cba_ntp_retries }}"
+  delay: "{{ cba_ntp_delay }}"
+  until: cba_ntp_peers.exit_code | default(-1) == 0
+  failed_when: cba_ntp_peers.exit_code | default(-1) != 0
+
+- name: Debug | ntpd check result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_ntpd_check
+  when: vcf.validation_debug | default(false) | bool
+
+- name: Debug | ntp peers result (validation_debug)
+  ansible.builtin.debug:
+    var: cba_ntp_peers
+  when: vcf.validation_debug | default(false) | bool
+
+- name: Summarize NTP verification result
+  ansible.builtin.debug:
+    msg: >-
+      Cloud-Builder NTP synchronization verified successfully.
+      Service: ntpd | Method: VMware Tools | Status: ntpq command succeeded

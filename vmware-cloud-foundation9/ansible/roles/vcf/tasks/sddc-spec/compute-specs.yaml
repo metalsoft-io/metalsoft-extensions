@@ -1,0 +1,63 @@
+---
+# Compute cluster specifications
+
+- name: Build | Cluster spec
+  set_fact:
+    cluster_spec:
+      name: "{{ vcenter_cluster_name }}"
+      evc_mode: "{{ extensionInstanceVariables.cluster_evc_mode | default('n/a') }}"
+      image_enabled: "{{ extensionInstanceVariables.cluster_image_enabled | default(true) | bool }}"
+      vm_folders:
+        management: "{{ management_vm_folder_name }}"
+        networking: "{{ networking_vm_folder_name }}"
+      resource_pool_specs_consolidated:
+        - name: "{{ management_resource_pool_name }}"
+          cpu_limit: -1
+          cpu_reservation_expandable: true
+          cpu_reservation_mhz: 0
+          cpu_reservation_percentage: 0
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_limit: -1
+          memory_reservation_expandable: true
+          memory_reservation_mb: 0
+          memory_reservation_percentage: 0
+          memory_shares_level: normal
+          memory_shares_value: 0
+          type: management
+        - name: "{{ networking_resource_pool_name }}"
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: network
+        - name: "{{ compute_user_vm_resource_pool_name }}"
+          cpu_shares_level: normal
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: compute
+        - name: "{{ compute_user_edge_resource_pool_name }}"
+          cpu_shares_level: high
+          cpu_shares_value: 0
+          memory_shares_value: 0
+          cpu_reservation_percentage: 0
+          memory_limit: -1
+          memory_reservation_percentage: 0
+          cpu_reservation_expandable: true
+          memory_reservation_expandable: true
+          memory_shares_level: normal
+          cpu_limit: -1
+          type: compute

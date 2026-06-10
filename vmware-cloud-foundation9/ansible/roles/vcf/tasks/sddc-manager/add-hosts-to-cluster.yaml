@@ -1,0 +1,95 @@
+---
+- name: Include SDDC Manager | Clusters API task | get clusters
+  ansible.builtin.import_tasks: clusters/get-clusters.yaml
+
+- name: Set fact | cluster ID by name
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_id: "{{ item.id }}"
+  loop: "{{ sddc_manager_clusters_response.json.elements }}"
+  when: item.name == vcenter_cluster_name
+
+- name: Include SDDC Manager | Clusters API task | get cluster by ID
+  ansible.builtin.import_tasks: clusters/get-cluster.yaml
+
+# If 'vcenter_cluster_image_enabled' is true, and sddc_manager_cluster_response.json.isImageBased is false,
+# then we need to set 'cluster_transition_state_required' to true to indicate that a transition
+# to vSphere Lifecycle Manager Images is required.
+- name: Set fact | cluster transition state required (to vSphere Lifecycle Manager Images)
+  ansible.builtin.set_fact:
+    cluster_transition_state_required: "{{ vcenter_cluster_image_enabled and not sddc_manager_cluster_response.json.isImageBased }}"
+
+- name: Include SDDC Manager | Personalities API task | get personalities
+  ansible.builtin.import_tasks: personalities/get-personalities.yaml
+  when: cluster_transition_state_required
+
+- name: Set fact | personality name
+  ansible.builtin.set_fact:
+    personality_name: "{{ sddc_manager_cluster_response.json.elements[0] }}"
+  when: cluster_transition_state_required
+
+- name: Set fact | personality ID by name
+  ansible.builtin.set_fact:
+    cluster_image_id: "{{ item.id }}"
+  loop: >-
+    {{ (
+      (sddc_manager_personalities_response | default({})).get('json', {}).get('elements', [])
+    ) }}
+  when: (item.name == personality_name) and cluster_transition_state_required
+
+- name: Set local variable | sddc_manager_cluster_update_template
+  ansible.builtin.set_fact:
+    sddc_manager_cluster_update_template: 'clusters/cluster-expand.json.j2'
+  when: sddc_manager_cluster_update_template is not defined
+
+- name: Include SDDC Manager | Hosts API task | get hosts
+  ansible.builtin.import_tasks: hosts/get-hosts.yaml
+
+- name: Set fact | host_expansion_specs_list
+  ansible.builtin.set_fact:
+    host_expansion_specs_list: "{{ host_expansion_specs_list | default([]) + [host_item_spec] }}"
+  loop: "{{ groups['management_scale_out'] }}"
+  vars:
+    target_host_fqdn: "{{ hostvars[item].ansible_fqdn | default(item) }}"
+    sddc_host_info: >-
+      {{
+        sddc_manager_hosts_response.json.elements
+        | selectattr('fqdn', 'equalto', target_host_fqdn)
+        | first
+        | default({})
+      }}
+    current_vds_name: "{{ vcf.dvs_name | default('m-cl1-vds1') }}"
+
+    host_item_spec:
+      id: "{{ sddc_host_info.id }}"
+      licenseKey: "{{ vcf.license.esxi | default('') }}"
+      hostNetworkSpec:
+        vmNics:
+          - id: "{{ uplink1_vmnic_name | default('vmnic0') }}"
+            vdsName: "{{ current_vds_name }}"
+            moveToNvds: false
+            uplink: "uplink1"
+          - id: "{{ uplink2_vmnic_name | default('vmnic1') }}"
+            vdsName: "{{ current_vds_name }}"
+            moveToNvds: false
+            uplink: "uplink2"
+  when: sddc_host_info.id is defined and (sddc_host_info.status | default('')) == 'UNASSIGNED_USEABLE'
+  run_once: true
+
+- name: Debug host_expansion_specs_list
+  ansible.builtin.debug:
+    var: host_expansion_specs_list
+  run_once: true
+
+- name: Execute SDDC Manager Cluster Expansion
+  when: host_expansion_specs_list is defined and (host_expansion_specs_list | length > 0)
+  run_once: true
+  delegate_to: localhost
+  block:
+    - name: Include SDDC Manager | Clusters API task | post cluster validation
+      ansible.builtin.import_tasks: clusters/post-cluster-validation.yaml
+
+    - name: Include SDDC Manager | Clusters API task | get cluster validation status
+      ansible.builtin.import_tasks: clusters/get-cluster-validation-status.yaml
+
+    - name: Include SDDC Manager | Clusters API task | update cluster
+      ansible.builtin.import_tasks: clusters/patch-cluster.yaml

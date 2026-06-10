@@ -1,0 +1,18 @@
+---
+- name: Import vmnics-to-uplinks.yaml
+  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
+
+- name: Build SDDC specification
+  ansible.builtin.import_tasks: build-sddc-spec.yaml
+
+- name: Validate SDDC specification
+  ansible.builtin.import_tasks: validate-sddc-spec.yaml
+
+- name: Import Cloud-Builder playbook
+  ansible.builtin.import_tasks: deploy-cba.yaml
+
+- name: Import Management Workload Domain playbook
+  ansible.builtin.import_tasks: deploy-mgmt-workload-domain.yaml
+
+# - name: Import VMware Aria Suite Lifecycle playbook
+#   ansible.builtin.import_tasks: deploy-aria-suite.yaml

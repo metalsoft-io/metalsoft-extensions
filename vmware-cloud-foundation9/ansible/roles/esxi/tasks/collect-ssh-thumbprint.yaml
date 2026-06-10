@@ -1,0 +1,31 @@
+---
+# Collect ESXi SSH host key SHA256 fingerprints in-memory
+
+- name: Obtain SSH host key fingerprint (SHA256)
+  delegate_to: localhost
+  vars:
+    target_host: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
+  script: "{{ role_path }}/files/get-ssh-fingerprint.sh {{ target_host }}"
+  register: esxi_ssh_thumbprint_cmd
+  changed_when: false
+
+- name: Set per-host SSH thumbprint fact
+  ansible.builtin.set_fact:
+    esxi_ssh_thumbprint: "{{ esxi_ssh_thumbprint_cmd.stdout | trim }}"
+
+- name: Debug ESXi SSH thumbprint (optional)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} => {{ esxi_ssh_thumbprint }}"
+  when: esxi_print_ssh_thumbprints | default(false) | bool
+
+- name: Aggregate ESXi SSH thumbprints into a dict
+  ansible.builtin.set_fact:
+    esxi_ssh_thumbprints: "{{ esxi_ssh_thumbprints | default({}) | combine({item: (hostvars[item].esxi_ssh_thumbprint | default(''))}) }}"
+  loop: "{{ groups.get('management', groups['all']) }}"
+  run_once: true
+
+- name: Debug aggregated ESXi SSH thumbprints (optional)
+  ansible.builtin.debug:
+    var: esxi_ssh_thumbprints
+  when: esxi_print_ssh_thumbprints | default(false) | bool
+  run_once: true

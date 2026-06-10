@@ -1,0 +1,136 @@
+---
+extension_instance_id: "{{ extensionInstanceRecordSet.extensionInstanceId }}"
+ntp_servers: "{{ extensionInstanceRecordSet.ntpServers | default(['0.us.pool.ntp.org', '1.us.pool.ntp.org']) }}"
+domain: "{{ extensionInstanceVariables.domain | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
+subdomain: "{{ extensionInstanceVariables.subdomain | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
+dns_servers: "{{ extensionInstanceVariables.dns_servers | default(extensionInstanceRecordSet.dnsResolvers | default(['1.1.1.1', '8.8.8.8'])) }}"
+dns_searchpath: "{{ extensionInstanceVariables.dns_searchpath | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
+
+esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
+esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
+esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
+
+proxy_enabled: "{{ extensionInstanceVariables.proxy_enabled | default(false) | bool }}"
+# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/5.2.2/data-structures/ProxySpec/
+proxy_spec:
+  host: "{{ extensionInstanceVariables.proxy_host | default('') }}"
+  port: "{{ extensionInstanceVariables.proxy_port | default(3128) }}"
+  username: "{{ extensionInstanceVariables.proxy_username | default('') }}"
+  password: "{{ extensionInstanceVariables.proxy_password | default('') }}"
+  transferProtocol: "{{ extensionInstanceVariables.proxy_transfer_protocol | default('HTTPS') }}" # HTTP or HTTPS
+
+repository_base_url: "{{ extensionInstanceVariables.repository_base_url | default(extensionInstanceRecordSet.repositoryBaseUrl | default('')) }}"
+vcf_version: "{{ extensionInstanceVariables.vcf_version | default('5.2.2') }}"
+ova_name: "{{ extensionInstanceVariables.ova_name | default('VMware-Cloud-Builder-5.2.2.0-24936865_OVF10.ova') }}"
+derived_ova_url: >-
+  {{ (repository_base_url | default(''))
+     | ternary(
+       repository_base_url + '/.vmware/vcf/' + vcf_version + '/' + ova_name,
+       ''
+     )
+  }}
+# Preserve the raw user-supplied override exactly (may be empty string)
+raw_ova_url: "{{ extensionInstanceVariables.ova_url | default('') }}"
+
+# Effective OVA URL: if raw override is non-empty (after trim) use it, else fall back to derived
+effective_ova_url: >-
+  {{ (raw_ova_url | trim | length > 0)
+    | ternary(raw_ova_url | trim, derived_ova_url)
+  }}
+
+ova_url: "{{ effective_ova_url }}"
+
+vcf:
+  # Deployment architecture model: consolidated, standard, or custom
+  architecture: "{{ extensionInstanceVariables.deployment_architecture_model | default('consolidated') }}"
+  # Deployment platform ("workflowType": VCF | VCF_VXRAIL")
+  platform: "{{ extensionInstanceVariables.deployment_platform | default('VCF') }}" # ToDo: Add support for VCF on VxRail
+  aria_suite_enabled: "{{ extensionInstanceVariables.aria_suite_enabled | default(false) | bool }}"
+  distinct_vlan_id_vm_mgmt_and_esxi_mgmt: "{{ extensionInstanceVariables.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool }}"
+  ceip_enabled: "{{ extensionInstanceVariables.ceip_enabled | default(false) | bool }}"
+  fips_enabled: "{{ extensionInstanceVariables.fips_enabled | default(false) | bool }}"
+  skip_esx_thumbprint_validation: "{{ extensionInstanceVariables.skip_esx_thumbprint_validation | default(false) | bool }}"
+  # subscription_licensing: "{{ extensionInstanceVariables.subscription_licensing | default(false) | bool }}"
+  license:
+    esxi: "{{ extensionInstanceVariables.license_esxi | default('') }}"
+    vsan: "{{ extensionInstanceVariables.license_vsan | default('') }}"
+    nsx: "{{ extensionInstanceVariables.license_nsx | default('') }}"
+    vcenter: "{{ extensionInstanceVariables.license_vcenter | default('') }}"
+  deploy_without_license_keys: "{{ extensionInstanceVariables.deploy_without_license_keys | default(true) | bool }}"
+  task_name: "{{ extensionInstanceVariables.task_name | default('workflowconfig/workflowspec-ems.json') }}"
+  dv_switch_version: "{{ extensionInstanceVariables.distributed_vsphere_switch_version | default('8.0.0') }}"
+  validation_debug: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
+
+# License key presence evaluation helpers
+# Collect trimmed license keys
+all_license_keys_set: >-
+  {{ [vcf.license.esxi, vcf.license.vsan, vcf.license.nsx, vcf.license.vcenter]
+     | map('default', '')
+     | map('trim')
+     | select()
+     | list
+     | length == 4 }}
+any_license_key_set: >-
+  {{ [vcf.license.esxi, vcf.license.vsan, vcf.license.nsx, vcf.license.vcenter]
+     | map('default', '')
+     | map('trim')
+     | select()
+     | list
+     | length > 0 }}
+partial_license_keys_set: >-
+  {{ (any_license_key_set | bool) and not (all_license_keys_set | bool) }}
+
+# New licenses_required semantics:
+# - If all license keys are provided (non-empty), we will use them regardless of deploy_without_license_keys flag.
+# - Else fall back to user intent (deploy_without_license_keys=false means licenses required).
+licenses_required: >-
+  {{ (all_license_keys_set | bool)
+     | ternary(true, not (vcf.deploy_without_license_keys | bool)) }}
+
+# Extract 'management' server instance group data (base)
+management_server_instance_group_base: >-
+  {{ extensionInstanceRecordSet.serverInstanceGroups
+     | default([])
+     | selectattr('serverInstanceGroupLabel', 'equalto', 'management')
+     | first
+     | default({}) }}
+
+# Filter server instances by management server instance group ID
+management_server_instances: >-
+  {{ extensionInstanceRecordSet.serverInstances
+     | default([])
+     | selectattr('serverInstanceGroupId', 'equalto', management_server_instance_group_base.serverInstanceGroupId | default(-1))
+     | list
+     if management_server_instance_group_base.serverInstanceGroupId is defined
+     else [] }}
+
+# Combine management server instance group data with server instances
+# to be compatible with different variables.json structures
+management_server_instance_group_data: >-
+  {{ management_server_instance_group_base
+     | combine({'serverInstances': management_server_instances}, recursive=True)
+     if management_server_instance_group_base
+     else {} }}
+
+# Build an index (name -> logical network object)
+logical_networks_index: >-
+  {{ dict(
+     (management_server_instance_group_data.logicalNetworks | default([]))
+     | map(attribute='name') | list
+     | zip(management_server_instance_group_data.logicalNetworks | default([]))
+    )
+  }}
+
+# Extract logical networks by name
+mgmt_network: "{{ logical_networks_index.get('vcf-mgmt', {}) }}"
+vmotion_network: "{{ logical_networks_index.get('vcf-vmotion', {}) }}"
+vsan_network: "{{ logical_networks_index.get('vcf-vsan', {}) }}"
+nsx_network: "{{ logical_networks_index.get('vcf-nsx', {}) }}"
+
+vm_mgmt_network: >-
+  {{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool)
+    | ternary(
+      logical_networks_index.get('vcf-vm-mgmt', {}),
+      mgmt_network
+    )
+  }}

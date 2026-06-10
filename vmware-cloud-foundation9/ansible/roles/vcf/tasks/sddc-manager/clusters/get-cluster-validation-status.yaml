@@ -1,0 +1,50 @@
+---
+- name: SDDC Manager API | Get Cluster Update Validation Status
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/clusters/{{ sddc_manager_cluster_id }}/validations/{{ sddc_manager_cluster_validation_response_id }}"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_cluster_validation_status_response
+  until: >-
+    (sddc_manager_cluster_validation_status_response.json is defined) and
+    ((sddc_manager_cluster_validation_status_response.json.executionStatus | default('') | upper) in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED'])
+  retries: 30
+  delay: 10
+  delegate_to: localhost
+  when:
+    - sddc_manager_cluster_id is defined
+    - sddc_manager_cluster_validation_response_id is defined
+    - sddc_manager_cluster_validation_response.json.executionStatus == 'IN_PROGRESS'
+
+- name: Debug SDDC Manager | Cluster Validation Status Response
+  ansible.builtin.debug:
+    var: sddc_manager_cluster_validation_status_response
+  when: sddc_manager.api_call_debug | bool and sddc_manager_cluster_validation_status_response is defined
+
+- name: Set fact | Cluster Validation Result
+  ansible.builtin.set_fact:
+    cluster_validation_result: >-
+      {{
+        sddc_manager_cluster_validation_status_response.json
+        if (sddc_manager_cluster_validation_status_response.skipped is not defined)
+        else sddc_manager_cluster_validation_response.json
+      }}
+
+- name: Fail if cluster update validation failed
+  ansible.builtin.fail:
+    msg: "Add hosts to cluster validation failed: {{ cluster_validation_result }}"
+  when:
+    - cluster_validation_result is defined
+    - (cluster_validation_result.executionStatus | default('') | upper == 'FAILED') or
+      (cluster_validation_result.executionStatus | default('') | upper == 'CANCELLED') or
+      (cluster_validation_result.executionStatus | default('') | upper == 'SKIPPED') or
+      (cluster_validation_result.resultStatus | default('') | upper == 'FAILED') or
+      (cluster_validation_result.resultStatus | default('') | upper == 'FAILED_WITH_WARNINGS')

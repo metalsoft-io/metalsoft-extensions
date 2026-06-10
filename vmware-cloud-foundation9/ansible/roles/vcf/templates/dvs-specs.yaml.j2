@@ -1,0 +1,27 @@
+{#
+# DVS specifications for VMware Cloud Foundation
+# This template renders the dvsSpecs section
+#}
+{% from 'macros.yaml.j2' import render_vmnic_uplink %}
+dvsSpecs:
+{% for dvs in dvs_management %}
+- mtu: {{ dvs.mtu }}
+  dvsName: "m-cl1-vds{{ loop.index }}"
+  networks: {{ dvs.networks }}
+  vmnicsToUplinks:
+{% for nic in dvs.nics %}
+{{ render_vmnic_uplink(nic) | indent(4, True) }}
+{% endfor %}
+{% if dvs.nsx %}
+  nsxtSwitchConfig:
+    transportZones:
+    - name: "{{ dvs_nsx_specs.nsxt_switch_config.transport_zones[0].name }}"
+      transportType: "{{ dvs_nsx_specs.nsxt_switch_config.transport_zones[0].transport_type }}"
+    - name: "{{ dvs_nsx_specs.nsxt_switch_config.transport_zones[1].name }}"
+      transportType: "{{ dvs_nsx_specs.nsxt_switch_config.transport_zones[1].transport_type }}"
+  nsxTeamings:
+  - policy: "{{ dvs_nsx_specs.nsx_teamings.policy }}"
+    activeUplinks: {{ dvs_nsx_specs.nsx_teamings.active_uplinks }}
+    standByUplinks: {{ dvs_nsx_specs.nsx_teamings.standby_uplinks }}
+{% endif %}
+{% endfor %}

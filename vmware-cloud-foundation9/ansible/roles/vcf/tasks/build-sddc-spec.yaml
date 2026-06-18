@@ -6,9 +6,9 @@
   include_tasks: sddc-spec/network-specs.yaml
   tags: [network, subnets]
 
-- name: "SDDC Spec | Build management services (CBA & SDDC Manager)"
+- name: "SDDC Spec | Build management services (VCF Installer & SDDC Manager)"
   include_tasks: sddc-spec/management-services.yaml
-  tags: [management, cba, sddc-manager]
+  tags: [management, installer, sddc-manager]
 
 - name: "SDDC Spec | Build NSX-T specifications"
   include_tasks: sddc-spec/nsx-specs.yaml
@@ -25,3 +25,7 @@
 - name: "SDDC Spec | Build vCenter and PSC specifications"
   include_tasks: sddc-spec/vcenter-specs.yaml
   tags: [vcenter, psc]
+
+- name: "SDDC Spec | Build VCF Operations specifications"
+  include_tasks: sddc-spec/vcf-operations-specs.yaml
+  tags: [operations, vcf-ops]

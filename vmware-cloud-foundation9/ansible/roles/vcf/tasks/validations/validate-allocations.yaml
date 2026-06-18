@@ -1,0 +1,70 @@
+---
+# Fail-early checks: a misconfigured allocation otherwise renders a schema-valid spec
+# that only fails at installer validation, hours into the run.
+
+- name: Validate | Management hosts are FQDNs under the DNS subdomain
+  ansible.builtin.assert:
+    that: >-
+      groups['management']
+      | reject('search', '\.' ~ (subdomain | regex_escape) ~ '$')
+      | list | length == 0
+    fail_msg: >-
+      All management hosts must be FQDNs ending in .{{ subdomain }} — VCF 9 resolves hosts as
+      <short-hostname>.<dnsSpec.subdomain>. Offending: {{ groups['management'] | reject('search', '\.' ~ (subdomain | regex_escape) ~ '$') | list }}
+
+- name: Validate | Required IP allocations present (role tags)
+  ansible.builtin.assert:
+    that:
+      - allocation_item.found.ip | default('') | length > 0
+      - allocation_item.found.fqdn | default('') | length > 0
+    fail_msg: >-
+      Missing or incomplete vcf-mgmt ipAllocation with tags.role={{ allocation_item.role }}
+      (need both an allocated IP and a DNS record). Check the extension definition's logicalNetworks.
+    quiet: true
+  loop:
+    - { role: 'vcf-installer' }
+    - { role: 'sddc-manager' }
+    - { role: 'management-vcenter-server' }
+    - { role: 'nsx-manager-vip' }
+    - { role: 'nsx-manager-node1' }
+    - { role: 'nsx-manager-node2' }
+    - { role: 'nsx-manager-node3' }
+    - { role: 'vcf-operations' }
+    - { role: 'ops-fleet-management' }
+    - { role: 'ops-collector' }
+  loop_control:
+    loop_var: allocation_item_role
+    label: "{{ allocation_item_role.role }}"
+  vars:
+    allocation_item:
+      role: "{{ allocation_item_role.role }}"
+      found: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', allocation_item_role.role) | first | default({}) }}"
+
+- name: Validate | VCF Automation allocation and IP pool (when enabled)
+  ansible.builtin.assert:
+    that:
+      - vcf_automation_config.ip | default('') | length > 0
+      - vcf_automation_config.fqdn | default('') | length > 0
+      - automation_ip_pool_range.startIp is defined
+      - automation_ip_pool_range.endIp is defined
+    fail_msg: >-
+      deploy_vcf_automation is enabled but the vcf-automation ipAllocation and/or the
+      automation-ip-pool ipRange (2 IPs) are missing from the vcf-mgmt logical network.
+  when: vcf.deploy_automation | bool
+
+- name: Validate | NSX host overlay TEP VLAN present
+  ansible.builtin.assert:
+    that: nsx_network_subnet.vlan_id | default('') | string | length > 0
+    fail_msg: >-
+      The vcf-nsx logical network has no VLAN id for the nsx-host-overlay-pool range —
+      transportVlanId would silently render as 0 (untagged).
+
+- name: Validate | VM management pool present (distinct VLAN mode)
+  ansible.builtin.assert:
+    that:
+      - vm_mgmt_network_subnet.startIp | default('') | length > 0
+      - vm_mgmt_network_subnet.endIp | default('') | length > 0
+    fail_msg: >-
+      distinct_vlan_id_vm_mgmt_and_esxi_mgmt is enabled but the vcf-vm-mgmt logical network
+      has no ipRange tagged role=vm-mgmt-pool — the VM_MANAGEMENT networkSpec would render empty.
+  when: vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool

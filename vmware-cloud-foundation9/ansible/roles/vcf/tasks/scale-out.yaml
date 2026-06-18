@@ -23,7 +23,6 @@
     - name: Set fact | vcenter_cluster_operation
       ansible.builtin.set_fact:
         vcenter_cluster_operation: "expand"
-        vcenter_cluster_image_enabled: "{{ extensionInstanceVariables.cluster_image_enabled | default(true) | bool }}"
 
     - name: Import get-api-authorization.yaml
       ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml

@@ -4,8 +4,6 @@ debug_vmnic_mapping: "{{ extensionInstanceVariables.get('validation_debug', fals
 sddc_id: "{{ extensionInstanceRecordSet.sddc_id | default(extension_instance_id ~ '-m', true) }}"
 management_pool_name: "{{ extensionInstanceVariables.management_pool_name | default(sddc_id ~ '-np1', true) }}"
 vcenter_cluster_name: "{{ extensionInstanceVariables.vcenter_cluster_name | default(sddc_id ~ '-cl1', true) }}"
-management_vm_folder_name: "{{ extensionInstanceVariables.management_vm_foldername | default('m-fd-mgmt', true) }}"
-networking_vm_folder_name: "{{ extensionInstanceVariables.networking_vm_foldername | default('m-fd-nsx', true) }}"
 management_resource_pool_name: "{{ extensionInstanceVariables.management_resource_pool_name | default(sddc_id ~ '-cl1-rp-sddc-mgmt', true) }}"
 networking_resource_pool_name: "{{ extensionInstanceVariables.networking_resource_pool_name | default(sddc_id ~ '-cl1-rp-sddc-edge', true) }}"
 compute_user_vm_resource_pool_name: "{{ extensionInstanceVariables.compute_user_vm_resource_pool_name | default(sddc_id ~ '-cl1-rp-user-vm', true) }}"

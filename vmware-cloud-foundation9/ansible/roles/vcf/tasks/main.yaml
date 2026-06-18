@@ -8,11 +8,14 @@
 - name: Validate SDDC specification
   ansible.builtin.import_tasks: validate-sddc-spec.yaml
 
-- name: Import Cloud-Builder playbook
-  ansible.builtin.import_tasks: deploy-cba.yaml
+- name: Deploy VCF Installer appliance
+  ansible.builtin.import_tasks: deploy-vcf-installer.yaml
 
-- name: Import Management Workload Domain playbook
+- name: Configure offline depot
+  ansible.builtin.import_tasks: installer/configure-depot.yaml
+
+- name: Download release binaries
+  ansible.builtin.import_tasks: installer/download-binaries.yaml
+
+- name: Deploy management workload domain
   ansible.builtin.import_tasks: deploy-mgmt-workload-domain.yaml
-
-# - name: Import VMware Aria Suite Lifecycle playbook
-#   ansible.builtin.import_tasks: deploy-aria-suite.yaml

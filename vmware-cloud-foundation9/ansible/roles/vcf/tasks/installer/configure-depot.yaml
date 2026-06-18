@@ -1,0 +1,62 @@
+---
+- name: Obtain installer API token
+  ansible.builtin.include_tasks: get-installer-token.yaml
+
+- name: VCF Installer API CALL | Configure offline depot
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/system/settings/depot"
+    method: PUT
+    headers: "{{ installer_auth_headers }}"
+    body_format: json
+    body:
+      offlineAccount:
+        username: "{{ depot.username }}"
+        password: "{{ depot.password }}"
+      depotConfiguration:
+        isOfflineDepot: true
+        hostname: "{{ depot.hostname }}"
+        port: "{{ depot.port | int }}"
+    status_code: [200, 202]
+    validate_certs: "{{ installer.validate_certs }}"
+  retries: "{{ installer.api_retries }}"
+  delay: "{{ installer.api_retries_delay }}"
+  register: depot_config_result
+  until: depot_config_result is succeeded
+  no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+  delegate_to: localhost
+
+- name: VCF Installer API CALL | Trigger depot sync
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/system/settings/depot/depot-sync-info"
+    method: PATCH
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200, 202]
+    validate_certs: "{{ installer.validate_certs }}"
+  retries: "{{ installer.api_retries }}"
+  delay: "{{ installer.api_retries_delay }}"
+  register: depot_sync_trigger_result
+  until: depot_sync_trigger_result is succeeded
+  delegate_to: localhost
+
+- name: VCF Installer API CALL | Wait for depot sync to complete
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/system/settings/depot/depot-sync-info"
+    method: GET
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200]
+    validate_certs: "{{ installer.validate_certs }}"
+  register: depot_sync_result
+  retries: "{{ installer.depot_sync_retries }}"
+  delay: 10
+  until: >-
+    (depot_sync_result.json.syncStatus | default('') == 'SYNCED') or
+    (depot_sync_result.json.syncStatus | default('') | upper is search('FAIL'))
+  delegate_to: localhost
+
+- name: Assert depot sync succeeded
+  ansible.builtin.assert:
+    that: depot_sync_result.json.syncStatus | default('') == 'SYNCED'
+    fail_msg: >-
+      Depot sync did not reach SYNCED (status: {{ depot_sync_result.json.syncStatus | default('unknown') }}).
+      Check depot URL/credentials and that /PROD/metadata is reachable from the installer at
+      https://{{ installer.ipv4_address }}/v1/system/settings/depot/depot-sync-info

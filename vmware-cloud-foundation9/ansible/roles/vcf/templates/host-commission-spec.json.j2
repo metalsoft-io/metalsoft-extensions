@@ -4,17 +4,18 @@
         "fqdn": "{{ host }}",
         "username": "{{ hostvars[host].ansible_user }}",
         "password": "{{ hostvars[host].ansible_password }}",
+{# NOTE: verify storageType enum against the live SDDC Manager 9.x API (/v1/hosts/validations) — VSAN_ESA expected for ESA clusters #}
 {% if vsan_spec.esa_config is defined and vsan_spec.esa_config | bool %}
         "storageType": "VSAN_ESA",
 {% else %}
         "storageType": "VSAN",
 {% endif %}
         "networkPoolId": "{{ management_network_pool_id }}",
-        "networkPoolName": "{{ management_pool_name }}",
 {% if not (vcf.skip_esx_thumbprint_validation | default(false) | bool) %}
         "sshThumbprint": "{{ hostvars[host].esxi_ssh_thumbprint | default('') }}",
-        "sslThumbprint": "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}"
+        "sslThumbprint": "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}",
 {% endif %}
+        "networkPoolName": "{{ management_pool_name }}"
     }{% if not loop.last %},{% endif %}
 
 {% endfor %}

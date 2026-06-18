@@ -1,61 +1,47 @@
 workflowType: "{{ vcf.platform | default('VCF') }}"
-skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation | bool }}
-deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys | bool }}
+version: "{{ vcf_version }}"
+sddcId: "{{ sddc_id }}"
+vcfInstanceName: "{{ vcf.instance_name }}"
 ceipEnabled: {{ vcf.ceip_enabled | bool }}
-fipsEnabled: {{ vcf.fips_enabled | bool }}
-taskName: {{ vcf.task_name }}
-
-ntpServers: {{ ntp_servers }}
-
-dnsSpec:
-  subdomain: "{{ subdomain }}"
-  domain: "{{ domain }}"
-  nameserver: "{{ dns_servers[0] }}"
-  secondaryNameserver: "{{ dns_servers[1] | default('') }}"
-
-{% if proxy_enabled | bool %}
-proxySpec:
-  host: "{{ proxy_spec.host }}"
-  port: "{{ proxy_spec.port }}"
-{% if proxy_spec.username is defined and proxy_spec.username %}
-    username: "{{ proxy_spec.username }}"
-{% endif %}
-{% if proxy_spec.password is defined and proxy_spec.password %}
-    password: "{{ proxy_spec.password }}"
-{% endif %}
-  transferProtocol: "{{ proxy_spec.transferProtocol }}"
-{% endif %}
-
-{% if licenses_required and (vcf.license.esxi | default('') | trim | length > 0) %}
-esxLicense: "{{ vcf.license.esxi }}"
-{% endif %}
+skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation | bool }}
+skipGatewayPingValidation: {{ vcf.skip_gateway_ping_validation | bool }}
 
 {% if management_pool_name is defined %}
 managementPoolName: "{{ management_pool_name }}"
 {% endif %}
 
-sddcId: "{{ sddc_id }}"
+ntpServers: {{ ntp_servers | to_json }}
+
+{# VCF 9 dnsSpec accepts at most 2 nameservers #}
+dnsSpec:
+  subdomain: "{{ subdomain }}"
+  nameservers:
+{% for ns in dns_servers[:2] %}
+  - "{{ ns }}"
+{% endfor %}
 
 sddcManagerSpec:
   hostname: "{{ sddc_manager_spec.hostname }}"
-  ipAddress: "{{ sddc_manager_spec.ipv4_address }}"
-  localUserPassword: "{{ sddc_manager_spec.local_user_password }}"
-  rootUserCredentials:
-    username: "{{ sddc_manager_spec.root_user_credentials.username }}"
-    password: "{{ sddc_manager_spec.root_user_credentials.password }}"
-  secondUserCredentials:
-    username: "{{ sddc_manager_spec.second_user_credentials.username }}"
-    password: "{{ sddc_manager_spec.second_user_credentials.password }}"
+  rootPassword: {{ sddc_manager_spec.root_user_credentials.password | to_json }}
+  sshPassword: {{ sddc_manager_spec.second_user_credentials.password | to_json }}
+  localUserPassword: {{ sddc_manager_spec.local_user_password | to_json }}
+  useExistingDeployment: false
 
+vcenterSpec:
+  vcenterHostname: "{{ vcenter_spec.vcenter_hostname }}"
+  rootVcenterPassword: {{ vcenter_spec.root_password | to_json }}
+  ssoDomain: "{{ psc_specs.sso_domain_name }}"
+  adminUserSsoPassword: {{ psc_specs.sso_admin_password | to_json }}
+  vmSize: "{{ vcenter_spec.vm_size }}"
+  storageSize: ""  # empty = vCenter default for the chosen vmSize
+  useExistingDeployment: false
+
+{# NOTE: the blank lines between include directives are structural — each included template renders without a trailing newline #}
 {% include 'network-specs.yaml.j2' %}
 
 {% include 'nsx-spec.yaml.j2' %}
 
-{% include 'vsan-spec.yaml.j2' %}
-
-{% if dv_switch_version is defined and dv_switch_version %}
-dvSwitchVersion: "{{ dv_switch_version }}"
-{% endif %}
+{% include 'datastore-spec.yaml.j2' %}
 
 {% include 'dvs-specs.yaml.j2' %}
 
@@ -63,15 +49,8 @@ dvSwitchVersion: "{{ dv_switch_version }}"
 
 {% include 'host-specs.yaml.j2' %}
 
-pscSpecs:
-- adminUserSsoPassword: "{{ psc_specs.sso_admin_password }}"
-  pscSsoSpec:
-    ssoDomain: "{{ psc_specs.sso_domain_name }}"
-vcenterSpec:
-  vcenterIp: "{{ vcenter_spec.ip }}"
-  vcenterHostname: "{{ vcenter_spec.vcenter_hostname }}"
-  rootVcenterPassword: "{{ vcenter_spec.root_password }}"
-  vmSize: "{{ vcenter_spec.vm_size }}"
-{% if vcenter_spec.license_file | trim | length > 0 %}
-  licenseFile: "{{ vcenter_spec.license_file }}"
+{% include 'vcf-operations-specs.yaml.j2' %}
+{% if vcf.deploy_automation | bool %}
+
+{% include 'vcf-automation-spec.yaml.j2' %}
 {% endif %}

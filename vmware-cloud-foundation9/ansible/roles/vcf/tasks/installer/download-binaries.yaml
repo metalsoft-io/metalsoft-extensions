@@ -1,0 +1,60 @@
+---
+- name: Obtain installer API token
+  ansible.builtin.include_tasks: get-installer-token.yaml
+
+- name: Get release components for {{ vcf_version }}
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/releases/{{ vcf_release_sku }}/release-components?releaseVersion={{ vcf_version }}&automatedInstall=true&imageType=INSTALL"
+    method: GET
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200]
+    validate_certs: "{{ installer.validate_certs }}"
+  retries: "{{ installer.api_retries }}"
+  delay: "{{ installer.api_retries_delay }}"
+  register: release_components_result
+  until: release_components_result is succeeded
+  delegate_to: localhost
+
+# NOTE: verify the exact JSON path against the live installer (GET /v1/api-doc).
+# William Lam's 9.0 automation reads elements[].versions[].artifacts.bundles[].id
+- name: Extract bundle ids
+  ansible.builtin.set_fact:
+    vcf_bundle_ids: >-
+      {{ release_components_result.json | json_query('elements[].versions[].artifacts.bundles[].id') | unique }}
+
+- name: Assert bundles were found
+  ansible.builtin.assert:
+    that: vcf_bundle_ids | length > 0
+    fail_msg: "No INSTALL bundles found for {{ vcf_version }} — check depot content and sync status"
+
+- name: VCF Installer API CALL | Request bundle downloads
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/bundles/{{ item }}"
+    method: PATCH
+    headers: "{{ installer_auth_headers }}"
+    body_format: json
+    body:
+      bundleDownloadSpec:
+        downloadNow: true
+    status_code: [200, 202, 400]   # 400 = BUNDLE_DOWNLOAD_ALREADY_DOWNLOADED is acceptable on retry
+    validate_certs: "{{ installer.validate_certs }}"
+  loop: "{{ vcf_bundle_ids }}"
+  register: bundle_patch_result
+  retries: 3
+  delay: 10
+  until: bundle_patch_result is succeeded
+  delegate_to: localhost
+
+# NOTE: the `when` below is evaluated up-front by include_tasks+loop so it only applies on the first
+# iteration; the real per-cycle skip guard lives inside wait-binary-downloads.yaml.
+- name: Wait for all bundle downloads (each cycle re-authenticates; ~10 min per cycle)
+  ansible.builtin.include_tasks: wait-binary-downloads.yaml
+  loop: "{{ range(0, installer.download_wait_cycles | int) | list }}"
+  loop_control:
+    loop_var: download_wait_cycle
+  when: not (vcf_binaries_ready | default(false))
+
+- name: Assert all binaries finished downloading
+  ansible.builtin.assert:
+    that: vcf_binaries_ready | default(false)
+    fail_msg: "Bundle downloads did not complete within the wait budget — check {{ 'https://' ~ installer.ipv4_address ~ '/v1/bundles/download-status' }}"

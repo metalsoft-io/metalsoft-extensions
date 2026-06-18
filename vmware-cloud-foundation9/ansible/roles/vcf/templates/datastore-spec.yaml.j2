@@ -1,0 +1,12 @@
+{#
+# Principal storage for VCF 9.x — vSAN config moved under datastoreSpec; FTT moved here from clusterSpec
+#}
+datastoreSpec:
+  vsanSpec:
+    datastoreName: "{{ vsan_spec.datastore_name }}"
+{% if not (vsan_spec.esa_config | bool) %}
+    vsanDedup: {{ vsan_spec.vsan_dedup | bool }}
+{% endif %}
+    esaConfig:
+      enabled: {{ vsan_spec.esa_config | bool }}
+    failuresToTolerate: {{ vsan_spec.failures_to_tolerate | int }}

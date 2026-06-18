@@ -10,25 +10,24 @@ esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }
 esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
 esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
 
-proxy_enabled: "{{ extensionInstanceVariables.proxy_enabled | default(false) | bool }}"
-# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/5.2.2/data-structures/ProxySpec/
-proxy_spec:
-  host: "{{ extensionInstanceVariables.proxy_host | default('') }}"
-  port: "{{ extensionInstanceVariables.proxy_port | default(3128) }}"
-  username: "{{ extensionInstanceVariables.proxy_username | default('') }}"
-  password: "{{ extensionInstanceVariables.proxy_password | default('') }}"
-  transferProtocol: "{{ extensionInstanceVariables.proxy_transfer_protocol | default('HTTPS') }}" # HTTP or HTTPS
+vcf_version: "{{ extensionInstanceVariables.vcf_version | default('9.0.1.0') }}"
+vcf_release_sku: "{{ extensionInstanceVariables.vcf_release_sku | default('VCF') }}" # SKU for the installer release-components API (VCF or VVF) — consumed by download-binaries.yaml
+# VCF Installer 9.0.2.0 is required by Broadcom to deploy 9.0.1 components (9.0.1 BOM)
+ova_name: "{{ extensionInstanceVariables.ova_name | default('VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova') }}"
 
-repository_base_url: "{{ extensionInstanceVariables.repository_base_url | default(extensionInstanceRecordSet.repositoryBaseUrl | default('')) }}"
-vcf_version: "{{ extensionInstanceVariables.vcf_version | default('5.2.2') }}"
-ova_name: "{{ extensionInstanceVariables.ova_name | default('VMware-Cloud-Builder-5.2.2.0-24936865_OVF10.ova') }}"
-derived_ova_url: >-
-  {{ (repository_base_url | default(''))
-     | ternary(
-       repository_base_url + '/.vmware/vcf/' + vcf_version + '/' + ova_name,
-       ''
-     )
-  }}
+# Offline depot (VCF Installer pulls all product binaries from here)
+depot:
+  hostname: "{{ extensionInstanceVariables.depot_hostname | default('vmware-depot.metalsoft.dev') }}"
+  port: "{{ extensionInstanceVariables.depot_port | default(443) | int }}"
+  username: "{{ extensionInstanceVariables.depot_username | default('vmware-depot') }}"
+  password: "{{ extensionInstanceVariables.depot_password | default('') }}"
+  # internal mirrors typically run self-signed certs; set depot_validate_certs=true when a trusted CA is used
+  validate_certs: "{{ extensionInstanceVariables.depot_validate_certs | default(false) | bool }}"
+
+depot_esx_iso_name: "{{ extensionInstanceVariables.depot_esx_iso_name | default('VMware-VMvisor-Installer-9.0.1.0.24957456.x86_64.iso') }}"
+
+# The installer OVA lives on the depot mirror itself (basic auth handled by get_url in deploy-vcf-installer.yaml)
+derived_ova_url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/COMP/SDDC_MANAGER_VCF/{{ ova_name }}"
 # Preserve the raw user-supplied override exactly (may be empty string)
 raw_ova_url: "{{ extensionInstanceVariables.ova_url | default('') }}"
 
@@ -37,55 +36,20 @@ effective_ova_url: >-
   {{ (raw_ova_url | trim | length > 0)
     | ternary(raw_ova_url | trim, derived_ova_url)
   }}
-
 ova_url: "{{ effective_ova_url }}"
 
 vcf:
   # Deployment architecture model: consolidated, standard, or custom
   architecture: "{{ extensionInstanceVariables.deployment_architecture_model | default('consolidated') }}"
-  # Deployment platform ("workflowType": VCF | VCF_VXRAIL")
-  platform: "{{ extensionInstanceVariables.deployment_platform | default('VCF') }}" # ToDo: Add support for VCF on VxRail
-  aria_suite_enabled: "{{ extensionInstanceVariables.aria_suite_enabled | default(false) | bool }}"
-  distinct_vlan_id_vm_mgmt_and_esxi_mgmt: "{{ extensionInstanceVariables.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool }}"
+  # Deployment platform ("workflowType": VCF | VCF_EXTEND | VVF)
+  platform: "{{ extensionInstanceVariables.deployment_platform | default('VCF') }}"
   ceip_enabled: "{{ extensionInstanceVariables.ceip_enabled | default(false) | bool }}"
-  fips_enabled: "{{ extensionInstanceVariables.fips_enabled | default(false) | bool }}"
+  distinct_vlan_id_vm_mgmt_and_esxi_mgmt: "{{ extensionInstanceVariables.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool }}"
   skip_esx_thumbprint_validation: "{{ extensionInstanceVariables.skip_esx_thumbprint_validation | default(false) | bool }}"
-  # subscription_licensing: "{{ extensionInstanceVariables.subscription_licensing | default(false) | bool }}"
-  license:
-    esxi: "{{ extensionInstanceVariables.license_esxi | default('') }}"
-    vsan: "{{ extensionInstanceVariables.license_vsan | default('') }}"
-    nsx: "{{ extensionInstanceVariables.license_nsx | default('') }}"
-    vcenter: "{{ extensionInstanceVariables.license_vcenter | default('') }}"
-  deploy_without_license_keys: "{{ extensionInstanceVariables.deploy_without_license_keys | default(true) | bool }}"
-  task_name: "{{ extensionInstanceVariables.task_name | default('workflowconfig/workflowspec-ems.json') }}"
-  dv_switch_version: "{{ extensionInstanceVariables.distributed_vsphere_switch_version | default('8.0.0') }}"
   validation_debug: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
-
-# License key presence evaluation helpers
-# Collect trimmed license keys
-all_license_keys_set: >-
-  {{ [vcf.license.esxi, vcf.license.vsan, vcf.license.nsx, vcf.license.vcenter]
-     | map('default', '')
-     | map('trim')
-     | select()
-     | list
-     | length == 4 }}
-any_license_key_set: >-
-  {{ [vcf.license.esxi, vcf.license.vsan, vcf.license.nsx, vcf.license.vcenter]
-     | map('default', '')
-     | map('trim')
-     | select()
-     | list
-     | length > 0 }}
-partial_license_keys_set: >-
-  {{ (any_license_key_set | bool) and not (all_license_keys_set | bool) }}
-
-# New licenses_required semantics:
-# - If all license keys are provided (non-empty), we will use them regardless of deploy_without_license_keys flag.
-# - Else fall back to user intent (deploy_without_license_keys=false means licenses required).
-licenses_required: >-
-  {{ (all_license_keys_set | bool)
-     | ternary(true, not (vcf.deploy_without_license_keys | bool)) }}
+  skip_gateway_ping_validation: "{{ extensionInstanceVariables.skip_gateway_ping_validation | default(false) | bool }}"
+  deploy_automation: "{{ extensionInstanceVariables.deploy_vcf_automation | default(false) | bool }}"
+  instance_name: "{{ extensionInstanceVariables.vcf_instance_name | default(extension_instance_id ~ '-vcf', true) }}"
 
 # Extract 'management' server instance group data (base)
 management_server_instance_group_base: >-

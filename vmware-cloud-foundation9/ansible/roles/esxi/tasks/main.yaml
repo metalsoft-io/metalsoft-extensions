@@ -14,6 +14,10 @@
 - name: Import set ESXi host 'VM Network' network configuration playbook
   ansible.builtin.import_tasks: set-vm-network.yaml
 
+- name: Verify ESXi certificate CN matches FQDN
+  ansible.builtin.import_tasks: verify-certificate.yaml
+  when: not (vcf.skip_esx_thumbprint_validation | default(false) | bool)
+
 - name: Test SSH connectivity
   ansible.builtin.ping:
   when: esxi_print_facts | default(false) | bool

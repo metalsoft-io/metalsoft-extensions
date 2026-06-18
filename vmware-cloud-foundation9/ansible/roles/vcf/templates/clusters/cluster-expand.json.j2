@@ -4,7 +4,6 @@
 {% for host_spec in host_expansion_specs_list %}
             {
                 "id": "{{ host_spec.id }}",
-                "licenseKey": "{{ host_spec.licenseKey | default('') }}",
                 "hostNetworkSpec": {
                     "vmNics": [
 {% for vmnic in host_spec.hostNetworkSpec.vmNics %}
@@ -20,7 +19,6 @@
             }{{ "," if not loop.last else "" }}
 {% endfor %}
         ],
-        "deployWithoutLicenseKeys": {{ deploy_without_license_keys | default(true) | lower }},
         "inter_rack_expansion": false
     }
 }

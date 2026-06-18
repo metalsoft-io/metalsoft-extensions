@@ -1,6 +1,6 @@
 ---
 # Infrastructure and ESXi host validation
-# Validates ESXi connectivity, proxy settings, and SSL/SSH thumbprints
+# Validates ESXi connectivity and SSL/SSH thumbprints
 
 - name: Validate | ESXi host variables
   tags: ['validation', 'infrastructure']
@@ -15,17 +15,6 @@
     fail_msg: "ESXi host variables (esxi_username, esxi_hostname, esxi_password) are required"
     success_msg: "ESXi host variables are set for {{ esxi_hostname }}"
 
-- name: Validate | Proxy settings
-  tags: ['validation', 'infrastructure']
-  ansible.builtin.assert:
-    that:
-      - proxy_spec.host is defined and proxy_spec.host | length > 0
-      - proxy_spec.port is defined
-      - proxy_spec.transferProtocol is defined and proxy_spec.transferProtocol | length > 0
-    fail_msg: "If proxy_enabled is true, proxy_spec.host, proxy_spec.port, and proxy_spec.transferProtocol are required"
-    success_msg: "Proxy settings are valid (proxy_enabled={{ proxy_enabled }})"
-  when: proxy_enabled | default(false) | bool
-
 - name: Validate | SSH and SSL thumbprint if skipEsxThumbprintValidation is false
   tags: ['validation', 'infrastructure']
   ansible.builtin.assert:
@@ -36,4 +25,4 @@
       - esxi_ssl_thumbprints | length > 0
     fail_msg: "If vcf.skip_esx_thumbprint_validation is false, ESXi SSH and SSL thumbprints must be collected"
     success_msg: "ESXi SSH and SSL thumbprints are collected"
-  when: not (vcf.skip_esx_thumbprint_validation | default(false) | bool) | bool
+  when: not (vcf.skip_esx_thumbprint_validation | default(false) | bool)

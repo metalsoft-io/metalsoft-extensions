@@ -5,11 +5,8 @@
   set_fact:
     cluster_spec:
       name: "{{ vcenter_cluster_name }}"
-      evc_mode: "{{ extensionInstanceVariables.cluster_evc_mode | default('n/a') }}"
-      image_enabled: "{{ extensionInstanceVariables.cluster_image_enabled | default(true) | bool }}"
-      vm_folders:
-        management: "{{ management_vm_folder_name }}"
-        networking: "{{ networking_vm_folder_name }}"
+      datacenter_name: "{{ extensionInstanceVariables.vcenter_datacenter_name | default(sddc_id ~ '-dc1') }}"
+      evc_mode: "{{ extensionInstanceVariables.cluster_evc_mode | default('') }}"
       resource_pool_specs_consolidated:
         - name: "{{ management_resource_pool_name }}"
           cpu_limit: -1

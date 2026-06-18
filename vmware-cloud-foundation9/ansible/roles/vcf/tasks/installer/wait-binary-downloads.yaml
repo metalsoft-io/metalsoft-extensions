@@ -1,0 +1,41 @@
+---
+- name: Obtain installer API token
+  ansible.builtin.include_tasks: get-installer-token.yaml
+  when: not (vcf_binaries_ready | default(false))
+
+- name: VCF Installer API CALL | Poll bundle download status
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/bundles/download-status?releaseVersion={{ vcf_version }}&imageType=INSTALL"
+    method: GET
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200]
+    validate_certs: "{{ installer.validate_certs }}"
+  register: bundle_status_result
+  retries: 20
+  delay: 30
+  until: >-
+    (bundle_status_result.status | default(0)) == 200 and
+    (bundle_status_result.json.elements | default([]) | length > 0) and
+    ((bundle_status_result.json.elements
+      | selectattr('downloadStatus', 'in', ['SCHEDULED', 'INPROGRESS', 'VALIDATING'])
+      | list | length) == 0)
+  failed_when: false
+  delegate_to: localhost
+  when: not (vcf_binaries_ready | default(false))
+
+- name: Fail fast on FAILED bundles
+  ansible.builtin.fail:
+    msg: "Bundle download failed: {{ bundle_status_result.json.elements | selectattr('downloadStatus', 'equalto', 'FAILED') | list }}"
+  when: >-
+    not (vcf_binaries_ready | default(false)) and
+    bundle_status_result.json.elements | default([]) | selectattr('downloadStatus', 'equalto', 'FAILED') | list | length > 0
+
+- name: Mark binaries ready when nothing is pending
+  ansible.builtin.set_fact:
+    vcf_binaries_ready: >-
+      {{ (bundle_status_result.status | default(0)) == 200 and
+         (bundle_status_result.json.elements | default([]) | length > 0) and
+         ((bundle_status_result.json.elements
+           | selectattr('downloadStatus', 'in', ['SCHEDULED', 'INPROGRESS', 'VALIDATING'])
+           | list | length) == 0) }}
+  when: not (vcf_binaries_ready | default(false))

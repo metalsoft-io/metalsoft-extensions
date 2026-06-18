@@ -1,0 +1,35 @@
+---
+# Depot reachability — fail fast before deploying anything (the installer pulls ALL product binaries from here)
+
+- name: Validate | Depot credentials provided
+  ansible.builtin.assert:
+    that: depot.password | length > 0
+    fail_msg: "depot_password input is required for VCF 9 (offline depot serves all product binaries)"
+
+- name: Validate | Depot catalog reachable with credentials
+  ansible.builtin.uri:
+    url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/metadata/productVersionCatalog/v1/productVersionCatalog.json"
+    method: HEAD
+    url_username: "{{ depot.username }}"
+    url_password: "{{ depot.password }}"
+    force_basic_auth: true
+    status_code: [200]
+    validate_certs: "{{ depot.validate_certs }}"
+  retries: 3
+  delay: 10
+  register: depot_catalog_probe
+  until: depot_catalog_probe is succeeded
+  delegate_to: localhost
+
+# Build pinned to the VCF 9.0.1 BOM (productVersionCatalog) — update if the BOM revs; override via depot_esx_iso_name.
+- name: Validate | ESX 9.0.1 ISO present in depot
+  ansible.builtin.uri:
+    url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/COMP/ESX_HOST/{{ depot_esx_iso_name }}"
+    method: HEAD
+    url_username: "{{ depot.username }}"
+    url_password: "{{ depot.password }}"
+    force_basic_auth: true
+    status_code: [200]
+    validate_certs: "{{ depot.validate_certs }}"
+  delegate_to: localhost
+  when: vcf_version is match('^9\.0\.1')

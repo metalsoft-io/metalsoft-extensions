@@ -1,221 +1,191 @@
 ---
-# - name: Deploy VMware Cloud Foundation management domain
+# Bring-up of the management workload domain via the VCF Installer API.
+# Requires: installer deployed, offline depot configured, release binaries downloaded.
 
 - name: Bring up | Validate configuration
   block:
-    - name: Cloud-Builder Appliance API CALL | Validate configuration - mgmt workload domain
+    - name: Obtain installer API token
+      ansible.builtin.include_tasks: installer/get-installer-token.yaml
+
+    - name: VCF Installer API CALL | Validate configuration - mgmt workload domain
       ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs/validations
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/validations
         method: POST
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
+        headers: "{{ installer_auth_headers }}"
         status_code: [200, 202]
         follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
+        validate_certs: "{{ installer.validate_certs }}"
         body_format: json
         body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
-      retries: "{{ cba.api_retries }}"
-      delay: "{{ cba.api_retries_delay }}"
-      register: cba_api_post_validate_mgmt_workload_result
-      until: cba_api_post_validate_mgmt_workload_result is succeeded
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_post_validation_result
+      until: installer_api_post_validation_result is succeeded
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
       delegate_to: localhost
 
     - name: Give some time for the validation to start
       ansible.builtin.pause:
         seconds: 10
 
-    - name: Cloud-Builder Appliance API CALL | Querying validation status - mgmt workload domain
+    - name: VCF Installer API CALL | Querying validation status - mgmt workload domain
       ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs/validations/{{ cba_api_post_validate_mgmt_workload_result.json.id }}
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/validations/{{ installer_api_post_validation_result.json.id }}
         method: GET
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
+        headers: "{{ installer_auth_headers }}"
         status_code: [200]
         follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
-      retries: "{{ cba.validation_api_retries }}"
-      delay: "{{ cba.validation_api_retries_delay }}"
-      register: cba_api_get_validation_mgmt_workload_result
+        validate_certs: "{{ installer.validate_certs }}"
+      retries: "{{ installer.validation_api_retries }}"
+      delay: "{{ installer.validation_api_retries_delay }}"
+      register: installer_api_get_validation_result
       until: >
-        (cba_api_get_validation_mgmt_workload_result.json.executionStatus != 'IN_PROGRESS') and
-        (cba_api_get_validation_mgmt_workload_result.json.resultStatus != 'UNKNOWN')
+        (installer_api_get_validation_result.json.executionStatus != 'IN_PROGRESS') and
+        (installer_api_get_validation_result.json.resultStatus != 'UNKNOWN')
       failed_when: >
-        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'FAILED') or
-        (cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'FAILED') or
-        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'COMPLETED'
-        and cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'FAILED')
-      when: cba_api_post_validate_mgmt_workload_result is succeeded
+        (installer_api_get_validation_result.json.executionStatus == 'FAILED') or
+        (installer_api_get_validation_result.json.resultStatus == 'FAILED')
       delegate_to: localhost
   rescue:
-    - name: Debug response | Cloud-Builder Appliance API CALL | Validate configuration - mgmt workload domain
+    - name: Debug response | Validate configuration POST
       ansible.builtin.debug:
-        var: cba_api_post_validate_mgmt_workload_result
+        var: installer_api_post_validation_result
+      when: installer_api_post_validation_result is defined
 
-    - name: Debug response | Cloud-Builder Appliance API CALL | Querying validation status
+    - name: Debug response | Validation status GET
       ansible.builtin.debug:
-        var: cba_api_get_validation_mgmt_workload_result
+        var: installer_api_get_validation_result
+      when: installer_api_get_validation_result is defined
 
-    - name: Debug template - management-workload-domain.yaml.j2
+    - name: Debug rendered SDDC spec
       ansible.builtin.debug:
         msg: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      when: vcf.validation_debug | default(false) | bool
 
     - name: Stop the playbook
       ansible.builtin.fail:
-        msg: "Validation failed. Please check the logs for more information."
+        msg: "SDDC spec validation failed. Check failed validationChecks in the response above (or the installer UI)."
 
 - name: Bring up | Deploy task
   block:
-    - name: Cloud-Builder Appliance API CALL | Deploy task - mgmt workload domain
+    - name: Obtain installer API token
+      ansible.builtin.include_tasks: installer/get-installer-token.yaml
+
+    - name: VCF Installer API CALL | Deploy task - mgmt workload domain
       ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
+        url: https://{{ installer.ipv4_address }}/v1/sddcs
         method: POST
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
-        status_code: [200, 202]
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200, 202, 400]   # 400 carries errorCode BRINGUP_ALREADY_EXISTS on re-runs
         follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
+        validate_certs: "{{ installer.validate_certs }}"
         body_format: json
         body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
-      retries: "{{ cba.api_retries }}"
-      delay: "{{ cba.api_retries_delay }}"
-      register: cba_api_post_deploy_task_mgmt_workload_result
-      until: cba_api_post_deploy_task_mgmt_workload_result is succeeded
-      when: >
-        (cba_api_get_validation_mgmt_workload_result.json.executionStatus == 'COMPLETED'
-        and cba_api_get_validation_mgmt_workload_result.json.resultStatus == 'SUCCEEDED')
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_post_deploy_result
+      until: installer_api_post_deploy_result.status | default(0) in [200, 202, 400]  # retries connection errors; 400 is accepted so BRINGUP_ALREADY_EXISTS recovery below can run
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      when: >-
+        (installer_api_get_validation_result.json.executionStatus == 'COMPLETED'
+        and installer_api_get_validation_result.json.resultStatus == 'SUCCEEDED')
       delegate_to: localhost
 
-    - name: Give some time for the task to start
-      ansible.builtin.pause:
-        seconds: 5
+    - name: Set bring-up task id (fresh deployment)
+      ansible.builtin.set_fact:
+        bringup_task_id: "{{ installer_api_post_deploy_result.json.id }}"
+      when:
+        - installer_api_post_deploy_result.json.id is defined
+        - installer_api_post_deploy_result.json.errorCode is not defined
 
-    - name: Cloud-Builder Appliance API CALL | GET Deploy task ID - mgmt workload domain
+    # NOTE: errorCode name and 400-body shape carried over from Cloud Builder 5.x — verify against a live 9.x installer on first E2E run
+    - name: VCF Installer API CALL | GET existing bring-up id - mgmt workload domain
       ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
+        url: https://{{ installer.ipv4_address }}/v1/sddcs
         method: GET
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
+        headers: "{{ installer_auth_headers }}"
         status_code: [200]
         follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
-        body_format: json
-      retries: "{{ cba.api_retries }}"
-      delay: "{{ cba.api_retries_delay }}"
-      register: cba_api_get_deploy_task_id_mgmt_workload_result
-      until: cba_api_get_deploy_task_id_mgmt_workload_result is succeeded
-      when: >
-        (cba_api_post_deploy_task_mgmt_workload_result.json.errorCode is defined and
-        cba_api_post_deploy_task_mgmt_workload_result.json.errorCode == 'BRINGUP_ALREADY_EXISTS') and
-        ((cba_api_post_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE') or
-        (cba_api_post_deploy_task_mgmt_workload_result.json.status == 'IN_PROGRESS'))
+        validate_certs: "{{ installer.validate_certs }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_get_sddcs_result
+      until: installer_api_get_sddcs_result is succeeded
+      when:
+        - installer_api_post_deploy_result.json.errorCode is defined
+        - installer_api_post_deploy_result.json.errorCode == 'BRINGUP_ALREADY_EXISTS'
       delegate_to: localhost
 
-    - name: Cloud-Builder Appliance API CALL | Retry deploy task - mgmt workload domain
+    - name: Set bring-up task id (existing deployment)
+      ansible.builtin.set_fact:
+        bringup_task_id: "{{ installer_api_get_sddcs_result.json.elements[0].id }}"
+      when:
+        - installer_api_get_sddcs_result is succeeded
+        - installer_api_get_sddcs_result.json.elements[0].id is defined
+
+    - name: VCF Installer API CALL | Retry failed bring-up - mgmt workload domain
       ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id }}
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/{{ bringup_task_id }}
         method: PATCH
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
+        headers: "{{ installer_auth_headers }}"
         status_code: [200, 202]
         follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
+        validate_certs: "{{ installer.validate_certs }}"
         body_format: json
         body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
-      retries: "{{ cba.api_retries }}"
-      delay: "{{ cba.api_retries_delay }}"
-      register: cba_api_patch_deploy_task_mgmt_workload_result
-      until: cba_api_patch_deploy_task_mgmt_workload_result is succeeded
-      when: >
-        (cba_api_get_deploy_task_id_mgmt_workload_result is succeeded) and
-        (cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id is defined) and
-        (cba_api_post_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE')
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_patch_deploy_result
+      until: installer_api_patch_deploy_result is succeeded
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      when:
+        - bringup_task_id is defined
+        - installer_api_post_deploy_result.json.errorCode is defined
+        - installer_api_post_deploy_result.json.errorCode == 'BRINGUP_ALREADY_EXISTS'
+        - (installer_api_get_sddcs_result.json.elements[0].status | default('')) == 'COMPLETED_WITH_FAILURE'
       delegate_to: localhost
 
-    - name: Cloud-Builder Appliance API CALL | Querying task status - deploy mgmt workload domain
-      ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_post_deploy_task_mgmt_workload_result.json.id }}
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
-        method: GET
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
-        status_code: [200]
-        follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
-      retries: "{{ cba.deploy_task_api_retries }}"
-      delay: "{{ cba.deploy_task_api_retries_delay }}"
-      register: cba_api_get_deploy_task_mgmt_workload_result
-      until: cba_api_get_deploy_task_mgmt_workload_result.json.status != 'IN_PROGRESS'
-      failed_when: cba_api_get_deploy_task_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE'
-      when: >
-        (cba_api_post_deploy_task_mgmt_workload_result is succeeded) and
-        (cba_api_post_deploy_task_mgmt_workload_result.json.id is defined)
-      delegate_to: localhost
+    - name: Assert a bring-up task id was obtained
+      ansible.builtin.assert:
+        that: bringup_task_id is defined
+        fail_msg: >-
+          Could not obtain a bring-up task id from POST /v1/sddcs
+          (response: {{ installer_api_post_deploy_result.json | default({}) }}).
 
-    - name: Cloud-Builder Appliance API CALL | Querying retry task status - deploy mgmt workload domain
-      ansible.builtin.uri:
-        url: https://{{ cba.ipv4_address }}/v1/sddcs/{{ cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id }}
-        user: "{{ cba.admin_username }}"
-        password: "{{ cba.admin_password }}"
-        method: GET
-        headers:
-          Accept: "application/json"
-          Content-Type: "application/json"
-        force_basic_auth: true
-        status_code: [200]
-        follow_redirects: all
-        validate_certs: "{{ cba.validate_certs }}"
-      retries: "{{ cba.deploy_task_api_retries }}"
-      delay: "{{ cba.deploy_task_api_retries_delay }}"
-      register: cba_api_get_deploy_task_retry_mgmt_workload_result
-      until: cba_api_get_deploy_task_retry_mgmt_workload_result.json.status != 'IN_PROGRESS'
-      failed_when: cba_api_get_deploy_task_retry_mgmt_workload_result.json.status == 'COMPLETED_WITH_FAILURE'
-      when: >
-        (cba_api_get_deploy_task_id_mgmt_workload_result.json.elements[0].id is defined)
-      delegate_to: localhost
+    - name: Wait for bring-up completion (each cycle re-authenticates; ~10 min per cycle)
+      ansible.builtin.include_tasks: installer/wait-bringup.yaml
+      loop: "{{ range(0, installer.bringup_wait_cycles | int) | list }}"
+      loop_control:
+        loop_var: bringup_wait_cycle
+
+    - name: Assert bring-up completed successfully
+      ansible.builtin.assert:
+        that: vcf_bringup_complete | default(false)
+        fail_msg: >-
+          Bring-up did not complete within the wait budget
+          ({{ installer.bringup_wait_cycles }} cycles). Check progress at
+          https://{{ installer.ipv4_address }}/vcf-installer-ui/portal/progress-viewer
   rescue:
-    - name: Debug response | Cloud-Builder Appliance API CALL | Deploy task
+    - name: Debug response | Deploy task POST
       ansible.builtin.debug:
-        var: cba_api_post_deploy_task_mgmt_workload_result
+        var: installer_api_post_deploy_result
+      when: installer_api_post_deploy_result is defined
 
-    - name: Debug response | Cloud-Builder Appliance API CALL | GET Deploy task ID
+    - name: Debug response | GET existing bring-up id
       ansible.builtin.debug:
-        var: cba_api_get_deploy_task_id_mgmt_workload_result
+        var: installer_api_get_sddcs_result
+      when: installer_api_get_sddcs_result is defined
 
-    - name: Debug response | Cloud-Builder Appliance API CALL | Retry deploy task
+    - name: Debug response | Retry bring-up PATCH
       ansible.builtin.debug:
-        var: cba_api_patch_deploy_task_mgmt_workload_result
+        var: installer_api_patch_deploy_result
+      when: installer_api_patch_deploy_result is defined
 
-    - name: Debug response | Cloud-Builder Appliance API CALL | Querying deploy task status
+    - name: Debug response | Bring-up status poll
       ansible.builtin.debug:
-        var: cba_api_get_deploy_task_mgmt_workload_result
-
-    - name: Debug response | Cloud-Builder Appliance API CALL | Querying retry deploy task status
-      ansible.builtin.debug:
-        var: cba_api_get_deploy_task_retry_mgmt_workload_result
+        var: bringup_status_result
+      when: bringup_status_result is defined
 
     - name: Stop the playbook
       ansible.builtin.fail:
-        msg: "Deploy task failed. Please check the logs for more information."
+        msg: "Bring-up failed. Check the responses above and the installer UI progress viewer."

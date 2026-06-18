@@ -9,8 +9,8 @@
   teamingPolicy: "{{ network_type.teaming_policy }}"
   subnet: "{{ network.subnet }}"
   gateway: "{{ network.gateway }}"
-  vlanId: "{{ network.vlan_id }}"
-  mtu: "{{ network.mtu }}"
+  vlanId: {{ network.vlan_id | int }}
+  mtu: {{ network.mtu | int }}
 {% if network.startIp and network.endIp %}
   includeIpAddressRanges:
     - startIpAddress: "{{ network.startIp }}"
@@ -19,12 +19,6 @@
   portGroupKey: "{{ network_type.port_group_key }}"
   standbyUplinks: {{ network_type.standby_uplinks }}
   activeUplinks: {{ network_type.active_uplinks }}
-{% endmacro %}
-
-{# Macro to render NSX manager configuration #}
-{% macro render_nsx_manager(manager) %}
-- hostname: "{{ manager.hostname }}"
-  ip: "{{ manager.ipv4_address }}"
 {% endmacro %}
 
 {# Macro to render DVS vmnic to uplink mapping #}
@@ -50,43 +44,13 @@
 {% endmacro %}
 
 {# Macro to render host specification #}
-{% macro render_host_spec(host, hostvars, extensionInstanceRecordSet, esxi_standard_switch_name) %}
-- association: "{{ extensionInstanceRecordSet.siteLabel | default(extensionInstanceRecordSet.extensionInstanceName) }}"
-  ipAddressPrivate:
-    ipAddress: "{{ hostvars[host].ansible_host }}"
-  hostname: "{{ host }}"
+{% macro render_host_spec(host, hostvars, subdomain, skip_thumbprints) %}
+- hostname: "{{ host | regex_replace('\\.' ~ (subdomain | regex_escape) ~ '$', '') }}"
   credentials:
     username: "{{ hostvars[host].ansible_user }}"
-    password: "{{ hostvars[host].ansible_password }}"
-  vSwitch: "{{ esxi_standard_switch_name | default('vSwitch0') }}"
-{% if not (vcf.skip_esx_thumbprint_validation | default(false) | bool) %}
+    password: {{ hostvars[host].ansible_password | to_json }}
+{% if not (skip_thumbprints | bool) %}
   sshThumbprint: "{{ hostvars[host].esxi_ssh_thumbprint | default('') }}"
   sslThumbprint: "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}"
 {% endif %}
-{% endmacro %}
-
-{# Macro for extracting network subnet properties by role tag #}
-{% macro extract_network_subnet_by_role(network_obj, role_tag) %}
-{%- set result = {} -%}
-{%- if network_obj and network_obj.get('subnets') -%}
-  {%- for subnet in network_obj.subnets -%}
-    {%- for ipr in subnet.get('ipRanges', []) -%}
-      {%- if (not result) and ipr.get('tags', {}).get('role') == role_tag -%}
-        {%- set _ = result.update({
-          'vlan_id': network_obj.get('vlan_id', ''),
-          'subnet': subnet.get('subnet', ''),
-          'netmask': ipr.get('netmask', subnet.get('netmask', '')),
-          'gateway': ipr.get('gateway', subnet.get('gateway', '')),
-          'maskBits': ipr.get('maskBits', ''),
-          'networkAddress': ipr.get('networkAddress', ''),
-          'mtu': subnet.get('mtu', 1500),
-          'startIp': ipr.get('startIp', ''),
-          'endIp': ipr.get('endIp', ''),
-          'ipType': subnet.get('ipType', '')
-        }) -%}
-      {%- endif -%}
-    {%- endfor -%}
-  {%- endfor -%}
-{%- endif -%}
-{{ result }}
 {% endmacro %}

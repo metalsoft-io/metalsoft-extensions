@@ -11,7 +11,6 @@
 - name: Build | NSX spec
   set_fact:
     nsx_spec:
-      nsxt_license: "{{ vcf.license.nsx if (vcf.license is defined and vcf.license.nsx is defined) else '' }}"
       nsxt_manager_size: "{{ extensionInstanceVariables.nsx_manager_size | default('medium') }}"
       nsxt_manager_vip:
         ipv4_address: "{{ nsx_manager_vip_config.ip | default('') }}"

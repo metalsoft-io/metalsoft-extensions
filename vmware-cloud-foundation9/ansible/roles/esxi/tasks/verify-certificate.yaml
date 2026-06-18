@@ -1,0 +1,24 @@
+---
+# VCF 9 bring-up validates the ESXi cert CN against the host FQDN. Hosts whose certs were not
+# regenerated after the hostname was set (OS template firstboot) still carry CN=localhost.localdomain
+# and fail installer validation hours into the run — catch it here instead.
+
+- name: Fetch ESXi SSL certificate subject
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    echo | openssl s_client -connect {{ esxi_hostname }}:443 2>/dev/null | openssl x509 -noout -subject
+  args:
+    executable: /bin/bash
+  register: esxi_cert_subject
+  changed_when: false
+  delegate_to: localhost
+
+- name: Assert certificate CN matches host FQDN
+  ansible.builtin.assert:
+    that: (inventory_hostname | lower) in (esxi_cert_subject.stdout | lower)
+    fail_msg: >-
+      ESXi certificate subject on {{ inventory_hostname }} is '{{ esxi_cert_subject.stdout }}'
+      — VCF 9 installer validation requires the CN to match the host FQDN.
+      Regenerate on the host: /sbin/generate-certificates && /etc/init.d/hostd restart && /etc/init.d/vpxa restart
+      (should be done by the ESXi OS template firstboot).
+    quiet: true

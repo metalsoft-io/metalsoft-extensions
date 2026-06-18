@@ -1,0 +1,9 @@
+{#
+# VCF Automation (optional) — needs 2-4 IPs in ipPool and a reserved internalClusterCidr
+#}
+vcfAutomationSpec:
+  hostname: "{{ vcf_automation_spec.hostname }}"
+  adminUserPassword: {{ vcf_automation_spec.admin_password | to_json }}
+  internalClusterCidr: "{{ vcf_automation_spec.internal_cluster_cidr }}"
+  nodePrefix: "{{ vcf_automation_spec.node_prefix }}"
+  ipPool: {{ vcf_automation_spec.ip_pool | to_json }}

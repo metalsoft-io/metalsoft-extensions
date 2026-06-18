@@ -1,6 +1,26 @@
-# VMware Cloud Foundation (VCF)
+# VMware Cloud Foundation 9 (VCF)
 
-Ansible playbooks and roles for deploying and managing VMware Cloud Foundation (VCF) environments.
+Ansible playbooks and roles for deploying and managing VMware Cloud Foundation (VCF) 9 environments via the VCF Installer appliance (the Cloud Builder appliance used by VCF 5.x no longer exists in 9.x).
+
+## Playbook flow
+
+`deploy.yaml` (initial deployment) runs two plays:
+
+1. **`esxi` role** (all hosts): set firewall → enable SSH → set DNS → set NTP → configure the 'VM Network' portgroup → verify the ESXi certificate CN matches the host FQDN → collect SSH/SSL thumbprints.
+2. **`vcf` role** (first management host): `vmnics-to-uplinks` → `build-sddc-spec` → `validate-sddc-spec` (basic / infrastructure / networks / allocations / depot / installer) → `deploy-vcf-installer` (OVA pulled from the depot with basic auth) → `installer/configure-depot` (configure + sync the offline depot) → `installer/download-binaries` (release binaries for `vcf_version`) → `deploy-mgmt-workload-domain` (spec validation + bring-up via the installer API).
+
+`scale.yaml` (lifecycle operations) targets the `management_scale_out` / `management_scale_in` host groups (the ESXi nodes being added or removed); all SDDC Manager API calls are made from the controller via `delegate_to: localhost`.
+
+- **Scale-out**: prepare the new ESXi hosts (`esxi` role), build/validate the spec, commission the hosts, and expand the cluster.
+- **Scale-in**: build the spec, determine the host ID, compact the cluster, and decommission the host.
+
+### Offline spec render test
+
+The SDDC bring-up spec can be rendered offline against a fixture (no infrastructure required):
+
+```sh
+cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+```
 
 ## Variables
 
@@ -19,28 +39,28 @@ dns_searchpath: The DNS search path for the environment.
 ```
 
 ```yaml
-# Proxy Configuration Variables
-# If your environment requires a proxy for Internet access, you can configure the following variables:
-proxy_enabled: Boolean to enable or disable proxy settings. Defaults to false.
-proxy_host: The hostname of the proxy server.
-proxy_port: The port number of the proxy server. Defaults to 3128.
-proxy_username: The username for proxy authentication.
-proxy_password: The password for proxy authentication.
-proxy_transfer_protocol: The protocol used for proxy communication (HTTP or HTTPS). Defaults to HTTPS.
+# Offline depot configuration.
+# The VCF Installer embeds no product binaries: everything is pulled from this
+# HTTPS basic-auth mirror, which must serve /PROD (productVersionCatalog metadata
+# and COMP binaries, including the ESX 9.0.1 ISO).
+depot_hostname: Hostname of the offline depot mirror. Defaults to 'vmware-depot.metalsoft.dev'.
+depot_port: HTTPS port of the depot. Defaults to 443.
+depot_username: Basic-auth username for the depot. Defaults to 'vmware-depot'.
+depot_password: Basic-auth password for the depot. Required (validated before deployment).
+depot_validate_certs: Whether to validate the depot TLS certificate. Defaults to false (internal mirrors typically run self-signed certificates).
+depot_esx_iso_name: Name of the ESX ISO whose presence is verified in the depot. Defaults to 'VMware-VMvisor-Installer-9.0.1.0.24957456.x86_64.iso'.
 ```
 
 ```yaml
-# The following groups of variables are mutually exclusive
-
-# Provide only the full URL to the VCF OVA file.
-ova_url: The URL from which to download the VCF OVA file.
-
-# Alternatively, provide the base URL of the repository containing the VCF OVA file.
-# This group of variables will construct the ova_url automatically using the following pattern:
-# repository_base_url + '/.vmware/vcf/' + vcf_version + '/' + ova_name
-repository_base_url: The base URL of the repository containing the VCF OVA file.
-vcf_version: The version of VCF to deploy. Defaults to '5.2.2'.
-ova_name: The name of the VCF OVA file. Defaults to 'VMware-Cloud-Builder-5.2.2.0-24936865_OVF10.ova'.
+# VCF version and installer OVA.
+vcf_version: The version of VCF to deploy. Defaults to '9.0.1.0'.
+# Per the Broadcom 9.0.1 BOM, the VCF Installer 9.0.2.0 build 25151285 appliance is
+# required to deploy 9.0.1 components — the version difference is intentional.
+ova_name: The name of the VCF Installer OVA file (same OVA as SDDC Manager). Defaults to 'VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova'.
+# Optional override for the OVA download URL. When empty, the URL is derived from the depot:
+# https://<depot_hostname>:<depot_port>/PROD/COMP/SDDC_MANAGER_VCF/<ova_name>
+ova_url: Optional full URL from which to download the VCF Installer OVA.
+vcf_release_sku: SKU used by the installer release-components API ('VCF' or 'VVF'). Defaults to 'VCF'.
 ```
 
 ```yaml
@@ -48,9 +68,8 @@ ova_name: The name of the VCF OVA file. Defaults to 'VMware-Cloud-Builder-5.2.2.
 # The models require different extension definitions.
 deployment_architecture_model: Options include 'consolidated', 'standard'. Defaults to 'consolidated'.
 
-# Deployment platform model.
-# Only 'VCF' is currently supported.
-deployment_platform: Options include 'VCF' or 'VCF_VXRAIL'. Defaults to 'VCF'.
+# Deployment platform (the spec "workflowType").
+deployment_platform: Options include 'VCF', 'VCF_EXTEND' or 'VVF'. Defaults to 'VCF'.
 
 # Separate VLAN for management VMs and ESXi management VMK interfaces.
 # Requires additional configuration in the extension definition.
@@ -63,14 +82,13 @@ distinct_vlan_id_vm_mgmt_and_esxi_mgmt: Whether separate VLANs are used for VM m
 sddc_id: A client-provided string that identifies an SDDC by name or instance. Used for the management domain name. Defaults to pattern '<extension_instance_id>-m'.
 # Name for the network pool to be created and associated with the Management Cluster
 management_pool_name: The name of the management network pool. Defaults to '<sddc_id>-np1'.
+# Name of the VCF instance (new in 9.x).
+vcf_instance_name: The VCF instance name. Defaults to pattern '<extension_instance_id>-vcf'.
 ```
 
 ```yaml
-# Distributed vSphere switch version.
-distributed_vsphere_switch_version: The version of the distributed vSphere switch to deploy. Defaults to '8.0.0'.
-
 # NSX Manager size.
-# One of: medium, large, xlarge.
+# One of: medium, large, xlarge ('small' no longer exists in 9.x).
 nsx_manager_size: The size of the NSX Manager deployment. Defaults to 'medium'.
 
 # Name of the Distributed Portgroup to be created.
@@ -84,6 +102,9 @@ nsx_host_overlay_ip_pool_name: The name of the NSX host overlay IP address pool.
 ```
 
 ```yaml
+# vCenter Datacenter Name.
+vcenter_datacenter_name: The name of the vCenter Server datacenter. Defaults to '<sddc_id>-dc1'.
+
 # vCenter Cluster Name.
 vcenter_cluster_name: The name of the vCenter Server cluster. Defaults to '<sddc_id>-cl1'.
 
@@ -91,14 +112,8 @@ vcenter_cluster_name: The name of the vCenter Server cluster. Defaults to '<sddc
 # One of: xlarge, large, medium, small, tiny.
 vcenter_vm_size: The size of the vCenter Server VM. Defaults to 'small'.
 
-# vCenter virtual machine storage size.
-# One of: lstorage, xlstorage.
-storage_size: The size of the vCenter Server VM storage. Defaults to 'lstorage'.
-
-# The name of the VM folder for management VMs.
-management_vm_folder_name: The name of the VM folder for management VMs. Defaults to 'm-fd-mgmt'.
-# The name of the VM folder for networking VMs.
-networking_vm_folder_name: The name of the VM folder for networking VMs. Defaults to 'm-fd-nsx'.
+# SSO domain name.
+psc_sso_domain_name: The SSO domain name. Defaults to 'vsphere.local'.
 
 # List of Resource Pool Specifications.
 management_resource_pool_name: The name of the resource pool for management VMs. Defaults to '<sddc_id>-cl1-rp-sddc-mgmt'.
@@ -109,41 +124,36 @@ compute_user_edge_resource_pool_name: The name of the resource pool for user edg
 
 ```yaml
 # vSAN architecture model.
-vsan_esa_enabled: Boolean to specify if the vSAN ESA architecture is used. Defaults to false.
+vsan_esa_enabled: Boolean to specify if the vSAN ESA architecture is used. Defaults to false (OSA). When enabled, the depot's vSAN HCL file (/PROD/vsan/hcl) must be less than 90 days old.
 # vSAN deduplication and compression feature flag (single flag controls both features)
 vsan_dedup_enabled: Boolean to specify if vSAN deduplication and compression is enabled. Defaults to false.
 # vSAN datastore name.
 vsan_datastore_name: The name of the vSAN datastore. Defaults to '<sddc_id>-cl1-ds1'.
+# vSAN failures to tolerate (0-3).
+vsan_failures_to_tolerate: Number of host failures the vSAN datastore can tolerate. Defaults to 1.
 ```
 
 ```yaml
 # Enable VCF Customer Experience Improvement Program (CEIP).
 ceip_enabled: Boolean to specify if CEIP is enabled. Defaults to false.
 
-# Enable Federal Information Processing Standards (FIPS) mode.
-fips_enabled: Boolean to specify if FIPS mode is enabled. Defaults to false.
-
 # Skip ESXi thumbprint validation (sshThumbprint and sslThumbprint).
-# If false, sshThumbprint and sslThumbprint will be automatically collected from ESXi hosts.
+# If false, sshThumbprint and sslThumbprint will be automatically collected from ESXi hosts
+# and the ESXi certificate CN is verified against the host FQDN.
 skip_esx_thumbprint_validation: Whether to skip ESXi thumbprint validation. Defaults to false.
+
+# Skip the gateway ping validation during bring-up.
+skip_gateway_ping_validation: Whether to skip gateway ping validation. Defaults to false.
 ```
 
 ```yaml
-# License key management.
-# If license keys are not provided, the deployment will proceed without them.
-license_esxi: License key for ESXi hosts.
-license_vsan: License key for vSAN.
-license_nsx: License key for NSX-T.
-license_vcenter: License key for vCenter Server.
+# NOTE: there are no license key inputs in 9.x. The deployment runs in 90-day
+# evaluation mode; licensing is applied post-deploy in VCF Operations (Business Services).
 
-# If this variable is set to false, the deployment will fail if license keys are not provided.
-deploy_without_license_keys: Boolean to specify if the deployment should proceed without license keys. Defaults to true.
-```
-
-```yaml
-# Cloud Builder Appliance (CBA) configuration.
-cba_admin_password: The password for the Cloud Builder Appliance (CBA) admin user.
-cba_root_password: The password for the Cloud Builder Appliance (CBA) root user.
+# VCF Installer appliance configuration.
+# Passwords must be at least 15 characters long.
+installer_admin_password: The password for the VCF Installer admin user.
+installer_root_password: The password for the VCF Installer root user.
 
 # SDDC Manager configuration.
 sddc_root_password: The password for the SDDC Manager root user.
@@ -158,6 +168,42 @@ nsx_manager_audit_password: The password for the NSX Manager audit user.
 # vCenter Server configuration.
 vcenter_root_password: The password for the vCenter Server root user.
 vcenter_sso_admin_password: The password for the vCenter Server SSO admin user (administrator@vsphere.local).
+
+# VCF Operations configuration (new in 9.x).
+vcf_ops_admin_password: The password for the VCF Operations admin user.
+vcf_ops_root_password: The password for the VCF Operations root user.
+vcf_ops_appliance_size: The size of the VCF Operations appliance. Defaults to 'small'.
+
+# VCF Operations fleet management configuration (new in 9.x).
+ops_fleet_mgmt_root_password: The password for the Operations fleet management root user.
+ops_fleet_mgmt_admin_password: The password for the Operations fleet management admin user.
+
+# VCF Operations collector configuration (new in 9.x).
+ops_collector_root_password: The password for the Operations collector root user.
+
+# VCF Automation configuration (optional, new in 9.x).
+deploy_vcf_automation: Boolean to deploy VCF Automation. Defaults to false. Requires the 'vcf-automation' FQDN and the 2-IP 'automation-ip-pool' range on the vcf-mgmt network.
+vcf_automation_admin_password: The password for the VCF Automation admin user.
+vcf_automation_internal_cluster_cidr: Internal cluster CIDR for VCF Automation. Defaults to '198.18.0.0/15'.
+```
+
+```yaml
+# VCF Installer deployment and API retry knobs.
+installer_datastore: ESXi datastore for the installer appliance. Defaults to 'datastore1'.
+installer_disk_provisioning: Disk provisioning mode for the installer appliance. Defaults to 'thin'.
+installer_validate_certs: Whether to validate the installer TLS certificate. Defaults to 'no'.
+installer_ova_checksum: Optional checksum ('sha256:<hex>') verified against the downloaded installer OVA.
+installer_url_probe: Enable an optional reachability probe of the OVA URL during validation. Defaults to false.
+installer_datastore_precheck: Verify the installer datastore exists and has free space before deployment. Defaults to true.
+installer_initialize_api_retries: Retries while waiting for the installer UI/API to come up. Defaults to 180.
+installer_initialize_api_retries_delay: Delay (seconds) between initialize retries. Defaults to 10.
+installer_api_retries: Retries for regular installer API calls. Defaults to 5.
+installer_api_retries_delay: Delay (seconds) between API retries. Defaults to 10.
+installer_validation_api_retries: Retries while polling spec validation status. Defaults to 360.
+installer_validation_api_retries_delay: Delay (seconds) between validation polls. Defaults to 10.
+installer_depot_sync_retries: Retries while waiting for the depot sync to reach SYNCED. Defaults to 90.
+installer_download_wait_cycles: Wait cycles for the binary downloads to complete. Defaults to 24.
+installer_bringup_wait_cycles: Wait cycles (~10 minutes each, re-authenticating) for bring-up completion. Defaults to 72.
 ```
 
 ```yaml

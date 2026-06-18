@@ -1,4 +1,5 @@
 ---
+# NOTE: endpoints verified against SDDC Manager v1 API docs; field-level spec shapes (HostCommissionSpec/ClusterUpdateSpec) need one live confirmation against /v1/api-doc on a deployed 9.0.1 SDDC Manager.
 - name: Include SDDC Manager | Clusters API task | get clusters
   ansible.builtin.import_tasks: clusters/get-clusters.yaml
 
@@ -10,31 +11,6 @@
 
 - name: Include SDDC Manager | Clusters API task | get cluster by ID
   ansible.builtin.import_tasks: clusters/get-cluster.yaml
-
-# If 'vcenter_cluster_image_enabled' is true, and sddc_manager_cluster_response.json.isImageBased is false,
-# then we need to set 'cluster_transition_state_required' to true to indicate that a transition
-# to vSphere Lifecycle Manager Images is required.
-- name: Set fact | cluster transition state required (to vSphere Lifecycle Manager Images)
-  ansible.builtin.set_fact:
-    cluster_transition_state_required: "{{ vcenter_cluster_image_enabled and not sddc_manager_cluster_response.json.isImageBased }}"
-
-- name: Include SDDC Manager | Personalities API task | get personalities
-  ansible.builtin.import_tasks: personalities/get-personalities.yaml
-  when: cluster_transition_state_required
-
-- name: Set fact | personality name
-  ansible.builtin.set_fact:
-    personality_name: "{{ sddc_manager_cluster_response.json.elements[0] }}"
-  when: cluster_transition_state_required
-
-- name: Set fact | personality ID by name
-  ansible.builtin.set_fact:
-    cluster_image_id: "{{ item.id }}"
-  loop: >-
-    {{ (
-      (sddc_manager_personalities_response | default({})).get('json', {}).get('elements', [])
-    ) }}
-  when: (item.name == personality_name) and cluster_transition_state_required
 
 - name: Set local variable | sddc_manager_cluster_update_template
   ansible.builtin.set_fact:
@@ -57,11 +33,11 @@
         | first
         | default({})
       }}
+    # must match dvsName in templates/dvs-specs.yaml.j2
     current_vds_name: "{{ vcf.dvs_name | default('m-cl1-vds1') }}"
 
     host_item_spec:
       id: "{{ sddc_host_info.id }}"
-      licenseKey: "{{ vcf.license.esxi | default('') }}"
       hostNetworkSpec:
         vmNics:
           - id: "{{ uplink1_vmnic_name | default('vmnic0') }}"

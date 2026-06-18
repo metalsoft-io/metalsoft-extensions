@@ -7,14 +7,18 @@
   ansible.builtin.import_tasks: validations/validate-infrastructure.yaml
   tags: ['validation', 'infrastructure']
 
-- name: Import | License Configuration Validation
-  ansible.builtin.import_tasks: validations/validate-licenses.yaml
-  tags: ['validation', 'license']
-
 - name: Import | Network Configuration Validation
   ansible.builtin.import_tasks: validations/validate-networks.yaml
   tags: ['validation', 'network']
 
-- name: Import | Cloud-Builder Configuration Validation
-  ansible.builtin.import_tasks: validations/validate-cba.yaml
-  tags: ['validation', 'cba']
+- name: Import | IP Allocation Validation
+  ansible.builtin.import_tasks: validations/validate-allocations.yaml
+  tags: ['validation', 'allocations']
+
+- name: Import | Depot Validation
+  ansible.builtin.import_tasks: validations/validate-depot.yaml
+  tags: ['validation', 'depot']
+
+- name: Import | VCF Installer Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-installer.yaml
+  tags: ['validation', 'installer']

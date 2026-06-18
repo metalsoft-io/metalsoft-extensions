@@ -1,5 +1,5 @@
 ---
-# Validates foundational configuration like repository URLs, NTP, DNS, and domain settings
+# Validates foundational configuration like NTP, DNS, and domain settings
 
 - name: Validate | Basic required variables
   tags: ['validation', 'basic']
@@ -22,21 +22,15 @@
       loop_control:
         label: "{{ item.label }}"
 
-    - name: Validate | repository_base_url (required only if ova_url not provided)
+    - name: Validate | DNS zone is not .local (breaks VCF 9 services platform)
       ansible.builtin.assert:
-        that:
-          - repository_base_url is not none
-          - (repository_base_url | length) > 0
-        fail_msg: "repository_base_url is required when extensionInstanceVariables.ova_url is not provided"
-        success_msg: "repository_base_url is set to {{ repository_base_url }}"
-      when: extensionInstanceVariables.ova_url is not defined or extensionInstanceVariables.ova_url == '' or extensionInstanceVariables.ova_url is none
+        that: not (domain | lower).endswith('.local')
+        fail_msg: "VCF 9 deployment fails with .local domains (VCF Automation services platform) — use a routable DNS zone"
+      when: vcf.deploy_automation | bool
   rescue:
     - name: Debug | Dump basic validation variables
       ansible.builtin.debug:
         msg: |-
-          repository_base_url={{ repository_base_url | default('') }}
-          extensionInstanceVariables.ova_url={{ extensionInstanceVariables.ova_url | default('') }}
-          repository_base_url_required={{ (extensionInstanceVariables.ova_url is not defined or extensionInstanceVariables.ova_url == '' or extensionInstanceVariables.ova_url is none) }}
           ntp_servers={{ ntp_servers | default('') }}
           domain={{ domain | default('') }}
           subdomain={{ subdomain | default('') }}

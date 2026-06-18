@@ -1,4 +1,5 @@
 ---
+# NOTE: endpoints verified against SDDC Manager v1 API docs; field-level spec shapes (HostCommissionSpec/ClusterUpdateSpec) need one live confirmation against /v1/api-doc on a deployed 9.0.1 SDDC Manager.
 - name: Include SDDC Manager | Hosts API task | get hosts
   ansible.builtin.import_tasks: hosts/get-hosts.yaml
 

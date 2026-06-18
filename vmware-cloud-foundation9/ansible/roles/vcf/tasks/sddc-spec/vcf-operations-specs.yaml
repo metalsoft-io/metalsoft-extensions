@@ -1,0 +1,42 @@
+---
+# VCF Operations / fleet management / collector / automation specifications (new in VCF 9)
+
+- name: Build | Extract IP allocations for VCF Operations components
+  ansible.builtin.set_fact:
+    vcf_ops_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcf-operations') | first | default({}) }}"
+    ops_fleet_mgmt_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'ops-fleet-management') | first | default({}) }}"
+    ops_collector_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'ops-collector') | first | default({}) }}"
+    vcf_automation_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcf-automation') | first | default({}) }}"
+
+- name: Build | Extract automation IP pool range
+  ansible.builtin.set_fact:
+    automation_ip_pool_range: >-
+      {{ vm_management_selected_network
+         | json_query('subnets[].ipRanges[]')
+         | default([], true)
+         | selectattr('tags.role', 'defined')
+         | selectattr('tags.role', 'equalto', 'automation-ip-pool')
+         | list | first | default({}) }}
+
+- name: Build | VCF Operations specs
+  ansible.builtin.set_fact:
+    vcf_ops_spec:
+      node1_hostname: "{{ vcf_ops_config.fqdn | default('') | split('.') | first }}"
+      root_password: "{{ extensionInstanceVariables.vcf_ops_root_password | default('VMw@re1!VMw@re1!') }}"
+      admin_password: "{{ extensionInstanceVariables.vcf_ops_admin_password | default('VMw@re1!VMw@re1!') }}"
+      appliance_size: "{{ extensionInstanceVariables.vcf_ops_appliance_size | default('small') }}"
+    ops_fleet_mgmt_spec:
+      hostname: "{{ ops_fleet_mgmt_config.fqdn | default('') | split('.') | first }}"
+      root_password: "{{ extensionInstanceVariables.ops_fleet_mgmt_root_password | default('VMw@re1!VMw@re1!') }}"
+      admin_password: "{{ extensionInstanceVariables.ops_fleet_mgmt_admin_password | default('VMw@re1!VMw@re1!') }}"
+    ops_collector_spec:
+      hostname: "{{ ops_collector_config.fqdn | default('') | split('.') | first }}"
+      root_password: "{{ extensionInstanceVariables.ops_collector_root_password | default('VMw@re1!VMw@re1!') }}"
+    vcf_automation_spec:
+      hostname: "{{ vcf_automation_config.fqdn | default('') | split('.') | first }}"
+      admin_password: "{{ extensionInstanceVariables.vcf_automation_admin_password | default('VMw@re1!VMw@re1!') }}"
+      internal_cluster_cidr: "{{ extensionInstanceVariables.vcf_automation_internal_cluster_cidr | default('198.18.0.0/15') }}"
+      node_prefix: "{{ sddc_id }}-auto"
+      ip_pool: >-
+        {{ (automation_ip_pool_range.startIp is defined and automation_ip_pool_range.endIp is defined)
+           | ternary([automation_ip_pool_range.startIp | default(''), automation_ip_pool_range.endIp | default('')], []) }}

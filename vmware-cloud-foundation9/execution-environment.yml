@@ -23,6 +23,7 @@ dependencies:
   system:
     - shadow-utils [platform:rpm]
     - openssh-clients [platform:rpm]
+    - bind-utils [platform:rpm]
     - openssl [platform:rpm]
     - python3.13 [platform:rpm]
     - python3.13-devel [platform:rpm]

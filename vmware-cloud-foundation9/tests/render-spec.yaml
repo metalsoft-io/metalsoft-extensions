@@ -1,0 +1,68 @@
+---
+# Offline render test for the VCF 9.0 SDDC bring-up spec.
+# Run: cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+# Red until the 9.0 template rewrite lands (PLAN.md Task B6).
+- name: Render VCF 9 SDDC spec from fixture
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  vars:
+    # the harness fakes the facts that vmnics-to-uplinks normally discovers via vCenter APIs
+    uplink1_vmnic_name: vmnic0
+    uplink2_vmnic_name: vmnic1
+  tasks:
+    - name: Load globals defaults
+      ansible.builtin.include_vars: { dir: ../ansible/roles/globals/defaults }
+    - name: Load vcf role defaults
+      ansible.builtin.include_vars: { dir: ../ansible/roles/vcf/defaults }
+    - name: Build SDDC spec facts
+      ansible.builtin.include_tasks: ../ansible/roles/vcf/tasks/build-sddc-spec.yaml
+    - name: Render spec
+      ansible.builtin.set_fact:
+        sddc_spec: "{{ lookup('template', '../ansible/roles/vcf/templates/management-workload-domain.yaml.j2') | from_yaml }}"
+    - name: Write rendered spec
+      ansible.builtin.copy: { content: "{{ sddc_spec | to_nice_json }}", dest: /tmp/sddc-spec-9.json }
+
+    - name: Assert | 9.0 top-level shape
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.version == '9.0.1.0'
+          - sddc_spec.workflowType == 'VCF'
+
+    - name: Assert | operations/fleet/collector specs
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.vcfOperationsSpec.nodes | length >= 1
+          - sddc_spec.vcfOperationsFleetManagementSpec.hostname | length > 0
+          - sddc_spec.vcfOperationsCollectorSpec.hostname | length > 0
+
+    - name: Assert | datastore spec
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.datastoreSpec.vsanSpec.datastoreName | length > 0
+
+    - name: Assert | host specs (short names, no ipAddressPrivate)
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.hostSpecs[0].hostname is not search('\.')   # VCF 9 requires short hostnames; 5.2 template renders FQDN (red)
+          - "'ipAddressPrivate' not in sddc_spec.hostSpecs[0]"
+
+    - name: Assert | removed 5.2 fields (pscSpecs/esxLicense/taskName)
+      ansible.builtin.assert:
+        that:
+          - "'pscSpecs' not in sddc_spec"
+          - "'esxLicense' not in sddc_spec"
+          - "'taskName' not in sddc_spec"
+
+    - name: Assert | nsxt spec
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.nsxtSpec.vipFqdn | length > 0
+          - "'vip' not in sddc_spec.nsxtSpec"
+
+    - name: Assert | dvs + dns specs
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.dvsSpecs[0].vmnicsToUplinks | length == 2
+          - sddc_spec.dnsSpec.nameservers | length >= 1

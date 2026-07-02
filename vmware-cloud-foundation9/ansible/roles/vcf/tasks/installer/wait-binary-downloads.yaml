@@ -1,7 +1,14 @@
 ---
-- name: Obtain installer API token
+# Polls bundle download-status ONCE per invocation and prints a concise progress line, then pauses.
+# The outer loop in download-binaries.yaml calls this repeatedly (download_wait_cycles times), so
+# progress is visible every cycle instead of the opaque "FAILED - RETRYING" spam that an until-loop
+# produces (Ansible cannot print between until retries). The installer access token expires during
+# the long (tens of GB) download, so re-authenticate every download_token_reauth_every cycles.
+- name: Obtain installer API token (refresh periodically)
   ansible.builtin.include_tasks: get-installer-token.yaml
-  when: not (vcf_binaries_ready | default(false))
+  when:
+    - not (vcf_binaries_ready | default(false))
+    - (download_wait_cycle | int) % (installer.download_token_reauth_every | default(10) | int) == 0
 
 - name: VCF Installer API CALL | Poll bundle download status
   ansible.builtin.uri:
@@ -11,31 +18,53 @@
     status_code: [200]
     validate_certs: "{{ installer.validate_certs }}"
   register: bundle_status_result
-  retries: 20
-  delay: 30
-  until: >-
-    (bundle_status_result.status | default(0)) == 200 and
-    (bundle_status_result.json.elements | default([]) | length > 0) and
-    ((bundle_status_result.json.elements
-      | selectattr('downloadStatus', 'in', ['SCHEDULED', 'INPROGRESS', 'VALIDATING'])
-      | list | length) == 0)
   failed_when: false
   delegate_to: localhost
   when: not (vcf_binaries_ready | default(false))
 
+- name: Build | Bundle download status snapshot
+  ansible.builtin.set_fact:
+    bundle_status_elements: "{{ bundle_status_result.json.elements | default([]) }}"
+  when: not (vcf_binaries_ready | default(false))
+
+- name: Debug | Bundle download progress
+  vars:
+    _done: "{{ bundle_status_elements | selectattr('downloadStatus', 'equalto', 'SUCCESSFUL') | list }}"
+    _pending: "{{ bundle_status_elements | selectattr('downloadStatus', 'in', ['SCHEDULED', 'INPROGRESS', 'VALIDATING']) | list }}"
+    _failed: "{{ bundle_status_elements | selectattr('downloadStatus', 'equalto', 'FAILED') | list }}"
+  ansible.builtin.debug:
+    msg: >-
+      [bundle downloads | cycle {{ (download_wait_cycle | int) + 1 }}/{{ installer.download_wait_cycles }}]
+      complete={{ _done | length }}/{{ bundle_status_elements | length }}
+      in-progress={{ _pending | length }}
+      failed={{ _failed | length }}
+      :: {{ bundle_status_elements
+            | json_query('[].{bundle: bundleId || id || name, status: downloadStatus}') }}
+  when: not (vcf_binaries_ready | default(false))
+
 - name: Fail fast on FAILED bundles
   ansible.builtin.fail:
-    msg: "Bundle download failed: {{ bundle_status_result.json.elements | selectattr('downloadStatus', 'equalto', 'FAILED') | list }}"
-  when: >-
-    not (vcf_binaries_ready | default(false)) and
-    bundle_status_result.json.elements | default([]) | selectattr('downloadStatus', 'equalto', 'FAILED') | list | length > 0
+    msg: "Bundle download failed: {{ bundle_status_elements | selectattr('downloadStatus', 'equalto', 'FAILED') | list }}"
+  when:
+    - not (vcf_binaries_ready | default(false))
+    - bundle_status_elements | selectattr('downloadStatus', 'equalto', 'FAILED') | list | length > 0
 
 - name: Mark binaries ready when nothing is pending
   ansible.builtin.set_fact:
     vcf_binaries_ready: >-
       {{ (bundle_status_result.status | default(0)) == 200 and
-         (bundle_status_result.json.elements | default([]) | length > 0) and
-         ((bundle_status_result.json.elements
+         (bundle_status_elements | length > 0) and
+         ((bundle_status_elements
            | selectattr('downloadStatus', 'in', ['SCHEDULED', 'INPROGRESS', 'VALIDATING'])
+           | list | length) == 0) and
+         ((bundle_status_elements
+           | selectattr('downloadStatus', 'equalto', 'FAILED')
            | list | length) == 0) }}
   when: not (vcf_binaries_ready | default(false))
+
+- name: Wait before next poll (skipped once downloads are ready or on the last cycle)
+  ansible.builtin.pause:
+    seconds: "{{ installer.download_poll_interval | default(30) | int }}"
+  when:
+    - not (vcf_binaries_ready | default(false))
+    - (download_wait_cycle | int) + 1 < (installer.download_wait_cycles | int)

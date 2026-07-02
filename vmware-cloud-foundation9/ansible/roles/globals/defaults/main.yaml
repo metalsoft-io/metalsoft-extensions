@@ -3,9 +3,20 @@ extension_instance_id: "{{ extensionInstanceRecordSet.extensionInstanceId }}"
 ntp_servers: "{{ extensionInstanceRecordSet.ntpServers | default(['0.us.pool.ntp.org', '1.us.pool.ntp.org']) }}"
 domain: "{{ extensionInstanceVariables.domain | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
 subdomain: "{{ extensionInstanceVariables.subdomain | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
-dns_servers: "{{ extensionInstanceVariables.dns_servers | default(extensionInstanceRecordSet.dnsResolvers | default(['1.1.1.1', '8.8.8.8'])) }}"
+# DNSResolvers (top-level extra var) is an optional comma-separated string holding one or many
+# resolvers (e.g. "172.18.38.62" or "172.18.38.62,1.1.1.1"). It takes precedence over the
+# (often stale) extensionInstanceRecordSet.dnsResolvers. Parse to a trimmed, non-empty list;
+# if it yields nothing (unset/blank), fall back to the public resolvers.
+dns_resolvers_input: "{{ configVars.DNSResolvers | default('') }}"
+dns_servers: >-
+  {{
+    (
+      (dns_resolvers_input.split(',') if (dns_resolvers_input is string) else dns_resolvers_input)
+      | map('trim') | reject('equalto', '') | list
+    )
+    or ['1.1.1.1', '8.8.8.8']
+  }}
 dns_searchpath: "{{ extensionInstanceVariables.dns_searchpath | default(extensionInstanceRecordSet.baseDomain | default('vmware.local')) }}"
-
 esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
 esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
 esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
@@ -37,7 +48,6 @@ effective_ova_url: >-
     | ternary(raw_ova_url | trim, derived_ova_url)
   }}
 ova_url: "{{ effective_ova_url }}"
-
 vcf:
   # Deployment architecture model: consolidated, standard, or custom
   architecture: "{{ extensionInstanceVariables.deployment_architecture_model | default('consolidated') }}"

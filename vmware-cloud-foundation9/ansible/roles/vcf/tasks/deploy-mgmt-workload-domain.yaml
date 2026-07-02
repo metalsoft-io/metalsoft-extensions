@@ -44,8 +44,17 @@
         (installer_api_get_validation_result.json.resultStatus != 'UNKNOWN')
       failed_when: >
         (installer_api_get_validation_result.json.executionStatus == 'FAILED') or
-        (installer_api_get_validation_result.json.resultStatus == 'FAILED')
+        (installer_api_get_validation_result.json.resultStatus is search('FAILED'))
       delegate_to: localhost
+
+    - name: Debug | Validation outcome (status + any non-SUCCEEDED checks)
+      ansible.builtin.debug:
+        msg: >-
+          Validation executionStatus={{ installer_api_get_validation_result.json.executionStatus | default('?') }}
+          resultStatus={{ installer_api_get_validation_result.json.resultStatus | default('?') }} ::
+          non-success checks: {{ installer_api_get_validation_result.json.validationChecks | default([])
+             | rejectattr('resultStatus', 'equalto', 'SUCCEEDED') | list
+             | json_query('[].{check: description, status: resultStatus}') }}
   rescue:
     - name: Debug response | Validate configuration POST
       ansible.builtin.debug:
@@ -86,9 +95,13 @@
       register: installer_api_post_deploy_result
       until: installer_api_post_deploy_result.status | default(0) in [200, 202, 400]  # retries connection errors; 400 is accepted so BRINGUP_ALREADY_EXISTS recovery below can run
       no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      # Proceed once validation COMPLETED and did not hard-fail. VCF's terminal resultStatus is one of
+      # SUCCEEDED / WARNING / FAILED — WARNING is a pass-with-warnings (e.g. the expected "installer
+      # appliance on a management host" warning). A real FAILED/FAILED_WITH_WARNINGS is already caught
+      # by the validation block's failed_when, so anything reaching here without 'FAILED' is safe.
       when: >-
-        (installer_api_get_validation_result.json.executionStatus == 'COMPLETED'
-        and installer_api_get_validation_result.json.resultStatus == 'SUCCEEDED')
+        installer_api_get_validation_result.json.executionStatus == 'COMPLETED'
+        and not (installer_api_get_validation_result.json.resultStatus is search('FAILED'))
       delegate_to: localhost
 
     - name: Set bring-up task id (fresh deployment)

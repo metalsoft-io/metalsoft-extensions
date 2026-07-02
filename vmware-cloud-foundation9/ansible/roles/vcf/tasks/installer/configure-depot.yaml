@@ -1,4 +1,22 @@
 ---
+# Wait for the LCM/depot backend to be ready BEFORE configuring the depot.
+# /v1/system/settings/depot is served by lcm.service, which starts LATER than the UI/login and
+# token services — until it is up, the appliance's nginx returns 502 Bad Gateway. Poll it
+# UNAUTHENTICATED (no token needed): a 200/401/403/404 all prove the backend is answering, so any
+# of those means "ready"; only 502/503/connection errors mean "not ready yet" and keep retrying.
+- name: VCF Installer API CALL | Wait for depot service backend (lcm) to be ready
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/system/settings/depot"
+    method: GET
+    status_code: [200, 401, 403, 404]
+    validate_certs: "{{ installer.validate_certs }}"
+  register: depot_backend_ready
+  retries: "{{ installer.initialize_api_retries }}"
+  delay: "{{ installer.initialize_api_retries_delay }}"
+  until: depot_backend_ready.status | default(0) in [200, 401, 403, 404]
+  failed_when: false
+  delegate_to: localhost
+
 - name: Obtain installer API token
   ansible.builtin.include_tasks: get-installer-token.yaml
 
@@ -18,7 +36,7 @@
         port: "{{ depot.port | int }}"
     status_code: [200, 202]
     validate_certs: "{{ installer.validate_certs }}"
-  retries: "{{ installer.api_retries }}"
+  retries: "{{ extensionInstanceVariables.installer_depot_config_retries | default(30) | int }}"
   delay: "{{ installer.api_retries_delay }}"
   register: depot_config_result
   until: depot_config_result is succeeded

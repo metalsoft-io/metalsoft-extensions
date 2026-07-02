@@ -15,17 +15,34 @@
   until: release_components_result is succeeded
   delegate_to: localhost
 
-# NOTE: verify the exact JSON path against the live installer (GET /v1/api-doc).
-# William Lam's 9.0 automation reads elements[].versions[].artifacts.bundles[].id
-- name: Extract bundle ids
+# The release-components response nesting differs across installer builds, so try the known shapes
+# and union the results instead of depending on one exact path. The URL already filters
+# imageType=INSTALL. (The depot is confirmed to carry 9.0.1.0 INSTALL bundles per
+# productVersionCatalog, so an empty result here is a response-shape mismatch — the debug dump
+# below surfaces the real structure on the next run.)
+- name: Extract bundle ids (tolerant of response nesting)
   ansible.builtin.set_fact:
     vcf_bundle_ids: >-
-      {{ release_components_result.json | json_query('elements[].versions[].artifacts.bundles[].id') | unique }}
+      {{ (
+           (release_components_result.json | json_query('elements[].components[].versions[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].components[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].versions[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].bundles[].id') | default([], true))
+         ) | select('string') | list | unique }}
+
+- name: Debug | Raw release-components response (only when no bundle ids were extracted)
+  ansible.builtin.debug:
+    var: release_components_result.json
+  when: vcf_bundle_ids | length == 0
 
 - name: Assert bundles were found
   ansible.builtin.assert:
     that: vcf_bundle_ids | length > 0
-    fail_msg: "No INSTALL bundles found for {{ vcf_version }} — check depot content and sync status"
+    fail_msg: >-
+      No bundle ids extracted from release-components for {{ vcf_version }} (SKU {{ vcf_release_sku }}).
+      The raw JSON response is printed above — compare its shape to the json_query paths in this task
+      and adjust. (The depot does carry 9.0.1.0 INSTALL bundles, so this is response parsing, not depot.)
 
 - name: VCF Installer API CALL | Request bundle downloads
   ansible.builtin.uri:
@@ -47,7 +64,9 @@
 
 # NOTE: the `when` below is evaluated up-front by include_tasks+loop so it only applies on the first
 # iteration; the real per-cycle skip guard lives inside wait-binary-downloads.yaml.
-- name: Wait for all bundle downloads (each cycle re-authenticates; ~10 min per cycle)
+# Each cycle polls download-status once, prints a progress line, and pauses download_poll_interval
+# seconds (token is refreshed every download_token_reauth_every cycles).
+- name: Wait for all bundle downloads (one status poll + progress line per cycle)
   ansible.builtin.include_tasks: wait-binary-downloads.yaml
   loop: "{{ range(0, installer.download_wait_cycles | int) | list }}"
   loop_control:

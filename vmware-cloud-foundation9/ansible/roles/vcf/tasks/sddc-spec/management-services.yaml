@@ -37,7 +37,11 @@
       validation_api_retries_delay: "{{ extensionInstanceVariables.installer_validation_api_retries_delay | default(10) }}"
       bringup_wait_cycles: "{{ extensionInstanceVariables.installer_bringup_wait_cycles | default(72) }}"
       depot_sync_retries: "{{ extensionInstanceVariables.installer_depot_sync_retries | default(90) }}"
-      download_wait_cycles: "{{ extensionInstanceVariables.installer_download_wait_cycles | default(24) }}"
+      # One poll per cycle now (was a 20x inner retry loop), so cycles cover the full wait budget:
+      # 240 cycles x 60s poll interval = ~4h ceiling, matching the previous 24 cycles x ~10min.
+      download_wait_cycles: "{{ extensionInstanceVariables.installer_download_wait_cycles | default(240) }}"
+      download_poll_interval: "{{ extensionInstanceVariables.installer_download_poll_interval | default(60) }}"
+      download_token_reauth_every: "{{ extensionInstanceVariables.installer_download_token_reauth_every | default(10) }}"
 
 # SDDC Manager specification construction
 - name: Build | SDDC Manager spec

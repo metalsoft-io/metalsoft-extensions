@@ -1,486 +1,706 @@
 {
-    "kind": "ExtensionDefinition",
-    "schemaVersion": "1.1",
-    "name": "VMware Cloud Foundation (VCF)",
-    "label": "vcf",
-    "extensionType": "application",
-    "vendor": "MetalSoft",
-    "extensionVersion": "1.0.6",
-    "description": "VMware Cloud Foundation (VCF)",
-    "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
-    "dependencies": {
-        "controllerVersion": "release-v7.2",
-        "osTemplates": [
-            "esxi-8-24280767-cluster-node",
-            "esxi-8-24859861-cluster-node"
-        ]
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "VMware Cloud Foundation 9 (VCF)",
+  "label": "vcf9",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "2.0.0",
+  "description": "VMware Cloud Foundation (VCF)",
+  "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
+  "dependencies": {
+    "controllerVersion": "release-v7.2",
+    "osTemplates": ["esxi-9-24957456-cluster-node"]
+  },
+  "inputs": [
+    {
+      "label": "mgmt_domain_cluster_node_server_type",
+      "name": "mgmt_domain_cluster_node_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
     },
-    "inputs": [
-        {
-            "label": "mgmt_domain_cluster_node_server_type",
-            "name": "mgmt_domain_cluster_node_server_type",
-            "inputType": "ExtensionInputServerType",
-            "options": {}
-        },
-        {
-            "label": "mgmt_domain_instance_count",
-            "name": "mgmt_domain_instance_count",
-            "inputType": "ExtensionInputInteger",
-            "defaultValue": 4,
-            "options": {
-                "minValue": 4,
-                "maxValue": 16
-            }
-        },
-        {
-            "label": "mgmt_domain_cluster_node_os_template",
-            "name": "mgmt_domain_cluster_node_os_template",
-            "inputType": "ExtensionInputOsTemplate",
-            "options": {
-                "osFamily": "ESXi"
-            }
-        },
-        {
-            "label": "deployment_architecture_model",
-            "name": "deployment_architecture_model",
-            "inputType": "ExtensionInputString",
-            "defaultValue": "consolidated",
-            "setOnly": true,
-            "hidden": true,
-            "options": {}
-        },
-        {
-            "label": "ova_url",
-            "name": "ova_url",
-            "inputType": "ExtensionInputString",
-            "options": {}
-        },
-        {
-            "label": "repository_base_url",
-            "name": "repository_base_url",
-            "inputType": "ExtensionInputString",
-            "options": {}
-        },
-        {
-            "label": "vcf_version",
-            "name": "vcf_version",
-            "inputType": "ExtensionInputString",
-            "defaultValue": "5.2.2",
-            "options": {}
-        },
-        {
-            "label": "ova_name",
-            "name": "ova_name",
-            "inputType": "ExtensionInputString",
-            "defaultValue": "VMware-Cloud-Builder-5.2.2.0-24936865_OVF10.ova",
-            "options": {}
-        },
-        {
-            "label": "nsx_manager_size",
-            "name": "nsx_manager_size",
-            "inputType": "ExtensionInputString",
-            "isPassword": false,
-            "defaultValue": "medium",
-            "options": {}
-        },
-        {
-            "label": "vcenter_vm_size",
-            "name": "vcenter_vm_size",
-            "inputType": "ExtensionInputString",
-            "isPassword": false,
-            "defaultValue": "small",
-            "options": {}
-        },
-        {
-            "label": "cba_admin_password",
-            "name": "cba_admin_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "Q#ZT1N#uarLPoPd",
-            "options": {}
-        },
-        {
-            "label": "cba_root_password",
-            "name": "cba_root_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "SALkFJ8e8x69?Of",
-            "options": {}
-        },
-        {
-            "label": "sddc_root_password",
-            "name": "sddc_root_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "h1C^L#zoENSqfu2",
-            "options": {}
-        },
-        {
-            "label": "sddc_local_admin_password",
-            "name": "sddc_local_admin_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "a9C$E#zoTNSqfj7",
-            "options": {}
-        },
-        {
-            "label": "sddc_second_user_password",
-            "name": "sddc_second_user_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "BAtdNYmg?vcZ8Oa",
-            "options": {}
-        },
-        {
-            "label": "nsx_manager_root_password",
-            "name": "nsx_manager_root_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "#kCKefi$2@otD^m",
-            "options": {}
-        },
-        {
-            "label": "nsx_manager_admin_password",
-            "name": "nsx_manager_admin_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "oIt@KT5!1B1TQ7t",
-            "options": {}
-        },
-        {
-            "label": "nsx_manager_audit_password",
-            "name": "nsx_manager_audit_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "ytpc7H8XdqD$A2e",
-            "options": {}
-        },
-        {
-            "label": "vcenter_root_password",
-            "name": "vcenter_root_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "sQZBOfys6^Y?4wv",
-            "options": {}
-        },
-        {
-            "label": "vcenter_sso_admin_password",
-            "name": "vcenter_sso_admin_password",
-            "inputType": "ExtensionInputString",
-            "isPassword": true,
-            "defaultValue": "FLgdLdBX@zih9I8",
-            "options": {}
-        },
-        {
-            "label": "validation_debug",
-            "name": "validation_debug",
-            "inputType": "ExtensionInputBoolean",
-            "defaultValue": false,
-            "options": {}
-        }
-    ],
-    "outputs": [],
-    "infrastructure": {
-        "instanceArrays": [
-            {
-                "label": "management",
-                "instanceCount": "#/input/mgmt_domain_instance_count",
-                "serverType": "#/input/mgmt_domain_cluster_node_server_type",
-                "osTemplate": "#/input/mgmt_domain_cluster_node_os_template",
-                "logicalNetworks": [
-                    {
-                        "label": "vcf-mgmt",
-                        "networkConnection": {
-                            "tagged": true,
-                            "accessMode": "l2",
-                            "redundancy": {
-                                "mode": "active-active"
-                            },
-                            "providesDefaultRoute": true,
-                            "dns": {
-                                "provisionInstanceDnsRecords": true
-                            }
-                        }
-                    },
-                    {
-                        "label": "vcf-vsan",
-                        "networkConnection": {
-                            "tagged": true,
-                            "accessMode": "l2",
-                            "disableAutoIpAllocation": true,
-                            "redundancy": {
-                                "mode": "active-active"
-                            }
-                        }
-                    },
-                    {
-                        "label": "vcf-vmotion",
-                        "networkConnection": {
-                            "tagged": true,
-                            "accessMode": "l2",
-                            "disableAutoIpAllocation": true,
-                            "redundancy": {
-                                "mode": "active-active"
-                            }
-                        }
-                    },
-                    {
-                        "label": "vcf-nsx",
-                        "networkConnection": {
-                            "tagged": true,
-                            "accessMode": "l2",
-                            "disableAutoIpAllocation": true,
-                            "redundancy": {
-                                "mode": "active-active"
-                            }
-                        }
-                    }
-                ],
-                "customVariables": [
-                    {
-                        "name": "sddc_root_username",
-                        "value": "root"
-                    },
-                    {
-                        "name": "sddc_local_admin_username",
-                        "value": "admin@local"
-                    },
-                    {
-                        "name": "sddc_second_username",
-                        "value": "vcf"
-                    },
-                    {
-                        "name": "nsx_manager_root_username",
-                        "value": "root"
-                    },
-                    {
-                        "name": "nsx_manager_admin_username",
-                        "value": "admin"
-                    },
-                    {
-                        "name": "nsx_manager_audit_username",
-                        "value": "audit"
-                    },
-                    {
-                        "name": "vcenter_root_username",
-                        "value": "root"
-                    },
-                    {
-                        "name": "vcenter_sso_admin_username",
-                        "value": "administrator@vsphere.local"
-                    }
-                ],
-                "tags": [
-                    "mgmt_domain"
-                ]
-            }
-        ],
+    {
+      "label": "mgmt_domain_instance_count",
+      "name": "mgmt_domain_instance_count",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 4,
+      "options": {
+        "minValue": 3,
+        "maxValue": 16
+      }
+    },
+    {
+      "label": "mgmt_domain_cluster_node_os_template",
+      "name": "mgmt_domain_cluster_node_os_template",
+      "inputType": "ExtensionInputOsTemplate",
+      "options": {
+        "osFamily": "ESXi"
+      }
+    },
+    {
+      "label": "deployment_architecture_model",
+      "name": "deployment_architecture_model",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "consolidated",
+      "setOnly": true,
+      "hidden": true,
+      "options": {}
+    },
+    {
+      "label": "ova_url",
+      "name": "ova_url",
+      "inputType": "ExtensionInputString",
+      "options": {}
+    },
+    {
+      "label": "depot_hostname",
+      "name": "depot_hostname",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vmware-depot.metalsoft.dev",
+      "options": {}
+    },
+    {
+      "label": "depot_port",
+      "name": "depot_port",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 443,
+      "options": {}
+    },
+    {
+      "label": "depot_username",
+      "name": "depot_username",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vmware-depot",
+      "options": {}
+    },
+    {
+      "label": "depot_password",
+      "name": "depot_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "options": {
+        "validationRegEx": ".+"
+      }
+    },
+    {
+      "label": "vcf_instance_name",
+      "name": "vcf_instance_name",
+      "inputType": "ExtensionInputString",
+      "options": {}
+    },
+    {
+      "label": "vcf_version",
+      "name": "vcf_version",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "9.0.1.0",
+      "options": {}
+    },
+    {
+      "label": "ova_name",
+      "name": "ova_name",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova",
+      "options": {}
+    },
+    {
+      "label": "nsx_manager_size",
+      "name": "nsx_manager_size",
+      "inputType": "ExtensionInputString",
+      "isPassword": false,
+      "defaultValue": "medium",
+      "options": {}
+    },
+    {
+      "label": "vcenter_vm_size",
+      "name": "vcenter_vm_size",
+      "inputType": "ExtensionInputString",
+      "isPassword": false,
+      "defaultValue": "small",
+      "options": {}
+    },
+    {
+      "label": "installer_admin_password",
+      "name": "installer_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "Q#ZT1N#uarLPoPd",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "installer_root_password",
+      "name": "installer_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "SALkFJ8e8x69#Of",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "sddc_root_password",
+      "name": "sddc_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "h1C^L#zoENSqfu2",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "sddc_local_admin_password",
+      "name": "sddc_local_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "a9C$E#zoTNSqfj7",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "sddc_second_user_password",
+      "name": "sddc_second_user_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "BAtdNYmg#vcZ8Oa",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "nsx_manager_root_password",
+      "name": "nsx_manager_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "#kCKefi$2@otD^m",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "nsx_manager_admin_password",
+      "name": "nsx_manager_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "oIt@KT5!1B1TQ7t",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "nsx_manager_audit_password",
+      "name": "nsx_manager_audit_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "ytpc7H8XdqD$A2e",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcenter_root_password",
+      "name": "vcenter_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "sQZBOfys6^Y#4wv",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcenter_sso_admin_password",
+      "name": "vcenter_sso_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "FLgdLdBX@zih9I8",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcf_ops_admin_password",
+      "name": "vcf_ops_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "7JI3tx6PSZiQ#u4",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcf_ops_root_password",
+      "name": "vcf_ops_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "XiGX70ti^j$oOJk",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "ops_fleet_mgmt_root_password",
+      "name": "ops_fleet_mgmt_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "w#@UtV!Pa7N#6Y5",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "ops_fleet_mgmt_admin_password",
+      "name": "ops_fleet_mgmt_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "1p2W@eD3@N@^IMC",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "ops_collector_root_password",
+      "name": "ops_collector_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "SCI02wooIv1t!jU",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcf_automation_admin_password",
+      "name": "vcf_automation_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "z!L8LmDuvL1GkZi",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "vcf_ops_appliance_size",
+      "name": "vcf_ops_appliance_size",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "small",
+      "options": {}
+    },
+    {
+      "label": "deploy_vcf_automation",
+      "name": "deploy_vcf_automation",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "vcf_automation_internal_cluster_cidr",
+      "name": "vcf_automation_internal_cluster_cidr",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "198.18.0.0/15",
+      "options": {}
+    },
+    {
+      "label": "skip_gateway_ping_validation",
+      "name": "skip_gateway_ping_validation",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "vsan_failures_to_tolerate",
+      "name": "vsan_failures_to_tolerate",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 0,
+        "maxValue": 3
+      }
+    },
+    {
+      "label": "validation_debug",
+      "name": "validation_debug",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    }
+  ],
+  "outputs": [],
+  "infrastructure": {
+    "instanceArrays": [
+      {
+        "label": "management",
+        "instanceCount": "#/input/mgmt_domain_instance_count",
+        "serverType": "#/input/mgmt_domain_cluster_node_server_type",
+        "osTemplate": "#/input/mgmt_domain_cluster_node_os_template",
         "logicalNetworks": [
-            {
-                "label": "vcf-mgmt",
-                "profileLabel": "vcf-mgmt",
-                "ipAllocations": [
-                    {
-                        "tags": {
-                            "role": "cloud-builder"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "cba.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "sddc-manager"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "sddc.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "management-vcenter-server"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "m-vcs1.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "nsx-manager-vip"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "m-nsx1.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "nsx-manager-node1"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "m-nsx1a.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "nsx-manager-node2"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "m-nsx1b.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    },
-                    {
-                        "tags": {
-                            "role": "nsx-manager-node3"
-                        },
-                        "ipVersion": "ipv4",
-                        "dnsRecords": [
-                            {
-                                "name": "m-nsx1c.{{default_zone_name}}",
-                                "recordType": "A",
-                                "generatePtrRecord": true,
-                                "ttl": 3600
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                "label": "vcf-vsan",
-                "profileLabel": "vcf-vsan",
-                "ipRanges": [
-                    {
-                        "tags": {
-                            "role": "vsan-pool"
-                        },
-                        "ipVersion": "ipv4",
-                        "ipCount": 8
-                    }
-                ]
-            },
-            {
-                "label": "vcf-vmotion",
-                "profileLabel": "vcf-vmotion",
-                "ipRanges": [
-                    {
-                        "tags": {
-                            "role": "vmotion-pool"
-                        },
-                        "ipVersion": "ipv4",
-                        "ipCount": 8
-                    }
-                ]
-            },
-            {
-                "label": "vcf-nsx",
-                "profileLabel": "vcf-nsx",
-                "ipRanges": [
-                    {
-                        "tags": {
-                            "role": "nsx-host-overlay-pool"
-                        },
-                        "ipVersion": "ipv4",
-                        "ipCount": 20
-                    }
-                ]
+          {
+            "label": "vcf-mgmt",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "redundancy": {
+                "mode": "active-active"
+              },
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
             }
+          },
+          {
+            "label": "vcf-vsan",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          },
+          {
+            "label": "vcf-vmotion",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          },
+          {
+            "label": "vcf-nsx",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          }
+        ],
+        "customVariables": [
+          {
+            "name": "sddc_root_username",
+            "value": "root"
+          },
+          {
+            "name": "sddc_local_admin_username",
+            "value": "admin@local"
+          },
+          {
+            "name": "sddc_second_username",
+            "value": "vcf"
+          },
+          {
+            "name": "nsx_manager_root_username",
+            "value": "root"
+          },
+          {
+            "name": "nsx_manager_admin_username",
+            "value": "admin"
+          },
+          {
+            "name": "nsx_manager_audit_username",
+            "value": "audit"
+          },
+          {
+            "name": "vcenter_root_username",
+            "value": "root"
+          },
+          {
+            "name": "vcenter_sso_admin_username",
+            "value": "administrator@vsphere.local"
+          }
+        ],
+        "tags": ["mgmt_domain"]
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "label": "vcf-mgmt",
+        "profileLabel": "vcf-mgmt",
+        "ipAllocations": [
+          {
+            "tags": {
+              "role": "vcf-installer"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "installer.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "sddc-manager"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "sddc.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "management-vcenter-server"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "m-vcs1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "nsx-manager-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "m-nsx1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "nsx-manager-node1"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "m-nsx1a.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "nsx-manager-node2"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "m-nsx1b.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "nsx-manager-node3"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "m-nsx1c.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "vcf-operations"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "ops1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "ops-fleet-management"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "opsfm1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "ops-collector"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "opscp1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "vcf-automation"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "auto1.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          }
+        ],
+        "ipRanges": [
+          {
+            "tags": {
+              "role": "automation-ip-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 2
+          }
         ]
+      },
+      {
+        "label": "vcf-vsan",
+        "profileLabel": "vcf-vsan",
+        "ipRanges": [
+          {
+            "tags": {
+              "role": "vsan-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 8
+          }
+        ]
+      },
+      {
+        "label": "vcf-vmotion",
+        "profileLabel": "vcf-vmotion",
+        "ipRanges": [
+          {
+            "tags": {
+              "role": "vmotion-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 8
+          }
+        ]
+      },
+      {
+        "label": "vcf-nsx",
+        "profileLabel": "vcf-nsx",
+        "ipRanges": [
+          {
+            "tags": {
+              "role": "nsx-host-overlay-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 20
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "vcf-ansible-bundle",
+      "name": "vcf-ansible-bundle",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.0.0.zip"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "preDeploy",
+      "tasks": []
     },
-    "assets": [
+    {
+      "stage": "postDeploy",
+      "tasks": [
         {
-            "label": "vcf-ansible-bundle",
-            "name": "vcf-ansible-bundle",
-            "assetType": "Bundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.6.zip"
+          "label": "initial-vcf-deployment",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vcf-ansible-bundle",
+            "playbook": "deploy.yaml",
+            "executionTimeout": 43200,
+            "executionTimeoutTick": 30
+          }
         }
-    ],
-    "onCreate": [
+      ]
+    }
+  ],
+  "onEdit": [
+    {
+      "stage": "preDeploy",
+      "tasks": [
         {
-            "stage": "preDeploy",
-            "tasks": []
-        },
-        {
-            "stage": "postDeploy",
-            "tasks": [
-                {
-                    "label": "initial-vcf-deployment",
-                    "taskType": "ExtensionTaskAnsible",
-                    "options": {
-                        "asset": "vcf-ansible-bundle",
-                        "playbook": "deploy.yaml",
-                        "executionTimeout": 10800,
-                        "executionTimeoutTick": 30
-                    }
-                }
-            ]
+          "label": "vcf-lifecycle-operations",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vcf-ansible-bundle",
+            "playbook": "scale.yaml",
+            "executionTimeout": 7200,
+            "executionTimeoutTick": 30
+          }
         }
-    ],
-    "onEdit": [
+      ]
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
         {
-            "stage": "preDeploy",
-            "tasks": [
-                {
-                    "label": "vcf-lifecycle-operations",
-                    "taskType": "ExtensionTaskAnsible",
-                    "options": {
-                        "asset": "vcf-ansible-bundle",
-                        "playbook": "scale.yaml",
-                        "executionTimeout": 1800,
-                        "executionTimeoutTick": 30
-                    }
-                }
-            ]
-        },
-        {
-            "stage": "postDeploy",
-            "tasks": [
-                {
-                    "label": "vcf-lifecycle-operations",
-                    "taskType": "ExtensionTaskAnsible",
-                    "options": {
-                        "asset": "vcf-ansible-bundle",
-                        "playbook": "scale.yaml",
-                        "executionTimeout": 1800,
-                        "executionTimeoutTick": 30
-                    }
-                }
-            ]
+          "label": "vcf-lifecycle-operations",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vcf-ansible-bundle",
+            "playbook": "scale.yaml",
+            "executionTimeout": 7200,
+            "executionTimeoutTick": 30
+          }
         }
-    ],
-    "onDelete": []
+      ]
+    }
+  ],
+  "onDelete": [],
+  "configVars": [
+    {
+      "label": "DNSResolvers",
+      "name": "DNSResolvers",
+      "inputType": "ExtensionInputString",
+      "setOnly": false,
+      "hidden": false,
+      "isPassword": false,
+      "defaultValue": "1.1.1.1",
+      "options": {}
+    }
+  ]
 }

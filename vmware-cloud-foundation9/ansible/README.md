@@ -202,7 +202,9 @@ installer_api_retries_delay: Delay (seconds) between API retries. Defaults to 10
 installer_validation_api_retries: Retries while polling spec validation status. Defaults to 360.
 installer_validation_api_retries_delay: Delay (seconds) between validation polls. Defaults to 10.
 installer_depot_sync_retries: Retries while waiting for the depot sync to reach SYNCED. Defaults to 90.
-installer_download_wait_cycles: Wait cycles for the binary downloads to complete. Defaults to 24.
+installer_download_wait_cycles: Number of download-status polls to wait for binary downloads to complete (one poll + progress line per cycle). Defaults to 240 (~4h at the default poll interval).
+installer_download_poll_interval: Seconds to pause between bundle download-status polls. Defaults to 60.
+installer_download_token_reauth_every: Refresh the installer API token every N download poll cycles (the token expires during long downloads). Defaults to 10.
 installer_bringup_wait_cycles: Wait cycles (~10 minutes each, re-authenticating) for bring-up completion. Defaults to 72.
 ```
 

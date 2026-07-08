@@ -1,0 +1,12 @@
+{#
+# Cluster specification for VCF 9.x (no clusterImageEnabled/vmFolders; FTT lives in datastoreSpec)
+#}
+{% from 'macros.yaml.j2' import render_resource_pool %}
+clusterSpec:
+  datacenterName: "{{ cluster_spec.datacenter_name }}"
+  clusterName: "{{ cluster_spec.name }}"
+  clusterEvcMode: "{{ cluster_spec.evc_mode }}"
+  resourcePoolSpecs:
+{% for resource_pool in cluster_spec.resource_pool_specs_consolidated %}
+{{ render_resource_pool(resource_pool) | indent(2, True) }}
+{% endfor %}

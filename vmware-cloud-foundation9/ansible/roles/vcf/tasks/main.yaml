@@ -1,0 +1,21 @@
+---
+- name: Import vmnics-to-uplinks.yaml
+  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
+
+- name: Build SDDC specification
+  ansible.builtin.import_tasks: build-sddc-spec.yaml
+
+- name: Validate SDDC specification
+  ansible.builtin.import_tasks: validate-sddc-spec.yaml
+
+- name: Deploy VCF Installer appliance
+  ansible.builtin.import_tasks: deploy-vcf-installer.yaml
+
+- name: Configure offline depot
+  ansible.builtin.import_tasks: installer/configure-depot.yaml
+
+- name: Download release binaries
+  ansible.builtin.import_tasks: installer/download-binaries.yaml
+
+- name: Deploy management workload domain
+  ansible.builtin.import_tasks: deploy-mgmt-workload-domain.yaml

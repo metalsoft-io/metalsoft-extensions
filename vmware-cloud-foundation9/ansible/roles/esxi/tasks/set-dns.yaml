@@ -1,0 +1,11 @@
+---
+- name: Configure DNS servers for an ESXi Hosts
+  community.vmware.vmware_host_dns:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    dns_servers: "{{ dns_servers }}"
+    type: "static"
+    verbose: true
+  delegate_to: localhost

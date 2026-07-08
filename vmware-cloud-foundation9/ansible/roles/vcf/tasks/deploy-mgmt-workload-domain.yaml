@@ -1,0 +1,253 @@
+---
+# Bring-up of the management workload domain via the VCF Installer API.
+# Requires: installer deployed, offline depot configured, release binaries downloaded.
+
+# A rerun after a partial bring-up must NOT re-run spec validation: the checks
+# (standard vSwitch present, single vmkernel, free IPs, no vSAN partitions, no
+# service accounts) only hold on a pristine environment and are guaranteed to
+# fail once bring-up has deployed anything. When a bring-up already exists we
+# skip validation and resume it via PATCH /v1/sddcs/{id}.
+- name: Bring up | Check for an existing bring-up
+  block:
+    - name: Obtain installer API token
+      ansible.builtin.include_tasks: installer/get-installer-token.yaml
+
+    - name: VCF Installer API CALL | GET existing SDDC bring-ups
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs
+        method: GET
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_precheck_sddcs
+      until: installer_api_precheck_sddcs is succeeded
+      delegate_to: localhost
+
+    - name: Set existing bring-up fact
+      ansible.builtin.set_fact:
+        existing_bringup: "{{ installer_api_precheck_sddcs.json.elements | default([]) | first | default({}) }}"
+
+    - name: Debug | Existing bring-up found (validation will be skipped)
+      ansible.builtin.debug:
+        msg: >-
+          Existing bring-up {{ existing_bringup.id }} with status
+          '{{ existing_bringup.status | default('?') }}' — skipping spec validation
+          and resuming it.
+      when: existing_bringup.id is defined
+
+- name: Bring up | Validate configuration
+  when: existing_bringup.id is not defined
+  block:
+    - name: Obtain installer API token
+      ansible.builtin.include_tasks: installer/get-installer-token.yaml
+
+    - name: VCF Installer API CALL | Validate configuration - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/validations
+        method: POST
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200, 202]
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_post_validation_result
+      until: installer_api_post_validation_result is succeeded
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      delegate_to: localhost
+
+    - name: Give some time for the validation to start
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: VCF Installer API CALL | Querying validation status - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/validations/{{ installer_api_post_validation_result.json.id }}
+        method: GET
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+      retries: "{{ installer.validation_api_retries }}"
+      delay: "{{ installer.validation_api_retries_delay }}"
+      register: installer_api_get_validation_result
+      until: >
+        (installer_api_get_validation_result.json.executionStatus != 'IN_PROGRESS') and
+        (installer_api_get_validation_result.json.resultStatus != 'UNKNOWN')
+      failed_when: >
+        (installer_api_get_validation_result.json.executionStatus == 'FAILED') or
+        (installer_api_get_validation_result.json.resultStatus is search('FAILED'))
+      delegate_to: localhost
+
+    - name: Debug | Validation outcome (status + any non-SUCCEEDED checks)
+      ansible.builtin.debug:
+        msg: >-
+          Validation executionStatus={{ installer_api_get_validation_result.json.executionStatus | default('?') }}
+          resultStatus={{ installer_api_get_validation_result.json.resultStatus | default('?') }} ::
+          non-success checks: {{ installer_api_get_validation_result.json.validationChecks | default([])
+             | rejectattr('resultStatus', 'equalto', 'SUCCEEDED') | list
+             | json_query('[].{check: description, status: resultStatus}') }}
+  rescue:
+    - name: Debug response | Validate configuration POST
+      ansible.builtin.debug:
+        var: installer_api_post_validation_result
+      when: installer_api_post_validation_result is defined
+
+    - name: Debug response | Validation status GET
+      ansible.builtin.debug:
+        var: installer_api_get_validation_result
+      when: installer_api_get_validation_result is defined
+
+    - name: Debug rendered SDDC spec
+      ansible.builtin.debug:
+        msg: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      when: vcf.validation_debug | default(false) | bool
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "SDDC spec validation failed. Check failed validationChecks in the response above (or the installer UI)."
+
+- name: Bring up | Deploy task
+  block:
+    - name: Obtain installer API token
+      ansible.builtin.include_tasks: installer/get-installer-token.yaml
+
+    - name: VCF Installer API CALL | Deploy task - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs
+        method: POST
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200, 202, 400]   # 400 carries errorCode BRINGUP_ALREADY_EXISTS on re-runs
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_post_deploy_result
+      until: installer_api_post_deploy_result.status | default(0) in [200, 202, 400]  # retries connection errors; 400 is accepted so BRINGUP_ALREADY_EXISTS recovery below can run
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      # Proceed once validation COMPLETED and did not hard-fail. VCF's terminal resultStatus is one of
+      # SUCCEEDED / WARNING / FAILED — WARNING is a pass-with-warnings (e.g. the expected "installer
+      # appliance on a management host" warning). A real FAILED/FAILED_WITH_WARNINGS is already caught
+      # by the validation block's failed_when, so anything reaching here without 'FAILED' is safe.
+      # Skipped entirely on a resume (existing bring-up found by the pre-check).
+      when: >-
+        existing_bringup.id is not defined
+        and installer_api_get_validation_result.json.executionStatus == 'COMPLETED'
+        and not (installer_api_get_validation_result.json.resultStatus is search('FAILED'))
+      delegate_to: localhost
+
+    - name: Set bring-up task id (resumed deployment from pre-check)
+      ansible.builtin.set_fact:
+        bringup_task_id: "{{ existing_bringup.id }}"
+      when: existing_bringup.id is defined
+
+    - name: Set bring-up task id (fresh deployment)
+      ansible.builtin.set_fact:
+        bringup_task_id: "{{ installer_api_post_deploy_result.json.id }}"
+      when:
+        - installer_api_post_deploy_result.json.id is defined
+        - installer_api_post_deploy_result.json.errorCode is not defined
+
+    # NOTE: errorCode name and 400-body shape carried over from Cloud Builder 5.x — verify against a live 9.x installer on first E2E run
+    - name: VCF Installer API CALL | GET existing bring-up id - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs
+        method: GET
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200]
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_get_sddcs_result
+      until: installer_api_get_sddcs_result is succeeded
+      when:
+        - installer_api_post_deploy_result.json.errorCode is defined
+        - installer_api_post_deploy_result.json.errorCode == 'BRINGUP_ALREADY_EXISTS'
+      delegate_to: localhost
+
+    - name: Set bring-up task id (existing deployment)
+      ansible.builtin.set_fact:
+        bringup_task_id: "{{ installer_api_get_sddcs_result.json.elements[0].id }}"
+      when:
+        - installer_api_get_sddcs_result is succeeded
+        - installer_api_get_sddcs_result.json.elements[0].id is defined
+
+    - name: VCF Installer API CALL | Retry failed bring-up - mgmt workload domain
+      ansible.builtin.uri:
+        url: https://{{ installer.ipv4_address }}/v1/sddcs/{{ bringup_task_id }}
+        method: PATCH
+        headers: "{{ installer_auth_headers }}"
+        status_code: [200, 202]
+        follow_redirects: all
+        validate_certs: "{{ installer.validate_certs }}"
+        body_format: json
+        body: "{{ lookup('template', '../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+      retries: "{{ installer.api_retries }}"
+      delay: "{{ installer.api_retries_delay }}"
+      register: installer_api_patch_deploy_result
+      until: installer_api_patch_deploy_result is succeeded
+      no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+      # Retry a failed bring-up found either by the pre-check (normal resume path)
+      # or by the POST returning BRINGUP_ALREADY_EXISTS (pre-check raced a fresh POST).
+      when:
+        - bringup_task_id is defined
+        - >-
+            (existing_bringup.status | default('')) == 'COMPLETED_WITH_FAILURE'
+            or (
+              (installer_api_post_deploy_result.json.errorCode | default('')) == 'BRINGUP_ALREADY_EXISTS'
+              and (installer_api_get_sddcs_result.json.elements[0].status | default('')) == 'COMPLETED_WITH_FAILURE'
+            )
+      delegate_to: localhost
+
+    - name: Assert a bring-up task id was obtained
+      ansible.builtin.assert:
+        that: bringup_task_id is defined
+        fail_msg: >-
+          Could not obtain a bring-up task id from POST /v1/sddcs
+          (response: {{ installer_api_post_deploy_result.json | default({}) }}).
+
+    - name: Wait for bring-up completion (each cycle re-authenticates; ~10 min per cycle)
+      ansible.builtin.include_tasks: installer/wait-bringup.yaml
+      loop: "{{ range(0, installer.bringup_wait_cycles | int) | list }}"
+      loop_control:
+        loop_var: bringup_wait_cycle
+
+    - name: Assert bring-up completed successfully
+      ansible.builtin.assert:
+        that: vcf_bringup_complete | default(false)
+        fail_msg: >-
+          Bring-up did not complete within the wait budget
+          ({{ installer.bringup_wait_cycles }} cycles). Check progress at
+          https://{{ installer.ipv4_address }}/vcf-installer-ui/portal/progress-viewer
+  rescue:
+    - name: Debug response | Deploy task POST
+      ansible.builtin.debug:
+        var: installer_api_post_deploy_result
+      when: installer_api_post_deploy_result is defined
+
+    - name: Debug response | GET existing bring-up id
+      ansible.builtin.debug:
+        var: installer_api_get_sddcs_result
+      when: installer_api_get_sddcs_result is defined
+
+    - name: Debug response | Retry bring-up PATCH
+      ansible.builtin.debug:
+        var: installer_api_patch_deploy_result
+      when: installer_api_patch_deploy_result is defined
+
+    - name: Debug response | Bring-up status poll
+      ansible.builtin.debug:
+        var: bringup_status_result
+      when: bringup_status_result is defined
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "Bring-up failed. Check the responses above and the installer UI progress viewer."

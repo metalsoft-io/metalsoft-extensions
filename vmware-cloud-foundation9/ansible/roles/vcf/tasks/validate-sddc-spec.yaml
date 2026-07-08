@@ -1,0 +1,24 @@
+---
+- name: Import | Basic Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-basic.yaml
+  tags: ['validation', 'basic']
+
+- name: Import | Infrastructure Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-infrastructure.yaml
+  tags: ['validation', 'infrastructure']
+
+- name: Import | Network Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-networks.yaml
+  tags: ['validation', 'network']
+
+- name: Import | IP Allocation Validation
+  ansible.builtin.import_tasks: validations/validate-allocations.yaml
+  tags: ['validation', 'allocations']
+
+- name: Import | Depot Validation
+  ansible.builtin.import_tasks: validations/validate-depot.yaml
+  tags: ['validation', 'depot']
+
+- name: Import | VCF Installer Configuration Validation
+  ansible.builtin.import_tasks: validations/validate-installer.yaml
+  tags: ['validation', 'installer']

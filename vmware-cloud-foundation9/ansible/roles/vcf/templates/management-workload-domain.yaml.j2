@@ -1,0 +1,56 @@
+workflowType: "{{ vcf.platform | default('VCF') }}"
+version: "{{ vcf_version }}"
+sddcId: "{{ sddc_id }}"
+vcfInstanceName: "{{ vcf.instance_name }}"
+ceipEnabled: {{ vcf.ceip_enabled | bool }}
+skipEsxThumbprintValidation: {{ vcf.skip_esx_thumbprint_validation | bool }}
+skipGatewayPingValidation: {{ vcf.skip_gateway_ping_validation | bool }}
+
+{% if management_pool_name is defined %}
+managementPoolName: "{{ management_pool_name }}"
+{% endif %}
+
+ntpServers: {{ ntp_servers | to_json }}
+
+{# VCF 9 dnsSpec accepts at most 2 nameservers #}
+dnsSpec:
+  subdomain: "{{ subdomain }}"
+  nameservers:
+{% for ns in dns_servers[:2] %}
+  - "{{ ns }}"
+{% endfor %}
+
+sddcManagerSpec:
+  hostname: "{{ sddc_manager_spec.hostname }}"
+  rootPassword: {{ sddc_manager_spec.root_user_credentials.password | to_json }}
+  sshPassword: {{ sddc_manager_spec.second_user_credentials.password | to_json }}
+  localUserPassword: {{ sddc_manager_spec.local_user_password | to_json }}
+  useExistingDeployment: false
+
+vcenterSpec:
+  vcenterHostname: "{{ vcenter_spec.vcenter_hostname }}"
+  rootVcenterPassword: {{ vcenter_spec.root_password | to_json }}
+  ssoDomain: "{{ psc_specs.sso_domain_name }}"
+  adminUserSsoPassword: {{ psc_specs.sso_admin_password | to_json }}
+  vmSize: "{{ vcenter_spec.vm_size }}"
+  storageSize: ""  # empty = vCenter default for the chosen vmSize
+  useExistingDeployment: false
+
+{# NOTE: the blank lines between include directives are structural — each included template renders without a trailing newline #}
+{% include 'network-specs.yaml.j2' %}
+
+{% include 'nsx-spec.yaml.j2' %}
+
+{% include 'datastore-spec.yaml.j2' %}
+
+{% include 'dvs-specs.yaml.j2' %}
+
+{% include 'cluster-spec.yaml.j2' %}
+
+{% include 'host-specs.yaml.j2' %}
+
+{% include 'vcf-operations-specs.yaml.j2' %}
+{% if vcf.deploy_automation | bool %}
+
+{% include 'vcf-automation-spec.yaml.j2' %}
+{% endif %}

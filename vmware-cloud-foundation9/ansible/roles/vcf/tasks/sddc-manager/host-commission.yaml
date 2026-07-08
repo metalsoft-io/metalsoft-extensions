@@ -1,0 +1,108 @@
+---
+# NOTE: endpoints verified against SDDC Manager v1 API docs; field-level spec shapes (HostCommissionSpec/ClusterUpdateSpec) need one live confirmation against /v1/api-doc on a deployed 9.0.1 SDDC Manager.
+- name: Include SDDC Manager | Hosts API task | get hosts
+  ansible.builtin.import_tasks: hosts/get-hosts.yaml
+
+- name: Set fact | management_network_pool_id
+  set_fact:
+    management_network_pool_id: >-
+      {{
+        (sddc_manager_hosts_response.json.elements
+          | selectattr('networkpool.name', 'equalto', management_pool_name)
+          | map(attribute='networkpool.id')
+          | list
+        )[0]
+      }}
+
+- name: Debug management_network_pool_id
+  ansible.builtin.debug:
+    msg: "Management Network Pool ID: {{ management_network_pool_id }}"
+  when: sddc_manager.api_call_debug | bool
+
+- name: SDDC Manager API | Validate Host Commission Spec
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/hosts/validations"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    body_format: json
+    body: "{{ lookup('template', 'host-commission-spec.json.j2') | from_json }}"
+    status_code:
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_host_validation_response
+  delegate_to: localhost
+
+- name: Debug SDDC Manager Host Validation Response
+  ansible.builtin.debug:
+    var: sddc_manager_host_validation_response
+  when: sddc_manager.api_call_debug | bool
+
+- name: SDDC Manager API | Get Host Commission Validation By ID
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/hosts/validations/{{ sddc_manager_host_validation_response.json.id }}"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_host_validation_status_response
+  until: sddc_manager_host_validation_status_response.json.executionStatus in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED']
+  retries: 30
+  delay: 10
+  delegate_to: localhost
+
+- name: Debug SDDC Manager Host Validation Status Response
+  ansible.builtin.debug:
+    var: sddc_manager_host_validation_status_response
+  when: sddc_manager.api_call_debug | bool
+
+- name: Fail if host validation failed
+  ansible.builtin.fail:
+    msg: "Host commission validation failed: {{ sddc_manager_host_validation_status_response.json }}"
+  when: (sddc_manager_host_validation_status_response.json.executionStatus == 'FAILED') or
+        (sddc_manager_host_validation_status_response.json.executionStatus == 'CANCELLED') or
+        (sddc_manager_host_validation_status_response.json.executionStatus == 'SKIPPED')
+
+- name: SDDC Manager API | Commission Hosts
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/hosts"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    body_format: json
+    body: "{{ lookup('template', 'host-commission-spec.json.j2') | from_json }}"
+    status_code:
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_host_commission_response
+  when: (sddc_manager_host_validation_status_response.json.executionStatus == 'COMPLETED') and
+        (sddc_manager_host_validation_status_response.json.resultStatus == 'SUCCEEDED')
+  delegate_to: localhost
+
+- name: Debug SDDC Manager Host Commission Response
+  ansible.builtin.debug:
+    var: sddc_manager_host_commission_response
+  when: sddc_manager.api_call_debug | bool
+
+- name: Include SDDC Manager | Get Task API | get task by ID
+  ansible.builtin.include_tasks: tasks/get-task.yaml
+  vars:
+    sddc_manager_task_id: "{{ sddc_manager_host_commission_response.json.id }}"
+  when:
+    - sddc_manager_host_commission_response is defined
+    - sddc_manager_host_commission_response.json.id is defined

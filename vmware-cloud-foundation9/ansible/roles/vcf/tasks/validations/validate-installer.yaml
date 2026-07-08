@@ -1,0 +1,92 @@
+---
+# VCF Installer specific preflight validations
+
+- name: Validate | VCF Installer network parameters present
+  ansible.builtin.assert:
+    that:
+      - installer is defined
+      - installer.ipv4_address is defined and installer.ipv4_address | length > 0
+      - installer.ipv4_netmask is defined and installer.ipv4_netmask | length > 0
+      - installer.ipv4_gateway is defined and installer.ipv4_gateway | length > 0
+      - installer.hostname is defined and installer.hostname | length > 0
+    fail_msg: >-
+      Missing one or more VCF Installer network parameters.
+      installer.hostname='{{ installer.hostname | default('') }}' installer.ipv4_address='{{ installer.ipv4_address | default('') }}'
+      installer.ipv4_netmask='{{ installer.ipv4_netmask | default('') }}' installer.ipv4_gateway='{{ installer.ipv4_gateway | default('') }}'
+      Ensure management_ip_allocations contains an entry tagged role=vcf-installer.
+    success_msg: "VCF Installer network parameters look OK for hostname {{ installer.hostname }}"
+
+- name: Validate | Effective OVA URL present & well-formed
+  vars:
+    effective_empty: "{{ ova_url | default('') == '' }}"  # ova_url already mapped to effective value
+  ansible.builtin.assert:
+    that:
+      - not effective_empty
+      - ova_url is match('^https?://')
+    fail_msg: >-
+      Effective OVA URL is missing or malformed. raw_ova_url='{{ raw_ova_url | default('') }}' derived_ova_url='{{ derived_ova_url | default('') }}'
+      vcf_version='{{ vcf_version | default('') }}' ova_name='{{ ova_name | default('') }}'
+      Resolution:
+        1) Provide a full extensionInstanceVariables.ova_url (https://.../something.ova)
+        OR
+        2) Ensure depot_hostname, depot_port, and ova_name produce a valid derived_ova_url.
+    success_msg: "Effective OVA URL '{{ ova_url }}' appears valid"
+
+- name: Debug | Show resolved ova_url (only when validation_debug enabled)
+  ansible.builtin.debug:
+    msg: "Resolved ova_url={{ ova_url | default('UNDEFINED') }}"
+  when: vcf.validation_debug | default(false) | bool
+
+# Optional reachability probe (disabled by default). Enable by setting installer_url_probe=true.
+# The installer OVA lives behind basic auth on the depot mirror.
+- name: Probe | OVA URL reachability (HEAD/GET)
+  vars:
+    local_installer_url_probe_retries: "{{ installer_url_probe_retries | default(5) }}"
+    local_installer_url_probe_delay: "{{ installer_url_probe_delay | default(6) }}"  # ~30s default
+    local_installer_url_probe_method: "{{ installer_url_probe_method | default('HEAD') | upper }}"
+    local_expected_status_codes: "{{ (local_installer_url_probe_method == 'GET') | ternary([200, 206], [200]) }}"
+    local_range_header: "{{ (local_installer_url_probe_method == 'GET') | ternary({'Range': 'bytes=0-0'}, {}) }}"
+  ansible.builtin.uri:
+    url: "{{ ova_url }}"
+    method: "{{ local_installer_url_probe_method }}"
+    url_username: "{{ depot.username }}"
+    url_password: "{{ depot.password }}"
+    force_basic_auth: true
+    status_code: "{{ local_expected_status_codes }}"
+    headers: "{{ local_range_header }}"
+    return_content: false
+    validate_certs: false
+    timeout: 20
+  delegate_to: localhost
+  when: installer_url_probe | default(false) | bool and (ova_url | default('') != '')
+  register: installer_ova_probe
+  retries: "{{ local_installer_url_probe_retries }}"
+  delay: "{{ local_installer_url_probe_delay }}"
+  until: installer_ova_probe is succeeded
+  failed_when: installer_ova_probe.status | default(0) not in local_expected_status_codes
+
+- name: Debug | OVA URL probe response
+  ansible.builtin.debug:
+    var: installer_ova_probe
+  when: installer_url_probe | default(false) | bool and vcf.validation_debug | default(false) | bool
+
+# Optional datastore existence pre-check (enabled by default)
+- name: Probe | Datastore info (all datastores)
+  community.vmware.vmware_datastore_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ installer.validate_certs | default(false) }}"
+  delegate_to: localhost
+  register: installer_esxi_datastores
+  when: installer_datastore_precheck | default(true) | bool
+
+- name: Validate | VCF Installer datastore exists on ESXi host
+  ansible.builtin.assert:
+    that:
+      - installer_esxi_datastores.datastores | default([]) | selectattr('name','equalto', installer.datastore) | list | length > 0
+    fail_msg: >-
+      Datastore '{{ installer.datastore }}' not found on ESXi host {{ esxi_hostname }}.
+      Available datastores: {{ installer_esxi_datastores.datastores | map(attribute='name') | join(', ') }}
+    success_msg: "Datastore '{{ installer.datastore }}' found on ESXi host {{ esxi_hostname }}"
+  when: installer_datastore_precheck | default(true) | bool

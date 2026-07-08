@@ -1,0 +1,42 @@
+---
+# One ~10-minute bring-up polling cycle: re-authenticate, poll task status, classify.
+# Included in a loop; once vcf_bringup_complete is true the remaining cycles skip cheaply.
+# Inner poll: 20 retries × 30 s = ~10 min, intentionally fixed — the operator-facing budget
+# knob is installer.bringup_wait_cycles on the outer loop in deploy-mgmt-workload-domain.yaml.
+
+- name: Obtain installer API token
+  ansible.builtin.include_tasks: get-installer-token.yaml
+  when: not (vcf_bringup_complete | default(false))
+
+- name: VCF Installer API CALL | Querying bring-up task status
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/sddcs/{{ bringup_task_id }}"
+    method: GET
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200]
+    validate_certs: "{{ installer.validate_certs }}"
+  register: bringup_status_result
+  retries: 20
+  delay: 30
+  until: >-
+    (bringup_status_result.status | default(0)) == 200 and
+    (bringup_status_result.json.status | default('IN_PROGRESS')) not in ['IN_PROGRESS', 'ROLLBACK_IN_PROGRESS']
+  failed_when: false
+  when: not (vcf_bringup_complete | default(false))
+  delegate_to: localhost
+
+- name: Fail fast on bring-up failure
+  ansible.builtin.fail:
+    msg: >-
+      Bring-up ended with status {{ bringup_status_result.json.status | default('UNKNOWN') }}.
+      Inspect failed sddcSubTasks at
+      https://{{ installer.ipv4_address }}/vcf-installer-ui/portal/progress-viewer
+      then re-run this task to retry via PATCH /v1/sddcs/{{ bringup_task_id }}.
+  when:
+    - not (vcf_bringup_complete | default(false))
+    - bringup_status_result.json.status | default('') in ['COMPLETED_WITH_FAILURE', 'ROLLBACK_SUCCESS']
+
+- name: Mark bring-up complete on success
+  ansible.builtin.set_fact:
+    vcf_bringup_complete: "{{ (bringup_status_result.json.status | default('')) == 'COMPLETED_WITH_SUCCESS' }}"
+  when: not (vcf_bringup_complete | default(false))

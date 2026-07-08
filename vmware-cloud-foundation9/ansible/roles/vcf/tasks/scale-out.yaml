@@ -1,0 +1,32 @@
+---
+- name: Import vmnics-to-uplinks.yaml
+  ansible.builtin.import_tasks: vmnics-to-uplinks.yaml
+
+- name: Build SDDC specification
+  ansible.builtin.import_tasks: build-sddc-spec.yaml
+
+- name: Validate SDDC specification
+  ansible.builtin.import_tasks: validate-sddc-spec.yaml
+
+- name: Import host commissioning tasks
+  run_once: true
+  block:
+    - name: Import get-api-authorization.yaml
+      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: Import host-commission.yaml
+      ansible.builtin.import_tasks: sddc-manager/host-commission.yaml
+
+- name: Import expand a cluster tasks
+  when: not (host_commission_only | default(false) | bool)
+  block:
+    - name: Set fact | vcenter_cluster_operation
+      ansible.builtin.set_fact:
+        vcenter_cluster_operation: "expand"
+
+    - name: Import get-api-authorization.yaml
+      ansible.builtin.import_tasks: sddc-manager/get-api-authorization.yaml
+      when: sddc_manager_access_token is not defined
+
+    - name: Import add-hosts-to-cluster.yaml
+      ansible.builtin.import_tasks: sddc-manager/add-hosts-to-cluster.yaml

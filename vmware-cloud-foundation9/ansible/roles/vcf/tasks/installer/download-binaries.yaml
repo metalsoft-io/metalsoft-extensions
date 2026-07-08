@@ -1,0 +1,79 @@
+---
+- name: Obtain installer API token
+  ansible.builtin.include_tasks: get-installer-token.yaml
+
+- name: Get release components for {{ vcf_version }}
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/releases/{{ vcf_release_sku }}/release-components?releaseVersion={{ vcf_version }}&automatedInstall=true&imageType=INSTALL"
+    method: GET
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200]
+    validate_certs: "{{ installer.validate_certs }}"
+  retries: "{{ installer.api_retries }}"
+  delay: "{{ installer.api_retries_delay }}"
+  register: release_components_result
+  until: release_components_result is succeeded
+  delegate_to: localhost
+
+# The release-components response nesting differs across installer builds, so try the known shapes
+# and union the results instead of depending on one exact path. The URL already filters
+# imageType=INSTALL. (The depot is confirmed to carry 9.0.1.0 INSTALL bundles per
+# productVersionCatalog, so an empty result here is a response-shape mismatch — the debug dump
+# below surfaces the real structure on the next run.)
+- name: Extract bundle ids (tolerant of response nesting)
+  ansible.builtin.set_fact:
+    vcf_bundle_ids: >-
+      {{ (
+           (release_components_result.json | json_query('elements[].components[].versions[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].components[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].versions[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].artifacts.bundles[].id') | default([], true))
+           | union(release_components_result.json | json_query('elements[].bundles[].id') | default([], true))
+         ) | select('string') | list | unique }}
+
+- name: Debug | Raw release-components response (only when no bundle ids were extracted)
+  ansible.builtin.debug:
+    var: release_components_result.json
+  when: vcf_bundle_ids | length == 0
+
+- name: Assert bundles were found
+  ansible.builtin.assert:
+    that: vcf_bundle_ids | length > 0
+    fail_msg: >-
+      No bundle ids extracted from release-components for {{ vcf_version }} (SKU {{ vcf_release_sku }}).
+      The raw JSON response is printed above — compare its shape to the json_query paths in this task
+      and adjust. (The depot does carry 9.0.1.0 INSTALL bundles, so this is response parsing, not depot.)
+
+- name: VCF Installer API CALL | Request bundle downloads
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/bundles/{{ item }}"
+    method: PATCH
+    headers: "{{ installer_auth_headers }}"
+    body_format: json
+    body:
+      bundleDownloadSpec:
+        downloadNow: true
+    status_code: [200, 202, 400]   # 400 = BUNDLE_DOWNLOAD_ALREADY_DOWNLOADED is acceptable on retry
+    validate_certs: "{{ installer.validate_certs }}"
+  loop: "{{ vcf_bundle_ids }}"
+  register: bundle_patch_result
+  retries: 3
+  delay: 10
+  until: bundle_patch_result is succeeded
+  delegate_to: localhost
+
+# NOTE: the `when` below is evaluated up-front by include_tasks+loop so it only applies on the first
+# iteration; the real per-cycle skip guard lives inside wait-binary-downloads.yaml.
+# Each cycle polls download-status once, prints a progress line, and pauses download_poll_interval
+# seconds (token is refreshed every download_token_reauth_every cycles).
+- name: Wait for all bundle downloads (one status poll + progress line per cycle)
+  ansible.builtin.include_tasks: wait-binary-downloads.yaml
+  loop: "{{ range(0, installer.download_wait_cycles | int) | list }}"
+  loop_control:
+    loop_var: download_wait_cycle
+  when: not (vcf_binaries_ready | default(false))
+
+- name: Assert all binaries finished downloading
+  ansible.builtin.assert:
+    that: vcf_binaries_ready | default(false)
+    fail_msg: "Bundle downloads did not complete within the wait budget — check {{ 'https://' ~ installer.ipv4_address ~ '/v1/bundles/download-status' }}"

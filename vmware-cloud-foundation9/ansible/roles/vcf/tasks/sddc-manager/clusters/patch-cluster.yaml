@@ -1,0 +1,32 @@
+---
+- name: SDDC Manager API | Update Cluster
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/clusters/{{ sddc_manager_cluster_id }}"
+    method: PATCH
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    body_format: json
+    body: "{{ lookup('template', sddc_manager_cluster_update_template) | from_json }}"
+    status_code:
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_update_cluster_response
+  delegate_to: localhost
+
+- name: Debug SDDC Manager Update Cluster Response
+  ansible.builtin.debug:
+    var: sddc_manager_update_cluster_response
+  when: sddc_manager.api_call_debug | bool
+
+- name: Set fact | sddc_manager_task_id
+  ansible.builtin.set_fact:
+    sddc_manager_task_id: "{{ sddc_manager_update_cluster_response.json.id }}"
+  when: sddc_manager_update_cluster_response.json.id is defined
+
+- name: Include SDDC Manager | Tasks API task | get task status
+  ansible.builtin.include_tasks: ../tasks/get-task.yaml
+  when: sddc_manager_task_id is defined

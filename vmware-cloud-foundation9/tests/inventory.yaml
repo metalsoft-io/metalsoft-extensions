@@ -1,0 +1,28 @@
+all:
+  children:
+    management:
+      hosts:
+        esx01.vcf.example.com:
+          ansible_host: 10.0.10.11
+          ansible_user: root
+          ansible_password: "EsxPassw0rd!123"
+          esxi_ssh_thumbprint: ""
+          esxi_ssl_thumbprint: ""
+        esx02.vcf.example.com:
+          ansible_host: 10.0.10.12
+          ansible_user: root
+          ansible_password: "EsxPassw0rd!123"
+          esxi_ssh_thumbprint: ""
+          esxi_ssl_thumbprint: ""
+        esx03.vcf.example.com:
+          ansible_host: 10.0.10.13
+          ansible_user: root
+          ansible_password: "EsxPassw0rd!123"
+          esxi_ssh_thumbprint: ""
+          esxi_ssl_thumbprint: ""
+        esx04.vcf.example.com:
+          ansible_host: 10.0.10.14
+          ansible_user: root
+          ansible_password: "EsxPassw0rd!123"
+          esxi_ssh_thumbprint: ""
+          esxi_ssl_thumbprint: ""

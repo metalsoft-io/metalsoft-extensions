@@ -1,0 +1,56 @@
+{#
+# Reusable Jinja2 macros for VMware Cloud Foundation templates
+# This file contains common patterns used across multiple template components
+#}
+
+{# Macro to render network specification #}
+{% macro render_network_spec(network, network_type) %}
+- networkType: "{{ network_type.type_name }}"
+  teamingPolicy: "{{ network_type.teaming_policy }}"
+  subnet: "{{ network.subnet }}"
+  gateway: "{{ network.gateway }}"
+  vlanId: {{ network.vlan_id | int }}
+  mtu: {{ network.mtu | int }}
+{% if network.startIp and network.endIp %}
+  includeIpAddressRanges:
+    - startIpAddress: "{{ network.startIp }}"
+      endIpAddress: "{{ network.endIp }}"
+{% endif %}
+  portGroupKey: "{{ network_type.port_group_key }}"
+  standbyUplinks: {{ network_type.standby_uplinks }}
+  activeUplinks: {{ network_type.active_uplinks }}
+{% endmacro %}
+
+{# Macro to render DVS vmnic to uplink mapping #}
+{% macro render_vmnic_uplink(nic) %}
+- id: "{{ nic.id }}"
+  uplink: "{{ nic.uplink }}"
+{% endmacro %}
+
+{# Macro to render resource pool specification #}
+{% macro render_resource_pool(resource_pool) %}
+- name: "{{ resource_pool.name }}"
+  cpuSharesLevel: "{{ resource_pool.cpu_shares_level }}"
+  cpuSharesValue: {{ resource_pool.cpu_shares_value }}
+  memorySharesValue: {{ resource_pool.memory_shares_value }}
+  cpuReservationPercentage: {{ resource_pool.cpu_reservation_percentage }}
+  memoryLimit: {{ resource_pool.memory_limit }}
+  memoryReservationPercentage: {{ resource_pool.memory_reservation_percentage }}
+  cpuReservationExpandable: {{ resource_pool.cpu_reservation_expandable }}
+  memoryReservationExpandable: {{ resource_pool.memory_reservation_expandable }}
+  memorySharesLevel: "{{ resource_pool.memory_shares_level }}"
+  cpuLimit: {{ resource_pool.cpu_limit }}
+  type: "{{ resource_pool.type }}"
+{% endmacro %}
+
+{# Macro to render host specification #}
+{% macro render_host_spec(host, hostvars, subdomain, skip_thumbprints) %}
+- hostname: "{{ host | regex_replace('\\.' ~ (subdomain | regex_escape) ~ '$', '') }}"
+  credentials:
+    username: "{{ hostvars[host].ansible_user }}"
+    password: {{ hostvars[host].ansible_password | to_json }}
+{% if not (skip_thumbprints | bool) %}
+  sshThumbprint: "{{ hostvars[host].esxi_ssh_thumbprint | default('') }}"
+  sslThumbprint: "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}"
+{% endif %}
+{% endmacro %}

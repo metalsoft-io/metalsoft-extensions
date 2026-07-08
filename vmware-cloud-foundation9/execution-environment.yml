@@ -1,0 +1,80 @@
+---
+version: 3
+# https://docs.ansible.com/projects/builder/en/stable/definition/#images
+images:
+  base_image:
+    name: redhat/ubi10-minimal:10.1
+
+# https://docs.ansible.com/projects/builder/en/stable/definition/#dependencies
+dependencies:
+  ansible_core:
+    package_pip: ansible-core==2.20.1
+  ansible_runner:
+    package_pip: ansible-runner
+  python:
+    - psutil
+    - pyVmomi==9.0.0.0
+    - vmware-vcenter==9.0.0.0
+    - vcf-sdk==9.0.0.0
+    # Pin jaraco.context to a fixed version to address GHSA-58pv-8j8x-9vj2
+    - jaraco.context==6.1.0
+    # Required for json_query filter
+    - jmespath
+  system:
+    - shadow-utils [platform:rpm]
+    - openssh-clients [platform:rpm]
+    - bind-utils [platform:rpm]
+    - openssl [platform:rpm]
+    - python3.13 [platform:rpm]
+    - python3.13-devel [platform:rpm]
+    - gcc [platform:rpm]
+    - make [platform:rpm]
+    - libffi-devel [platform:rpm]
+    - openssl-devel [platform:rpm]
+  galaxy:
+    collections:
+      - name: community.general
+        version: ">=9.0.0"
+      - name: community.vmware
+        version: 6.1.0
+      - name: vmware.vmware
+        version: 2.7.0
+  python_interpreter:
+    package_system: "python3.13"
+    python_path: "/usr/bin/python3.13"
+  exclude:
+    python:
+      - docker
+    system:
+      - python3-Cython
+
+# https://docs.ansible.com/projects/builder/en/stable/definition/#build-arg-defaults
+# build_arg_defaults:
+build_arg_defaults:
+  PKGMGR_PRESERVE_CACHE: 'always'
+
+# https://docs.ansible.com/projects/builder/en/stable/definition/#additional-build-files
+# additional_build_files:
+
+# https://docs.ansible.com/projects/builder/en/stable/definition/#additional-build-steps
+additional_build_steps:
+  prepend_base:
+    - RUN echo This is a prepend base command!
+    # Install EPEL and Python 3.13
+    - RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm || true
+    - RUN /bin/sh -c "if [ ! -x /usr/bin/dnf ]; then ln -s /usr/bin/microdnf /usr/bin/dnf || true; fi"
+
+  prepend_final: |
+    RUN whoami
+    RUN cat /etc/os-release
+  append_final:
+    - RUN echo This is a post-install command!
+    - RUN useradd -u 1000 -g 0 -m runner || echo "User 1000 already exists"
+    - RUN mkdir -p /runner/project/.ansible/tmp && chmod 1777 /runner/project/.ansible/tmp
+    - RUN ls -la /etc
+    - RUN if [ -x /usr/bin/python3.13 ] && [ ! -x /usr/bin/python3 ]; then ln -s /usr/bin/python3.13 /usr/bin/python3 || true; fi
+    # 4.Verify the change during the build process using PYCMD
+    - RUN echo "--- Final Image Python Version ---" && $PYCMD --version
+
+# https://docs.ansible.com/projects/builder/en/stable/definition/#options
+# options:

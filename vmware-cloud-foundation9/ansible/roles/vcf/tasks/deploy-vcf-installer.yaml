@@ -1,0 +1,84 @@
+---
+# Deploys the VCF Installer appliance (same OVA as SDDC Manager) onto the first management ESXi host.
+# The OVA is fetched via get_url (NOT vmware_deploy_ovf url=) because the depot uses basic auth whose password can contain '/' and '=' — do not "optimize" back to URL streaming.
+# A rerun after a partial deployment must not re-download/redeploy: probe the installer first.
+- name: Probe for an already-running VCF Installer
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/vcf-installer-ui/login"
+    method: GET
+    status_code: 200
+    validate_certs: "{{ installer.validate_certs }}"
+    timeout: 10
+  register: installer_probe
+  failed_when: false
+  delegate_to: localhost
+
+- name: Skip | VCF Installer already deployed
+  ansible.builtin.debug:
+    msg: "VCF Installer already responding at {{ installer.ipv4_address }} — skipping OVA download and deployment."
+  when: installer_probe.status | default(0) == 200
+
+- name: Download VCF Installer OVA from depot
+  ansible.builtin.get_url:
+    url: "{{ ova_url }}"
+    dest: "/tmp/{{ ova_name }}"
+    url_username: "{{ depot.username }}"
+    url_password: "{{ depot.password }}"
+    force_basic_auth: true
+    validate_certs: false
+    mode: "0644"
+    checksum: "{{ extensionInstanceVariables.installer_ova_checksum | default(omit) }}"
+  register: installer_ova_download
+  retries: 3
+  delay: 10
+  until: installer_ova_download is succeeded
+  when: installer_probe.status | default(0) != 200
+  delegate_to: localhost
+
+- name: Instantiate VCF Installer appliance
+  vmware_deploy_ovf:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    name: "{{ installer.hostname }}"
+    wait_for_ip_address: true
+    validate_certs: "{{ installer.validate_certs }}"
+    power_on: true
+    allow_duplicates: false
+    datastore: "{{ installer.datastore }}"
+    disk_provisioning: "{{ installer.disk_provisioning }}"
+    inject_ovf_env: true
+    ovf: "/tmp/{{ ova_name }}"
+    networks:
+      "Network 1": "VM Network"
+    properties:
+      vami.hostname: "{{ installer.hostname_fqdn }}"
+      vami.ip0.SDDC-Manager: "{{ installer.ipv4_address }}"
+      vami.netmask0.SDDC-Manager: "{{ installer.ipv4_netmask }}"
+      vami.gateway.SDDC-Manager: "{{ installer.ipv4_gateway }}"
+      vami.DNS.SDDC-Manager: "{{ installer.ipv4_dns }}"
+      vami.domain.SDDC-Manager: "{{ domain }}"
+      vami.searchpath.SDDC-Manager: "{{ dns_searchpath }}"
+      guestinfo.ntp: "{{ ntp_servers | join(',') }}"
+      ROOT_PASSWORD: "{{ installer.root_password }}"
+      LOCAL_USER_PASSWORD: "{{ installer.admin_password }}"
+  when: installer_probe.status | default(0) != 200
+  delegate_to: localhost
+
+- name: Wait for VCF Installer UI/API readiness
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/vcf-installer-ui/login"
+    method: GET
+    status_code: 200
+    validate_certs: "{{ installer.validate_certs }}"
+  retries: "{{ installer.initialize_api_retries }}"
+  delay: "{{ installer.initialize_api_retries_delay }}"
+  register: installer_ready_result
+  until: installer_ready_result is succeeded
+  delegate_to: localhost
+
+- name: Remove downloaded installer OVA
+  ansible.builtin.file:
+    path: "/tmp/{{ ova_name }}"
+    state: absent
+  delegate_to: localhost

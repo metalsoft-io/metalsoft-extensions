@@ -1,0 +1,31 @@
+---
+# SDDC Specification Orchestrator Builder
+# Coordinate the building of all VCF SDDC specifications through modular task includes
+
+- name: "SDDC Spec | Build network and subnet specifications"
+  include_tasks: sddc-spec/network-specs.yaml
+  tags: [network, subnets]
+
+- name: "SDDC Spec | Build management services (VCF Installer & SDDC Manager)"
+  include_tasks: sddc-spec/management-services.yaml
+  tags: [management, installer, sddc-manager]
+
+- name: "SDDC Spec | Build NSX-T specifications"
+  include_tasks: sddc-spec/nsx-specs.yaml
+  tags: [nsx, networking]
+
+- name: "SDDC Spec | Build storage specifications"
+  include_tasks: sddc-spec/storage-specs.yaml
+  tags: [storage, vsan]
+
+- name: "SDDC Spec | Build compute cluster specifications"
+  include_tasks: sddc-spec/compute-specs.yaml
+  tags: [compute, cluster]
+
+- name: "SDDC Spec | Build vCenter and PSC specifications"
+  include_tasks: sddc-spec/vcenter-specs.yaml
+  tags: [vcenter, psc]
+
+- name: "SDDC Spec | Build VCF Operations specifications"
+  include_tasks: sddc-spec/vcf-operations-specs.yaml
+  tags: [operations, vcf-ops]

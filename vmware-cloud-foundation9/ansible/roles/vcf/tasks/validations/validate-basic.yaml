@@ -1,0 +1,96 @@
+---
+# Validates foundational configuration like NTP, DNS, and domain settings
+
+- name: Validate | Basic required variables
+  tags: ['validation', 'basic']
+  block:
+    - name: Validate | Required basic variables
+      vars:
+        basic_validations:
+          - { label: 'ntp_servers', value: '{{ ntp_servers }}' }
+          - { label: 'domain', value: '{{ domain }}' }
+          - { label: 'subdomain', value: '{{ subdomain }}' }
+          - { label: 'dns_servers', value: '{{ dns_servers }}' }
+          - { label: 'dns_searchpath', value: '{{ dns_searchpath }}' }
+      ansible.builtin.assert:
+        that:
+          - item.value is not none
+          - (item.value | length) > 0
+        fail_msg: "{{ item.label }} is required"
+        success_msg: "{{ item.label }} is set to {{ item.value }}"
+      loop: "{{ basic_validations }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Validate | DNS zone is not .local (breaks VCF 9 services platform)
+      ansible.builtin.assert:
+        that: not (domain | lower).endswith('.local')
+        fail_msg: "VCF 9 deployment fails with .local domains (VCF Automation services platform) — use a routable DNS zone"
+      when: vcf.deploy_automation | bool
+
+    - name: Validate | Probe primary DNS resolver for the management zone (fail fast)
+      # Query the FIRST configured resolver directly — that is the one the appliance hits first, and a
+      # public resolver there returns NXDOMAIN for the management zone, which breaks resolution even if
+      # an internal resolver is listed after it. Uses whichever lookup tool the EE provides
+      # (dig/nslookup/host); each prints the resolved A record(s), one per line. If NONE is present it
+      # prints NO_DNS_TOOL and the assert below skips (best-effort) so it can never false-fail on a
+      # missing binary. NOTE: this runs inside the ansible-runner EE container (delegate_to localhost),
+      # so the lookup tool must exist in the EE image, not just on the site-controller host.
+      ansible.builtin.shell: |
+        set -o pipefail
+        fqdn="{{ installer.hostname_fqdn }}"
+        server="{{ dns_servers[0] }}"
+        if command -v dig >/dev/null 2>&1; then
+          dig +short @"$server" "$fqdn" A
+        elif command -v nslookup >/dev/null 2>&1; then
+          nslookup "$fqdn" "$server" 2>/dev/null | awk '/^Address: /{print $2}' | grep -v '#' || true
+        elif command -v host >/dev/null 2>&1; then
+          host "$fqdn" "$server" 2>/dev/null | awk '/has address/{print $NF}' || true
+        else
+          echo NO_DNS_TOOL
+        fi
+      args:
+        executable: /bin/bash
+      register: dns_zone_probe
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      when: installer.ipv4_address | default('') | length > 0
+
+    - name: Validate | Primary DNS resolver resolves the management zone to the installer IP
+      ansible.builtin.assert:
+        that:
+          - installer.ipv4_address in (dns_zone_probe.stdout_lines | default([]))
+        fail_msg: >-
+          Primary DNS resolver {{ dns_servers[0] | default('<none>') }} did not resolve the installer
+          FQDN {{ installer.hostname_fqdn }} to its allocated IP {{ installer.ipv4_address }}
+          (answer: {{ (dns_zone_probe.stdout | default('') | trim) or 'NXDOMAIN / no answer' }}).
+          Public resolvers (1.1.1.1/8.8.8.8) cannot resolve the {{ subdomain }} management zone, so the
+          appliance would crash-loop on getLocalHost() and bring-up DNS validation would fail. Set the
+          'DNSResolvers' field to your internal resolver that hosts this zone, listed FIRST (an internal
+          resolver must precede any public fallback, or NXDOMAIN from the public one breaks resolution).
+        success_msg: "DNS OK: {{ dns_servers[0] }} resolves {{ installer.hostname_fqdn }} -> {{ installer.ipv4_address }}"
+      when:
+        - installer.ipv4_address | default('') | length > 0
+        # Skip (don't false-fail) only when the EE has no DNS lookup tool at all.
+        - "'NO_DNS_TOOL' not in (dns_zone_probe.stdout | default('NO_DNS_TOOL'))"
+  rescue:
+    - name: Debug | Dump basic validation variables
+      ansible.builtin.debug:
+        msg: |-
+          ntp_servers={{ ntp_servers | default('') }}
+          domain={{ domain | default('') }}
+          subdomain={{ subdomain | default('') }}
+          dns_servers={{ dns_servers | default('') }}
+          dns_searchpath={{ dns_searchpath | default('') }}
+      when: vcf.validation_debug | default(false) | bool
+    - name: Fail | Re-raise basic validations failure
+      ansible.builtin.fail:
+        msg: |-
+          Basic variable validation failed.
+          {{ not (vcf.validation_debug | default(false) | bool)
+             | ternary(
+               'Set vcf.validation_debug=true for details.',
+               'Debug data was printed above.'
+             )
+          }}

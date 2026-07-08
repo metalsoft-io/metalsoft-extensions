@@ -1,0 +1,173 @@
+---
+# Network and subnet extraction
+- name: Build | Static uplink defaults
+  set_fact:
+    m_esxi_mgmt_active_uplinks:
+      - uplink1
+      - uplink2
+    m_vm_mgmt_active_uplinks:
+      - uplink1
+      - uplink2
+    m_vmotion_active_uplinks:
+      - uplink1
+      - uplink2
+    m_vsan_active_uplinks:
+      - uplink1
+      - uplink2
+
+# Network subnets
+- name: Build | Network subnets (role-tag first match)
+  vars:
+    _net_objects:
+      - var_name: nsx_network_subnet
+        net: "{{ nsx_network }}"
+        role: nsx-host-overlay-pool
+      - var_name: vmotion_network_subnet
+        net: "{{ vmotion_network }}"
+        role: vmotion-pool
+      - var_name: vsan_network_subnet
+        net: "{{ vsan_network }}"
+        role: vsan-pool
+      - var_name: vm_mgmt_network_subnet
+        net: "{{ vm_mgmt_network }}"
+        role: vm-mgmt-pool
+        cond: "{{ vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool }}"
+  set_fact:
+    "{{ item.var_name }}": >-
+      {%- set found = {} -%}
+      {%- set net_obj = item.net -%}
+      {%- if (item.cond is not defined or (item.cond | bool)) and net_obj and net_obj.get('subnets') -%}
+        {%- for subnet in net_obj.subnets -%}
+          {%- for ipr in subnet.get('ipRanges', []) -%}
+            {%- if (not found) and ipr.get('tags', {}).get('role') == item.role -%}
+              {%- set _ = found.update({
+                'vlan_id': net_obj.get('vlan_id', ''),
+                'subnet': subnet.get('subnet', ''),
+                'netmask': ipr.get('netmask', subnet.get('netmask', '')),
+                'gateway': ipr.get('gateway', subnet.get('gateway', '')),
+                'maskBits': ipr.get('maskBits', ''),
+                'networkAddress': ipr.get('networkAddress', ''),
+                'mtu': subnet.get('mtu', 1500),
+                'startIp': ipr.get('startIp', ''),
+                'endIp': ipr.get('endIp', ''),
+                'ipType': subnet.get('ipType', '')
+              }) -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{- found -}}
+  loop: "{{ _net_objects }}"
+
+- name: Build | Management network subnet (first only)
+  set_fact:
+    mgmt_network_subnet: "{{ (mgmt_network.subnets | default([]) | first) | default({}) }}"
+
+- name: Build | Management IP allocations (respect distinct VM mgmt VLAN)
+  set_fact:
+    management_ip_allocations: >-
+      {{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool)
+         | ternary(
+            (vm_mgmt_network | json_query('subnets[].ipAllocations[]') | default([], true)),
+            (mgmt_network     | json_query('subnets[].ipAllocations[]') | default([], true))
+         ) }}
+
+- name: Build | Derived management selection flags
+  set_fact:
+    vm_management_distinct_vlan: "{{ vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool }}"
+    vm_management_selected_subnet: "{{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool) | ternary(vm_mgmt_network_subnet, mgmt_network_subnet) }}"
+    vm_management_selected_network: "{{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool) | ternary(vm_mgmt_network, mgmt_network) }}"
+
+- name: Build | Network helper specs
+  set_fact:
+    vm_management_network_spec:
+      subnet: "{{ vm_management_selected_subnet.subnet | default(vm_management_selected_network.subnet | default('')) | default('') }}"
+      gateway: "{{ vm_management_selected_subnet.gateway | default(vm_management_selected_network.gateway | default('')) | default('') }}"
+      vlan_id: "{{ vm_management_selected_network.vlan_id | default('') }}"
+      mtu: "{{ vm_management_selected_subnet.mtu | default(1500) }}"
+      startIp: "{{ vm_management_selected_subnet.startIp | default('') }}"
+      endIp: "{{ vm_management_selected_subnet.endIp | default('') }}"
+    management_network_spec:
+      subnet: "{{ mgmt_network_subnet.subnet | default(mgmt_network.subnet | default('')) | default('') }}"
+      gateway: "{{ mgmt_network_subnet.gateway | default(mgmt_network.gateway | default('')) | default('') }}"
+      vlan_id: "{{ mgmt_network.vlan_id | default('') }}"
+      mtu: "{{ mgmt_network_subnet.mtu | default(1500) }}"
+      startIp: "{{ mgmt_network_subnet.startIp | default('') }}"
+      endIp: "{{ mgmt_network_subnet.endIp | default('') }}"
+    vmotion_network_spec:
+      subnet: "{{ vmotion_network_subnet.subnet | default('') }}"
+      gateway: "{{ vmotion_network_subnet.gateway | default('') }}"
+      vlan_id: "{{ vmotion_network.vlan_id | default('') }}"
+      mtu: "{{ vmotion_network_subnet.mtu | default(9000) }}"
+      startIp: "{{ vmotion_network_subnet.startIp | default('') }}"
+      endIp: "{{ vmotion_network_subnet.endIp | default('') }}"
+    vsan_network_spec:
+      subnet: "{{ vsan_network_subnet.subnet | default('') }}"
+      gateway: "{{ vsan_network_subnet.gateway | default('') }}"
+      vlan_id: "{{ vsan_network.vlan_id | default('') }}"
+      mtu: "{{ vsan_network_subnet.mtu | default(9000) }}"
+      startIp: "{{ vsan_network_subnet.startIp | default('') }}"
+      endIp: "{{ vsan_network_subnet.endIp | default('') }}"
+
+- name: Build | Uplinks MAC arrays
+  set_fact:
+    server_network_uplinks: "{{ (management_server_instance_group_data.serverInstances | first | default({})).logicalNetworks | default([]) }}"
+    m_esxi_mgmt_active_uplinks_mac_array: >-
+      {{ server_network_uplinks | selectattr('name', 'equalto', 'vcf-mgmt') | map(attribute='uplinks') | first | default([]) }}
+    m_vm_mgmt_active_uplinks_mac_array: >-
+      {{ (vcf.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | bool)
+         | ternary(
+            (server_network_uplinks | json_query("[?name=='vcf-vm-mgmt'].uplinks") | first | default([])),
+            []
+         ) }}
+    m_vmotion_active_uplinks_mac_array: >-
+      {{ server_network_uplinks | selectattr('name', 'equalto', 'vcf-vmotion') | map(attribute='uplinks') | first | default([]) }}
+    m_vsan_active_uplinks_mac_array: >-
+      {{ server_network_uplinks | selectattr('name', 'equalto', 'vcf-vsan') | map(attribute='uplinks') | first | default([]) }}
+
+- name: Build | Network types (network_specs)
+  set_fact:
+    network_specs:
+      network_type_vm_mgmt:
+        type_name: VM_MANAGEMENT
+        teaming_policy: "{{ extensionInstanceVariables.m_vm_mgmt_teaming_policy | default('loadbalance_loadbased') }}"
+        port_group_key: "{{ vm_management_portgroup_name }}"
+        standby_uplinks: "{{ m_vm_mgmt_standby_uplinks | default([]) }}"
+        active_uplinks: "{{ m_vm_mgmt_active_uplinks | default(['uplink1', 'uplink2']) }}"
+      network_type_esxi_mgmt:
+        type_name: MANAGEMENT
+        teaming_policy: "{{ extensionInstanceVariables.m_esxi_mgmt_teaming_policy | default('loadbalance_loadbased') }}"
+        port_group_key: "{{ esxi_management_portgroup_name }}"
+        standby_uplinks: "{{ m_esxi_mgmt_standby_uplinks | default([]) }}"
+        active_uplinks: "{{ m_esxi_mgmt_active_uplinks | default(['uplink1', 'uplink2']) }}"
+      network_type_vmotion:
+        type_name: VMOTION
+        teaming_policy: "{{ extensionInstanceVariables.m_vmotion_teaming_policy | default('loadbalance_loadbased') }}"
+        port_group_key: "{{ vmotion_portgroup_name }}"
+        standby_uplinks: "{{ m_vmotion_standby_uplinks | default([]) }}"
+        active_uplinks: "{{ m_vmotion_active_uplinks | default(['uplink1', 'uplink2']) }}"
+      network_type_vsan:
+        type_name: VSAN
+        teaming_policy: "{{ extensionInstanceVariables.m_vsan_teaming_policy | default('loadbalance_loadbased') }}"
+        port_group_key: "{{ vsan_portgroup_name }}"
+        standby_uplinks: "{{ m_vsan_standby_uplinks | default([]) }}"
+        active_uplinks: "{{ m_vsan_active_uplinks | default(['uplink1', 'uplink2']) }}"
+
+- name: Build | DVS specs
+  set_fact:
+    dvs_management:
+      - networks: ["MANAGEMENT", "VM_MANAGEMENT", "VMOTION", "VSAN"]
+        nics:
+          - { id: "{{ uplink1_vmnic_name if uplink1_vmnic_name is defined and uplink1_vmnic_name != '' else 'vmnic2' }}", uplink: uplink1 }
+          - { id: "{{ uplink2_vmnic_name if uplink2_vmnic_name is defined and uplink2_vmnic_name != '' else 'vmnic3' }}", uplink: uplink2 }
+        nsx: true
+        mtu: 9000
+    dvs_nsx_specs:
+      nsxt_switch_config:
+        transport_zones:
+          - { name: m-overlay-tz, transport_type: OVERLAY }
+          - { name: m-vlan-tz, transport_type: VLAN }
+      nsx_teamings:
+        policy: LOADBALANCE_SRCID
+        active_uplinks: [uplink1, uplink2]
+        standby_uplinks: []

@@ -1,0 +1,25 @@
+{#
+# NSX specifications for VCF 9.x (nsxtManagers carry hostname only; VIP IP comes from DNS)
+#}
+nsxtSpec:
+  nsxtManagerSize: "{{ nsx_spec.nsxt_manager_size }}"
+  nsxtManagers:
+  - hostname: "{{ nsx_spec.nsxt_manager_a.hostname }}"
+  - hostname: "{{ nsx_spec.nsxt_manager_b.hostname }}"
+  - hostname: "{{ nsx_spec.nsxt_manager_c.hostname }}"
+  vipFqdn: "{{ nsx_spec.nsxt_manager_vip.hostname }}"
+  rootNsxtManagerPassword: {{ nsx_spec.nsxt_manager_root_password | to_json }}
+  nsxtAdminPassword: {{ nsx_spec.nsxt_manager_admin_password | to_json }}
+  nsxtAuditPassword: {{ nsx_spec.nsxt_manager_audit_password | to_json }}
+  transportVlanId: {{ nsx_spec.tep_transport_vlan_id | int }}
+  skipNsxOverlayOverManagementNetwork: true  # host TEPs use the dedicated vcf-nsx VLAN/pool below, not the management network
+  ipAddressPoolSpec:
+    name: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.name }}"
+    description: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.description }}"
+    subnets:
+    - ipAddressPoolRanges:
+      - start: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.start }}"
+        end: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.end }}"
+      cidr: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.cidr }}"
+      gateway: "{{ nsx_spec.nsxt_host_overlay_tep_ip_pool.subnet_ip_rage.gateway }}"
+  useExistingDeployment: false

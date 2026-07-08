@@ -1,0 +1,31 @@
+---
+- name: Build SDDC specification
+  ansible.builtin.import_tasks: build-sddc-spec.yaml
+
+- name: Include determine-host-id.yaml
+  block:
+    - name: Include SDDC Manager | Get API Authorization task | get API authorization
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: Include SDDC Manager | Hosts API task | determine host ID
+      ansible.builtin.include_tasks: sddc-manager/hosts/determine-host-id.yaml
+
+- name: Include compact cluster tasks
+  when: host_id_to_remove is defined
+  block:
+    - name: Include get-api-authorization.yaml
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+      when: sddc_manager_access_token is not defined
+
+    - name: Include remove-hosts-from-cluster.yaml
+      ansible.builtin.include_tasks: sddc-manager/remove-hosts-from-cluster.yaml
+
+- name: Include host decommissioning tasks
+  when: host_id_to_remove is defined
+  block:
+    - name: Include get-api-authorization.yaml
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+      when: sddc_manager_access_token is not defined
+
+    - name: Include host-decommission.yaml
+      ansible.builtin.include_tasks: sddc-manager/host-decommission.yaml

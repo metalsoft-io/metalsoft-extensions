@@ -1,0 +1,59 @@
+---
+# Extract management server instance group variables (compatible with different variables.json structures)
+- name: Build | Management server instance group custom variables
+  set_fact:
+    management_server_instance_group_custom_variables: >
+      {{ {}
+         | combine((management | default({}, true)), recursive=True)
+         | combine(((management_server_instance_group_data | default({})).customVariables | default({}, true)), recursive=True)
+      }}
+
+# Extract DNS records data for VCF Installer and SDDC Manager
+- name: Build | Extract key IP allocations (VCF Installer & SDDC Manager)
+  set_fact:
+    installer_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcf-installer') | first | default({}) }}"
+    sddc_manager_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'sddc-manager') | first | default({}) }}"
+
+# VCF Installer specification construction
+- name: Build | VCF Installer spec
+  set_fact:
+    installer:
+      hostname_fqdn: "{{ installer_config.fqdn | default('installer.vmware.local') }}"
+      hostname: "{{ installer_config.fqdn | default('installer.vmware.local') | split('.') | first }}"
+      admin_password: "{{ extensionInstanceVariables.installer_admin_password | default('VMw@re1!VMw@re1!') }}"
+      root_password: "{{ extensionInstanceVariables.installer_root_password | default('VMw@re1!VMw@re1!') }}"
+      ipv4_address: "{{ installer_config.ip | default('') }}"
+      ipv4_netmask: "{{ installer_config.netmask | default('') }}"
+      ipv4_gateway: "{{ installer_config.gateway | default('') }}"
+      ipv4_dns: "{{ dns_servers | join(',') }}"
+      datastore: "{{ extensionInstanceVariables.installer_datastore | default('datastore1') }}"
+      disk_provisioning: "{{ extensionInstanceVariables.installer_disk_provisioning | default('thin') }}"
+      validate_certs: "{{ extensionInstanceVariables.installer_validate_certs | default('no') }}"
+      initialize_api_retries: "{{ extensionInstanceVariables.installer_initialize_api_retries | default(180) }}"
+      initialize_api_retries_delay: "{{ extensionInstanceVariables.installer_initialize_api_retries_delay | default(10) }}"
+      api_retries: "{{ extensionInstanceVariables.installer_api_retries | default(5) }}"
+      api_retries_delay: "{{ extensionInstanceVariables.installer_api_retries_delay | default(10) }}"
+      validation_api_retries: "{{ extensionInstanceVariables.installer_validation_api_retries | default(360) }}"
+      validation_api_retries_delay: "{{ extensionInstanceVariables.installer_validation_api_retries_delay | default(10) }}"
+      bringup_wait_cycles: "{{ extensionInstanceVariables.installer_bringup_wait_cycles | default(72) }}"
+      depot_sync_retries: "{{ extensionInstanceVariables.installer_depot_sync_retries | default(90) }}"
+      # One poll per cycle now (was a 20x inner retry loop), so cycles cover the full wait budget:
+      # 240 cycles x 60s poll interval = ~4h ceiling, matching the previous 24 cycles x ~10min.
+      download_wait_cycles: "{{ extensionInstanceVariables.installer_download_wait_cycles | default(240) }}"
+      download_poll_interval: "{{ extensionInstanceVariables.installer_download_poll_interval | default(60) }}"
+      download_token_reauth_every: "{{ extensionInstanceVariables.installer_download_token_reauth_every | default(10) }}"
+
+# SDDC Manager specification construction
+- name: Build | SDDC Manager spec
+  set_fact:
+    sddc_manager_spec:
+      hostname_fqdn: "{{ sddc_manager_config.fqdn | default('sddc-manager.vmware.local') }}"
+      hostname: "{{ sddc_manager_config.fqdn | default('') | split('.') | first }}"
+      local_user_password: "{{ extensionInstanceVariables.sddc_local_admin_password | default('VMw@re1!VMw@re1!') }}"
+      root_user_credentials:
+        username: "{{ management_server_instance_group_custom_variables.sddc_root_username | default('root') }}"
+        password: "{{ extensionInstanceVariables.sddc_root_password | default('VMw@re1!VMw@re1!') }}"
+      second_user_credentials:
+        username: "{{ management_server_instance_group_custom_variables.sddc_second_username | default('vcf') }}"
+        password: "{{ extensionInstanceVariables.sddc_second_user_password | default('VMw@re1!VMw@re1!') }}"
+      ipv4_address: "{{ sddc_manager_config.ip | default('') }}"

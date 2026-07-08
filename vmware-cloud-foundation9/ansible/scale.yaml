@@ -1,0 +1,32 @@
+---
+- name: Scale out cluster
+  hosts: management_scale_out
+  gather_facts: false
+  tasks:
+    - name: Note execution start time
+      ansible.builtin.debug:
+        msg: "Execution started at {{ now(utc=true).strftime('%Y-%m-%d %H:%M:%S') }} UTC"
+      run_once: true
+      delegate_to: localhost
+
+    - name: Scale out cluster
+      when: groups['management_scale_out'] is defined and (groups['management_scale_out'] | length > 0)
+      block:
+        - name: Pre-configure new ESXi hosts
+          ansible.builtin.include_role:
+            name: esxi
+        - name: Include scale out tasks
+          ansible.builtin.include_role:
+            name: vcf
+            tasks_from: scale-out.yaml
+
+- name: Scale in cluster
+  hosts: management_scale_in
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Scale in cluster
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: scale-in.yaml
+      when: groups['management_scale_in'] is defined and (groups['management_scale_in'] | length > 0)

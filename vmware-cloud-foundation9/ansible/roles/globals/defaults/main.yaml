@@ -58,6 +58,8 @@ vcf:
   skip_esx_thumbprint_validation: "{{ extensionInstanceVariables.skip_esx_thumbprint_validation | default(false) | bool }}"
   validation_debug: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
   skip_gateway_ping_validation: "{{ extensionInstanceVariables.skip_gateway_ping_validation | default(false) | bool }}"
+  # vCenter 9.x rejects specs carrying license keys — must stay true unless deploying with keys on an older stack
+  deploy_without_license_keys: "{{ extensionInstanceVariables.deploy_without_license_keys | default(true) | bool }}"
   deploy_automation: "{{ extensionInstanceVariables.deploy_vcf_automation | default(false) | bool }}"
   instance_name: "{{ extensionInstanceVariables.vcf_instance_name | default(extension_instance_id ~ '-vcf', true) }}"
 

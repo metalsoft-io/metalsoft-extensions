@@ -307,6 +307,13 @@
       "options": {}
     },
     {
+      "label": "deploy_without_license_keys",
+      "name": "deploy_without_license_keys",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
       "label": "vsan_failures_to_tolerate",
       "name": "vsan_failures_to_tolerate",
       "inputType": "ExtensionInputInteger",

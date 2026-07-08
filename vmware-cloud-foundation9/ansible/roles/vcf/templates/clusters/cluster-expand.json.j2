@@ -19,6 +19,7 @@
             }{{ "," if not loop.last else "" }}
 {% endfor %}
         ],
-        "inter_rack_expansion": false
+        "inter_rack_expansion": false,
+        "deployWithoutLicenseKeys": {{ vcf.deploy_without_license_keys | default(true) | bool | lower }}
     }
 }

@@ -1,4 +1,23 @@
 ---
+# On a fresh host the OS template provides the standard vSwitch; after a successful
+# bring-up the installer migrates host networking to the VDS and removes the standard
+# switch. A rerun must treat a missing vSwitch as "already migrated", not as an error.
+- name: Check whether the standard vSwitch exists
+  community.vmware.vmware_vswitch_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ inventory_hostname }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+  delegate_to: localhost
+  register: esxi_vswitch_info
+
+- name: Determine whether the host still uses the standard vSwitch
+  ansible.builtin.set_fact:
+    esxi_std_vswitch_present: >-
+      {{ esxi_vswitch_name in
+         (esxi_vswitch_info.hosts_vswitch_info | dict2items | map(attribute='value') | first | default({})) }}
+
 - name: Add Management Network VM Portgroup
   community.vmware.vmware_portgroup:
     hostname: "{{ esxi_hostname }}"
@@ -10,7 +29,16 @@
     vlan_id: "{{ esxi_vm_mgmt_vlan_id }}"
     validate_certs: "{{ esxi_validate_certs }}"
     state: present
+  when: esxi_std_vswitch_present | bool
   delegate_to: localhost
+
+- name: Skip | Host already migrated to the VDS
+  ansible.builtin.debug:
+    msg: >-
+      vSwitch '{{ esxi_vswitch_name }}' not present on {{ inventory_hostname }} —
+      networking was already migrated to the VDS by a previous bring-up; skipping
+      VM portgroup creation.
+  when: not (esxi_std_vswitch_present | bool)
 
 - name: Debug | ESXi host Network Configuration
   ansible.builtin.debug:

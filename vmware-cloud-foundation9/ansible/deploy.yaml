@@ -4,6 +4,12 @@
   gather_facts: false
   collections:
     - community.vmware
+  pre_tasks:
+    - name: Note execution start time
+      ansible.builtin.debug:
+        msg: "Execution started at {{ now(utc=true).strftime('%Y-%m-%d %H:%M:%S') }} UTC"
+      run_once: true
+      delegate_to: localhost
   roles:
     - role: esxi
       tags: esxi

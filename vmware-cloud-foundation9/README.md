@@ -78,6 +78,63 @@ The extension allocates the following DNS records on the `vcf-mgmt` logical netw
 | `opscp1.<zone>` | VCF Operations collector |
 | `auto1.<zone>` | VCF Automation (only used when `deploy_vcf_automation` is true) |
 
+## Building the execution environment (EE) image
+
+The site controller runs these playbooks inside an **Ansible execution environment** (a container image) via `ansible-runner`. The bundled [`execution-environment.yml`](execution-environment.yml) is only the **build recipe** — it is *not* read at deploy time. You must build the image from it, publish it to a registry the site controller can reach, and point the controller (or a per-task `OciImage` asset in `extension.json`) at it.
+
+> **Architecture matters: the image must be `linux/amd64` (x86_64).** MetalSoft site controllers run on x86_64. The EE pip-compiles native wheels (`pyVmomi`, `psutil`, …, using the `gcc`/`make`/`*-devel` system packages), so the image is architecture-specific — you cannot just retag an ARM build. If you build on Apple Silicon / any ARM host you **must cross-build for `linux/amd64`**.
+
+### Prerequisites
+
+- Python 3.10+ and `ansible-builder`: `pip install ansible-builder`
+- **Docker** with BuildKit (default in modern Docker) and `buildx`.
+- For cross-arch builds on ARM, emulation for `linux/amd64`:
+  - Docker Desktop ships it (buildx + QEMU) out of the box.
+  - On Linux Docker, register the QEMU binfmt handlers first: `docker run --privileged --rm tonistiigi/binfmt --install amd64`.
+  - Cross-building under emulation compiles the native wheels slowly — expect several minutes.
+
+### Build (single command)
+
+```bash
+ansible-builder build \
+  --file execution-environment.yml \
+  --tag <registry>/<namespace>/vcf9-ee:9.0.1 \
+  --container-runtime docker \
+  --extra-build-cli-args "--platform=linux/amd64" \
+  --verbosity 3
+```
+
+On an x86_64 build host the `--extra-build-cli-args` line is optional; keep it to be explicit.
+
+### Build (two-step, more control)
+
+Generate the build context, then build it with Docker directly:
+
+```bash
+ansible-builder create \
+  --file execution-environment.yml \
+  --context ./ee-context \
+  --output-filename Containerfile
+docker buildx build \
+  --platform=linux/amd64 \
+  -f ./ee-context/Containerfile \
+  -t <registry>/<namespace>/vcf9-ee:9.0.1 \
+  --load \
+  ./ee-context
+```
+
+(`--load` places the built image into the local Docker image store; use `--push` instead to build-and-push in one step.)
+
+### Verify architecture and publish
+
+```bash
+docker image inspect <registry>/<namespace>/vcf9-ee:9.0.1 --format '{{.Architecture}}'
+# → must print: amd64   (NOT arm64)
+docker push <registry>/<namespace>/vcf9-ee:9.0.1
+```
+
+Then either set this image as the site controller's default EE, or reference it per-task as an `OciImage` asset in `extension.json`. The image already bundles everything the playbooks shell out to (`dig` via `bind-utils`, `openssh-clients`, `openssl`) plus the required Galaxy collections and VMware SDKs — do **not** rely on installing anything at run time.
+
 ## Configuration
 
 The configuration is primarily driven by the `extension.json` file, which defines various parameters for the deployment.

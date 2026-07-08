@@ -1,6 +1,23 @@
 ---
 # Deploys the VCF Installer appliance (same OVA as SDDC Manager) onto the first management ESXi host.
 # The OVA is fetched via get_url (NOT vmware_deploy_ovf url=) because the depot uses basic auth whose password can contain '/' and '=' — do not "optimize" back to URL streaming.
+# A rerun after a partial deployment must not re-download/redeploy: probe the installer first.
+- name: Probe for an already-running VCF Installer
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/vcf-installer-ui/login"
+    method: GET
+    status_code: 200
+    validate_certs: "{{ installer.validate_certs }}"
+    timeout: 10
+  register: installer_probe
+  failed_when: false
+  delegate_to: localhost
+
+- name: Skip | VCF Installer already deployed
+  ansible.builtin.debug:
+    msg: "VCF Installer already responding at {{ installer.ipv4_address }} — skipping OVA download and deployment."
+  when: installer_probe.status | default(0) == 200
+
 - name: Download VCF Installer OVA from depot
   ansible.builtin.get_url:
     url: "{{ ova_url }}"
@@ -15,6 +32,7 @@
   retries: 3
   delay: 10
   until: installer_ova_download is succeeded
+  when: installer_probe.status | default(0) != 200
   delegate_to: localhost
 
 - name: Instantiate VCF Installer appliance
@@ -44,6 +62,7 @@
       guestinfo.ntp: "{{ ntp_servers | join(',') }}"
       ROOT_PASSWORD: "{{ installer.root_password }}"
       LOCAL_USER_PASSWORD: "{{ installer.admin_password }}"
+  when: installer_probe.status | default(0) != 200
   delegate_to: localhost
 
 - name: Wait for VCF Installer UI/API readiness

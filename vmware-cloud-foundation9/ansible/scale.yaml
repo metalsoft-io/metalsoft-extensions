@@ -3,6 +3,12 @@
   hosts: management_scale_out
   gather_facts: false
   tasks:
+    - name: Note execution start time
+      ansible.builtin.debug:
+        msg: "Execution started at {{ now(utc=true).strftime('%Y-%m-%d %H:%M:%S') }} UTC"
+      run_once: true
+      delegate_to: localhost
+
     - name: Scale out cluster
       when: groups['management_scale_out'] is defined and (groups['management_scale_out'] | length > 0)
       block:

@@ -635,6 +635,15 @@
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
       "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.0.0.zip"
+    },
+    {
+      "label": "ee-vcf9-9-0-1",
+      "name": "ee-vcf9-9-0-1",
+      "assetType": "OciImage",
+      "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-vcf9.9.0.1.tar.gz",
+      "repositoryRegistry": "registry.metalsoft.dev",
+      "namespaceRegistry": "ee-vcf9",
+      "tagRegistry": "9.0.1"
     }
   ],
   "onCreate": [
@@ -651,6 +660,7 @@
           "options": {
             "asset": "vcf-ansible-bundle",
             "playbook": "deploy.yaml",
+            "ee": "ee-vcf9-9-0-1",
             "executionTimeout": 43200,
             "executionTimeoutTick": 30
           }

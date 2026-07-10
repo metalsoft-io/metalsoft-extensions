@@ -16,19 +16,19 @@
   ansible.builtin.file:
     path: "{{ ocp_install_dir }}/auth"
     state: directory
-    mode: '0750'
+    mode: "0750"
 
 - name: Restore kubeadmin-password from context JSON
   ansible.builtin.copy:
     content: "{{ _context_data['auth-kubeadmin-password'] }}"
     dest: "{{ ocp_install_dir }}/auth/kubeadmin-password"
-    mode: '0600'
+    mode: "0600"
 
 - name: Restore kubeconfig from context JSON
   ansible.builtin.copy:
     content: "{{ _context_data['auth-kubeconfig'] }}"
     dest: "{{ ocp_install_dir }}/auth/kubeconfig"
-    mode: '0600'
+    mode: "0600"
 
 - name: Determine rendezvous instance for log gathering
   ansible.builtin.set_fact:
@@ -54,7 +54,7 @@
   ansible.builtin.copy:
     content: "{{ _rendezvous_ip }}"
     dest: "{{ ocp_install_dir }}/rendezvousIP"
-    mode: '0644'
+    mode: "0644"
 
 - name: Wait for API to be available
   ansible.builtin.uri:
@@ -120,9 +120,9 @@
     - name: Fail because installation was not completed
       ansible.builtin.fail:
         msg: "Installation was not completed"
-
+# execution: series / parallel / parallel_per_group
 - name: Write eject-mounted-iso context JSON on successful installation
   ansible.builtin.copy:
-    content: "{{ {'eject-mounted-iso': {}} | to_nice_json }}"
+    content: "{{ {'eject-mounted-iso': { }} | to_nice_json }}"
     dest: "{{ context_json_file_path }}"
-    mode: '0644'
+    mode: "0644"

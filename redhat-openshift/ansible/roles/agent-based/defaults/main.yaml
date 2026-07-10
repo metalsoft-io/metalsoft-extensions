@@ -21,7 +21,13 @@ _pull_secret: "{{ extensionInstanceVariables.pull_secret }}"
 _airgapped_deployment: "{{ extensionInstanceVariables.airgapped_deployment | default(false) | bool }}"
 _mirror_registry: "{{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}"
 _mtu: "{{ extensionInstanceVariables.mtu | default(1500) | int }}"
-_dns_resolver_ip: "{{ extensionInstanceRecordSet.dnsResolverIp }}"
+# Site DNS resolvers from the extension config var (arrives top-level or under
+# configVars, possibly as a comma-separated string); recordSet values are fallback only.
+_dns_resolvers_config: "{{ configVars.DNSResolvers | default(DNSResolvers | default('')) }}"
+_dns_resolvers: >-
+  {{ (_dns_resolvers_config | string).split(',') | map('trim') | reject('equalto', '') | list
+     or extensionInstanceRecordSet.dnsResolvers | default([], true)
+     or [extensionInstanceRecordSet.dnsResolverIp] }}
 _ocp_version: "{{ extensionInstanceVariables.ocp_version }}"
 
 # Split mirror_registry into host and namespace path components

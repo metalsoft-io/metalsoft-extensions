@@ -3,14 +3,40 @@
   ansible.builtin.import_tasks:
     file: prepare-install-dir.yaml
 
-- name: Read context JSON
-  ansible.builtin.slurp:
-    src: "{{ context_json_file_path }}"
-  register: _context_json_raw
+- name: Assert deploy context is present
+  ansible.builtin.assert:
+    that:
+      - context['auth-kubeadmin-password'] is defined
+      - context['auth-kubeconfig'] is defined
+    fail_msg: "context extra-var missing auth data — deploy task (create-iso) must complete first"
 
-- name: Parse context JSON
-  ansible.builtin.set_fact:
-    _context_data: "{{ _context_json_raw.content | b64decode | from_json }}"
+# `agent wait-for` loads the asset store (AgentConfig, AgentManifests, InstallConfig,
+# AgentHosts). Raw install-config.yaml/agent-config.yaml on disk trigger strict IPI
+# baremetal validation (platform.baremetal.hosts required) and fail; assets must load
+# from .openshift_install_state.json instead. `agent create cluster-manifests` consumes
+# the templated configs into that state file, matching the directory create-image leaves
+# behind. The regenerated certs in it are unused — wait-for connects via the restored
+# kubeconfig and the rendezvous REST API.
+- name: Check for existing installer state
+  ansible.builtin.stat:
+    path: "{{ ocp_install_dir }}/.openshift_install_state.json"
+  register: _install_state
+
+- name: Remove re-templated configs already consumed into installer state
+  ansible.builtin.file:
+    path: "{{ ocp_install_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - install-config.yaml
+    - agent-config.yaml
+  when: _install_state.stat.exists
+
+- name: Rebuild installer asset state from configs
+  ansible.builtin.command:
+    cmd: "{{ _openshift_install_bin }} --log-level=debug agent create cluster-manifests"
+    chdir: "{{ ocp_install_dir }}"
+  when: not _install_state.stat.exists
+  environment: "{{ _release_image_override_env }}"
 
 - name: Ensure auth directory exists
   ansible.builtin.file:
@@ -20,13 +46,13 @@
 
 - name: Restore kubeadmin-password from context JSON
   ansible.builtin.copy:
-    content: "{{ _context_data['auth-kubeadmin-password'] }}"
+    content: "{{ context['auth-kubeadmin-password'] }}"
     dest: "{{ ocp_install_dir }}/auth/kubeadmin-password"
     mode: "0600"
 
 - name: Restore kubeconfig from context JSON
   ansible.builtin.copy:
-    content: "{{ _context_data['auth-kubeconfig'] }}"
+    content: "{{ context['auth-kubeconfig'] }}"
     dest: "{{ ocp_install_dir }}/auth/kubeconfig"
     mode: "0600"
 
@@ -68,42 +94,57 @@
   retries: "{{ _api_wait_retries }}"
   delay: "{{ _api_wait_delay }}"
 
-- name: Wait for bootstrap complete
-  ansible.builtin.command:
-    cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for bootstrap-complete"
-    chdir: "{{ ocp_install_dir }}"
-  changed_when: false
-  retries: "{{ _bootstrap_wait_retries }}"
-  delay: "{{ _bootstrap_wait_delay }}"
-  register: _bootstrap_result
-  until: _bootstrap_result.rc == 0
-
 - name: Check installation and gather logs if it fails
   block:
-    - name: Wait for install complete - without retries
-      ansible.builtin.command:
-        cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for install-complete"
-        chdir: "{{ ocp_install_dir }}"
-      when: not _retry_install_complete_check | bool
-      retries: "{{ _install_wait_retries }}"
-      delay: "{{ _install_wait_delay }}"
-      register: _install_result_no_retry
-      until: _install_result_no_retry.rc == 0
+    - name: Reset bootstrap watch state
+      ansible.builtin.set_fact:
+        _watch_done: false
+        _watch_jid: ""
+        _watch_rc: -1
+        _watch_stderr: ""
 
-    - name: Wait for install complete - with retries
-      ansible.builtin.command:
-        cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for install-complete"
-        chdir: "{{ ocp_install_dir }}"
-      when: _retry_install_complete_check | bool
-      register: _install_output
-      retries: "{{ _install_wait_retries }}"
-      delay: "{{ _install_wait_delay }}"
-      until:
-        "'Attempted to gather ClusterOperator status after wait failure: Listing ClusterOperator objects' not in _install_output.stderr
-        or
-        'No events logged from the Agent Rest API' in _install_output.stderr
-        or
-        'x509: certificate has expired or is not yet valid' in _install_output.stderr"
+    - name: Wait for bootstrap complete
+      ansible.builtin.include_tasks:
+        file: wait-watch.yaml
+      loop: "{{ range(0, _bootstrap_wait_retries | int) | list }}"
+      loop_control:
+        loop_var: _cycle
+        label: "cycle {{ _cycle + 1 }}/{{ _bootstrap_wait_retries }}"
+      vars:
+        _watch_name: bootstrap-complete
+        _watch_delay: "{{ _bootstrap_wait_delay }}"
+        _watch_async: "{{ (_bootstrap_wait_retries | int) * (_bootstrap_wait_delay | int) + 300 }}"
+        _watch_retry: false
+
+    - name: Fail if bootstrap did not complete
+      ansible.builtin.fail:
+        msg: "Bootstrap did not complete (rc={{ _watch_rc }}): {{ _watch_stderr }}"
+      when: _watch_rc | int != 0
+
+    - name: Reset install watch state
+      ansible.builtin.set_fact:
+        _watch_done: false
+        _watch_jid: ""
+        _watch_rc: -1
+        _watch_stderr: ""
+
+    - name: Wait for install complete
+      ansible.builtin.include_tasks:
+        file: wait-watch.yaml
+      loop: "{{ range(0, _install_wait_retries | int) | list }}"
+      loop_control:
+        loop_var: _cycle
+        label: "cycle {{ _cycle + 1 }}/{{ _install_wait_retries }}"
+      vars:
+        _watch_name: install-complete
+        _watch_delay: "{{ _install_wait_delay }}"
+        _watch_async: "{{ (_install_wait_retries | int) * (_install_wait_delay | int) + 300 }}"
+        _watch_retry: "{{ _retry_install_complete_check | bool }}"
+
+    - name: Fail if install did not complete
+      ansible.builtin.fail:
+        msg: "Install did not complete (rc={{ _watch_rc }}): {{ _watch_stderr }}"
+      when: _watch_rc | int != 0
 
   rescue:
     - name: Gather logs from installation
@@ -123,6 +164,9 @@
 # execution: series / parallel / parallel_per_group
 - name: Write eject-mounted-iso context JSON on successful installation
   ansible.builtin.copy:
-    content: "{{ {'eject-mounted-iso': { }} | to_nice_json }}"
+    content: >-
+      {{ {'eject-mounted-iso': {},
+          'auth-kubeadmin-password': context['auth-kubeadmin-password'],
+          'auth-kubeconfig': context['auth-kubeconfig']} | to_nice_json }}
     dest: "{{ context_json_file_path }}"
     mode: "0644"

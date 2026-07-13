@@ -12,7 +12,10 @@ iso_final_path: "{{ runner_base_data_dir }}/iso/{{ deployment_uuid }}/ISO_{{ dep
 context_json_file_path: "{{ runner_base_data_dir }}/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
 
 _cluster_name: "{{ extensionInstanceRecordSet.extensionInstanceName }}"
-_base_domain: "{{ extensionInstanceVariables.base_domain | default(extensionInstanceRecordSet.baseDomain | default('metalsoft.local')) }}"
+# The platform provisions DNS records (api/*.apps) under the site's default zone,
+# which arrives as recordSet.baseDomain — it must be authoritative or the cluster
+# FQDNs won't match the records that actually exist.
+_base_domain: "{{ extensionInstanceRecordSet.baseDomain | default(extensionInstanceVariables.base_domain | default('metalcloud.local'), true) }}"
 _cluster_network: "{{ extensionInstanceVariables.cluster_network }}"
 _service_network: "{{ extensionInstanceVariables.service_network }}"
 _compute_nodes: "{{ extensionInstanceVariables.compute_nodes | int }}"
@@ -39,10 +42,19 @@ _mirror_registry_path: "{{ _mirror_registry.split('/')[1:] | join('/') }}"
 
 _openshift_install_bin: /usr/local/bin/openshift-install
 
+# The installer validates the ClusterImageSet in the state file against the release
+# image it expects at EVERY invocation — the override must be identical for create
+# image / create cluster-manifests / wait-for, or asset loading fails.
+_release_image_override_env: >-
+  {{ {'OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE': _mirror_registry ~ ':' ~ _ocp_version}
+     if _airgapped_deployment | bool else {} }}
+
 _monitor_installation: false
 _retry_install_complete_check: false
 
-_api_wait_retries: 10
+# On a fresh deployment the API VIP only answers once the bootstrap control plane
+# is up — 20-30+ min after the nodes boot the ISO. Budget a full hour.
+_api_wait_retries: 60
 _api_wait_delay: 60
 
 _bootstrap_wait_retries: 60

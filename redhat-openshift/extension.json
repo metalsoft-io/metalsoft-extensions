@@ -2,10 +2,10 @@
   "kind": "ExtensionDefinition",
   "schemaVersion": "1.1",
   "name": "Red Hat OpenShift",
-  "label": "openshift",
+  "label": "redhatopenshift",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "1.0.4",
+  "extensionVersion": "1.0.0",
   "description": "Provide the installation and lifecycle management of a Red Hat OpenShift cluster",
   "icon": "https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg",
   "dependencies": {
@@ -42,13 +42,6 @@
         "minValue": 0
       },
       "defaultValue": 0
-    },
-    {
-      "label": "base_domain",
-      "name": "base_domain",
-      "inputType": "ExtensionInputString",
-      "options": {},
-      "defaultValue": "metalcloud.local"
     },
     {
       "label": "mtu",
@@ -122,9 +115,7 @@
             }
           }
         ],
-        "tags": [
-          "control-plane-node"
-        ]
+        "tags": ["control-plane-node"]
       },
       {
         "label": "compute",
@@ -144,15 +135,13 @@
             }
           }
         ],
-        "tags": [
-          "compute-node"
-        ]
+        "tags": ["compute-node"]
       }
     ],
     "logicalNetworks": [
       {
         "label": "openshift-network",
-        "profileLabel": "openshift-network-profile",
+        "profileLabel": "vcf-mgmt",
         "ipAllocations": [
           {
             "tags": {
@@ -191,7 +180,16 @@
       "label": "openshift-ansible-bundle",
       "name": "openshift-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-v1.0.4.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/redhat-openshift/redhat-openshift-v1.0.0.zip"
+    },
+    {
+      "label": "ee-redhat-openshift",
+      "name": "ee-redhat-openshift",
+      "assetType": "OciImage",
+      "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-ocd-4-19_v1.0.0.tar.gz",
+      "repositoryRegistry": "registry.metalsoft.dev",
+      "namespaceRegistry": "ee-ocd-4-19",
+      "tagRegistry": "4-19"
     }
   ],
   "onCreate": [
@@ -203,7 +201,17 @@
           "taskType": "ExtensionTaskAnsible",
           "options": {
             "asset": "openshift-ansible-bundle",
-            "playbook": "deploy.yaml"
+            "playbook": "deploy.yaml",
+            "ee": "ee-redhat-openshift"
+          }
+        },
+        {
+          "label": "monitorInstallation",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "openshift-ansible-bundle",
+            "playbook": "monitor-installation.yaml",
+            "ee": "ee-redhat-openshift"
           }
         }
       ]
@@ -214,5 +222,17 @@
     }
   ],
   "onEdit": [],
-  "onDelete": []
+  "onDelete": [],
+  "configVars": [
+    {
+      "label": "DNSResolvers",
+      "name": "DNSResolvers",
+      "inputType": "ExtensionInputString",
+      "setOnly": false,
+      "hidden": false,
+      "isPassword": false,
+      "defaultValue": "1.1.1.1",
+      "options": {}
+    }
+  ]
 }

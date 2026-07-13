@@ -21,7 +21,8 @@ _service_network: "{{ extensionInstanceVariables.service_network }}"
 _compute_nodes: "{{ extensionInstanceVariables.compute_nodes | int }}"
 _control_plane_nodes: "{{ extensionInstanceVariables.control_plane_nodes | int }}"
 _pull_secret: "{{ extensionInstanceVariables.pull_secret }}"
-_airgapped_deployment: "{{ extensionInstanceVariables.airgapped_deployment | default(false) | bool }}"
+# Legacy fallback: old instances on the shared bundle URL still send airgapped_deployment
+_use_private_registry: "{{ extensionInstanceVariables.use_private_registry | default(extensionInstanceVariables.airgapped_deployment | default(false)) | bool }}"
 _mirror_registry: "{{ extensionInstanceVariables.mirror_registry | default('registry.metalsoft.dev/ocp4/openshift4') }}"
 _mtu: "{{ extensionInstanceVariables.mtu | default(1500) | int }}"
 # Site DNS resolvers from the extension config var (arrives top-level or under
@@ -35,7 +36,7 @@ _ocp_version: "{{ extensionInstanceVariables.ocp_version }}"
 
 # Split mirror_registry into host and namespace path components
 # e.g. "registry.metalsoft.dev/ocp4/openshift4" → host="registry.metalsoft.dev", path="ocp4/openshift4"
-# Derived from _mirror_registry so the default fallback is always safe for non-airgapped deployments.
+# Derived from _mirror_registry so the default fallback is always safe when the private registry is not used.
 # pull_secret must arrive as a Python dict ({"auths": {...}}), not as a base64 string.
 _mirror_registry_host: "{{ _mirror_registry.split('/')[0] }}"
 _mirror_registry_path: "{{ _mirror_registry.split('/')[1:] | join('/') }}"
@@ -47,7 +48,7 @@ _openshift_install_bin: /usr/local/bin/openshift-install
 # image / create cluster-manifests / wait-for, or asset loading fails.
 _release_image_override_env: >-
   {{ {'OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE': _mirror_registry ~ ':' ~ _ocp_version}
-     if _airgapped_deployment | bool else {} }}
+     if _use_private_registry | bool else {} }}
 
 _monitor_installation: false
 _retry_install_complete_check: false

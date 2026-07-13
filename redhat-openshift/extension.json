@@ -73,8 +73,8 @@
       "defaultValue": "REDACTED"
     },
     {
-      "label": "airgapped_deployment",
-      "name": "airgapped_deployment",
+      "label": "use_private_registry",
+      "name": "use_private_registry",
       "inputType": "ExtensionInputBoolean",
       "options": {},
       "defaultValue": false

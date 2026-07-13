@@ -4,12 +4,12 @@
     path: "{{ iso_final_path }}"
   register: iso_exists
 
-- name: Set release image override for air-gapped deployment
+- name: Set release image override for private registry deployment
   ansible.builtin.set_fact:
     release_image_override: "{{ _mirror_registry }}:{{ _ocp_version }}"
   when:
     - not iso_exists.stat.exists
-    - _airgapped_deployment | bool
+    - _use_private_registry | bool
 
 - name: Set agent installation image commands
   ansible.builtin.set_fact:
@@ -28,7 +28,7 @@
   when: not iso_exists.stat.exists
   environment: >-
     {{ {'OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE': release_image_override}
-       if _airgapped_deployment | bool else {} }}
+       if _use_private_registry | bool else {} }}
 
 - name: Log agent installation image results
   ansible.builtin.debug:

@@ -8,13 +8,13 @@
     path: "{{ iso_final_path }}"
   register: iso_exists
 
-- name: Validate mirror_registry is defined for airgapped deployments
+- name: Validate mirror_registry is defined when using a private registry
   ansible.builtin.fail:
     msg: >-
       extensionInstanceVariables.mirror_registry must be defined and non-empty
-      when airgapped_deployment is true
+      when use_private_registry is true
   when:
-    - _airgapped_deployment | bool
+    - _use_private_registry | bool
     - (extensionInstanceVariables.mirror_registry | default('')) == ''
 
 - name: Generate install-config.yaml in the installation directory
@@ -56,7 +56,7 @@
           + ' https://' + _mirror_registry_host + '/v2/' + _mirror_registry_path + '/tags/list);'
           + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac'
         ]
-        if _airgapped_deployment
+        if _use_private_registry
         else [
           'HTTP_CODE=$(curl -sSk --max-time 10 -o /dev/null -w "%{http_code}" https://quay.io/v2/);'
           + ' case "$HTTP_CODE" in 200|401) ;; *) echo "Registry unreachable: HTTP ${HTTP_CODE}" >&2; exit 1;; esac',
@@ -107,7 +107,7 @@
   register: _ocp_release_image
   when:
     - not iso_exists.stat.exists
-    - _airgapped_deployment | bool
+    - _use_private_registry | bool
 
 - name: Verify release image digest is present in mirror
   ansible.builtin.shell:
@@ -129,7 +129,7 @@
   ignore_errors: true
   when:
     - not iso_exists.stat.exists
-    - _airgapped_deployment | bool
+    - _use_private_registry | bool
     - (_ocp_release_image.stdout | trim) != ''
 
 - name: Fail if mirror does not have the release image
@@ -143,7 +143,7 @@
       --to={{ _mirror_registry }} --insecure=true
   when:
     - not iso_exists.stat.exists
-    - _airgapped_deployment | bool
+    - _use_private_registry | bool
     - _mirror_release_check is defined
     - not (_mirror_release_check.skipped | default(false))
     - _mirror_release_check.rc != 0

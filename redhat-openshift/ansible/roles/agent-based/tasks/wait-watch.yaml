@@ -1,0 +1,67 @@
+---
+# One watch cycle for a long-running `openshift-install agent wait-for <_watch_name>`.
+# The command runs async in the background so every cycle can print real progress
+# (last installer log line) instead of the opaque FAILED-RETRYING of until/retries.
+# Caller loops over this file and must reset first:
+#   _watch_done: false, _watch_jid: '', _watch_rc: -1, _watch_stderr: ''
+# vars per include: _watch_name, _watch_delay, _watch_async, _watch_retry
+# After the loop: _watch_rc == 0 means success.
+
+- name: Start wait-for {{ _watch_name }}
+  ansible.builtin.command:
+    cmd: "{{ _openshift_install_bin }} --log-level=debug agent wait-for {{ _watch_name }}"
+    chdir: "{{ ocp_install_dir }}"
+  async: "{{ _watch_async | int }}"
+  poll: 0
+  register: _watch_start
+  environment: "{{ _release_image_override_env }}"
+  changed_when: false
+  when:
+    - not (_watch_done | bool)
+    - _watch_jid == ''
+
+- name: Record wait-for {{ _watch_name }} job id
+  ansible.builtin.set_fact:
+    _watch_jid: "{{ _watch_start.ansible_job_id }}"
+  when: _watch_start is not skipped
+
+- name: Check wait-for {{ _watch_name }} job
+  ansible.builtin.async_status:
+    jid: "{{ _watch_jid }}"
+  register: _watch_status
+  failed_when: false
+  when: not (_watch_done | bool)
+
+- name: Handle finished wait-for {{ _watch_name }}
+  ansible.builtin.set_fact:
+    _watch_rc: "{{ _watch_status.rc | default(1) }}"
+    _watch_stderr: "{{ _watch_status.stderr | default('') }}"
+    _watch_done: "{{ not _retryable }}"
+    _watch_jid: "{{ _watch_jid if not _retryable else '' }}"
+  vars:
+    _retryable: >-
+      {{ _watch_retry | bool
+         and (_watch_status.rc | default(0) | int) != 0
+         and 'Attempted to gather ClusterOperator status after wait failure: Listing ClusterOperator objects' in (_watch_status.stderr | default(''))
+         and 'No events logged from the Agent Rest API' not in (_watch_status.stderr | default(''))
+         and 'x509: certificate has expired or is not yet valid' not in (_watch_status.stderr | default('')) }}
+  when:
+    - not (_watch_done | bool)
+    - _watch_status.finished | default(false)
+
+- name: Read last installer log line
+  ansible.builtin.shell: "tail -n 1 {{ ocp_install_dir }}/.openshift_install.log 2>/dev/null || true"
+  register: _watch_tail
+  changed_when: false
+  failed_when: false
+  when: not (_watch_done | bool)
+
+- name: Progress of wait-for {{ _watch_name }}
+  ansible.builtin.debug:
+    msg: "wait-for {{ _watch_name }}: {{ _watch_tail.stdout | default('(no installer log yet)') }}"
+  when: not (_watch_done | bool)
+
+- name: Pause before next {{ _watch_name }} check
+  ansible.builtin.wait_for:
+    timeout: "{{ _watch_delay | int }}"
+  when: not (_watch_done | bool)

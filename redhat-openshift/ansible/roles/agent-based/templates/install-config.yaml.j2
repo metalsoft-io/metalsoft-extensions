@@ -54,7 +54,7 @@ platform:
 fips: false
 pullSecret: '{{ _pull_secret | to_json }}'
 sshKey: "{{ ssh_key }}"
-{% if _airgapped_deployment -%}
+{% if _use_private_registry -%}
 imageContentSources:
   - mirrors:
       - {{ _mirror_registry }}

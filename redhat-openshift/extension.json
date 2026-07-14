@@ -141,7 +141,7 @@
     "logicalNetworks": [
       {
         "label": "openshift-network",
-        "profileLabel": "vcf-mgmt",
+        "profileLabel": "openshift-network",
         "ipAllocations": [
           {
             "tags": {

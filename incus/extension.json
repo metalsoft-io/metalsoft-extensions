@@ -167,7 +167,7 @@
         {
             "label": "incus-ansible-bundle",
             "name": "incus-ansible-bundle",
-            "assetType": "Bundle",
+            "assetType": "AnsibleBundle",
             "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.0.2.zip"
         }
     ],

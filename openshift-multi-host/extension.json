@@ -187,13 +187,13 @@
     {
       "label": "install-openshift",
       "name": "Install OpenShift",
-      "assetType": "Bundle",
+      "assetType": "AnsibleBundle",
       "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-imagebuild-multi-host-v1.3.zip"
     },
     {
       "label": "monitor-installation",
       "name": "Monitor OpenShift installation",
-      "assetType": "Bundle",
+      "assetType": "AnsibleBundle",
       "url": "https://repo.metalsoft.io/.extensions_ms/openshift/openshift-abi-monitor-v1.0.zip"
     }
   ],

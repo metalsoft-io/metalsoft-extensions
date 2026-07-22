@@ -425,7 +425,7 @@
         {
             "label": "vcf-ansible-bundle",
             "name": "vcf-ansible-bundle",
-            "assetType": "Bundle",
+            "assetType": "AnsibleBundle",
             "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation/vmware-cloud-foundation-v1.0.6.zip"
         }
     ],

@@ -17,7 +17,7 @@
     {
       "label": "infoblox-configuration",
       "name": "infoblox-configuration",
-      "assetType": "Bundle",
+      "assetType": "AnsibleBundle",
       "url": "https://repo.metalsoft.io/.extensions_ms/workflows/.infoblox/infoblox-hosts.zip"
     }
   ],

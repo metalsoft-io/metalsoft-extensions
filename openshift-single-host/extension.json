@@ -76,12 +76,14 @@
     {
       "label": "pull_secret",
       "name": "pull_secret",
+      "helpText": "Set this to the pull secret required to download the assets from the repository.",
       "inputType": "ExtensionInputString",
       "options": {}
     },
     {
       "label": "airgapped_deployment",
       "name": "airgapped_deployment",
+      "helpText": "If set to true the system will download all required binaries from the provided mirror instead of the official repository.",
       "inputType": "ExtensionInputBoolean",
       "defaultValue": false,
       "options": {}
@@ -89,16 +91,17 @@
     {
       "label": "mirror_registry",
       "name": "mirror_registry",
+      "helpText": "The mirror of the repository to use.",
       "inputType": "ExtensionInputString",
       "defaultValue": "registry.metalsoft.dev/ocp4/openshift4",
       "options": {}
     },
     {
-    "label": "ocp_version",
-    "name": "ocp_version",
-    "inputType": "ExtensionInputString",
-    "defaultValue": "4.19.0",
-    "options": {}
+      "label": "ocp_version",
+      "name": "ocp_version",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "4.19.0",
+      "options": {}
     }
   ],
   "outputs": [],

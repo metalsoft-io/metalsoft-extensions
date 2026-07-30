@@ -9,7 +9,7 @@
   "description": "Provide the installation and lifecycle management of a Red Hat OpenShift cluster",
   "icon": "https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg",
   "dependencies": {
-    "controllerVersion": "release-v7.4",
+    "controllerVersion": "v7.4.0",
     "osTemplates": []
   },
   "inputs": [
@@ -29,6 +29,7 @@
       "label": "control_plane_nodes",
       "name": "control_plane_nodes",
       "inputType": "ExtensionInputInteger",
+      "setOnly": true,
       "options": {
         "minValue": 1
       },
@@ -76,6 +77,7 @@
     {
       "label": "use_private_registry",
       "name": "use_private_registry",
+      "helpText": "If set to true the system will download all required binaries from the provided mirror instead of the official repository.",
       "inputType": "ExtensionInputBoolean",
       "options": {},
       "defaultValue": false
@@ -83,7 +85,6 @@
     {
       "label": "mirror_registry",
       "name": "mirror_registry",
-      "helpText": "The mirror of the repository to use.",
       "inputType": "ExtensionInputString",
       "options": {},
       "defaultValue": "registry.metalsoft.dev/ocp4/openshift4"
@@ -96,7 +97,28 @@
       "defaultValue": "4.19.0"
     }
   ],
-  "outputs": [],
+  "outputs": [
+    {
+      "label": "cluster_kubeconfig",
+      "name": "cluster_kubeconfig",
+      "outputType": "string"
+    },
+    {
+      "label": "cluster_kubeadmin_password",
+      "name": "cluster_kubeadmin_password",
+      "outputType": "string"
+    },
+    {
+      "label": "api_url",
+      "name": "api_url",
+      "outputType": "string"
+    },
+    {
+      "label": "console_url",
+      "name": "console_url",
+      "outputType": "string"
+    }
+  ],
   "infrastructure": {
     "instanceArrays": [
       {
@@ -143,7 +165,7 @@
     "logicalNetworks": [
       {
         "label": "openshift-network",
-        "profileLabel": "openshift-network",
+        "profileLabel": "network-profile-name",
         "ipAllocations": [
           {
             "tags": {
@@ -155,6 +177,12 @@
                 "name": "api.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
+                "ttl": 3600
+              },
+              {
+                "name": "api-int.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": false,
                 "ttl": 3600
               }
             ]
@@ -182,7 +210,7 @@
       "label": "openshift-ansible-bundle",
       "name": "openshift-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/redhat-openshift/redhat-openshift-v1.0.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/redhat-openshift/redhat-openshift-v1.0.1.zip"
     },
     {
       "label": "ee-redhat-openshift",
@@ -204,7 +232,9 @@
           "options": {
             "asset": "openshift-ansible-bundle",
             "playbook": "deploy.yaml",
-            "ee": "ee-redhat-openshift"
+            "ee": "ee-redhat-openshift",
+            "executionTimeout": 3600,
+            "executionTimeoutTick": 30
           }
         },
         {
@@ -213,7 +243,9 @@
           "options": {
             "asset": "openshift-ansible-bundle",
             "playbook": "monitor-installation.yaml",
-            "ee": "ee-redhat-openshift"
+            "ee": "ee-redhat-openshift",
+            "executionTimeout": 14400,
+            "executionTimeoutTick": 30
           }
         }
       ]
@@ -223,7 +255,51 @@
       "tasks": []
     }
   ],
-  "onEdit": [],
+  "onEdit": [
+    {
+      "stage": "preDeploy",
+      "tasks": [
+        {
+          "label": "scaleIn",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "openshift-ansible-bundle",
+            "playbook": "scale.yaml",
+            "ee": "ee-redhat-openshift",
+            "executionTimeout": 3600,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "scaleOut",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "openshift-ansible-bundle",
+            "playbook": "scale.yaml",
+            "ee": "ee-redhat-openshift",
+            "executionTimeout": 3600,
+            "executionTimeoutTick": 30
+          }
+        },
+        {
+          "label": "scaleMonitor",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "openshift-ansible-bundle",
+            "playbook": "scale-monitor.yaml",
+            "ee": "ee-redhat-openshift",
+            "executionTimeout": 7200,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
   "onDelete": [],
   "configVars": [
     {

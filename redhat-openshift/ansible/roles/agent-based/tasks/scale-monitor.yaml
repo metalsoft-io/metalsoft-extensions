@@ -1,0 +1,37 @@
+---
+# Wait for the new workers (compute_scale_out) to join the cluster: approve their
+# CSRs and poll node Ready state (see scale-watch.yaml). Runs at onEdit postDeploy
+# after the scaleOut task's mount-and-boot booted the new servers from the node ISO.
+
+- name: Restore kubeconfig
+  ansible.builtin.import_tasks:
+    file: scale-auth.yaml
+
+- name: Reset scale watch state
+  ansible.builtin.set_fact:
+    _scale_nodes_ready: false
+    _scale_ready_names: []
+
+- name: Watch new workers joining
+  ansible.builtin.include_tasks:
+    file: scale-watch.yaml
+  loop: "{{ range(0, _scale_watch_retries | int) | list }}"
+  loop_control:
+    loop_var: _cycle
+    label: "cycle {{ _cycle + 1 }}/{{ _scale_watch_retries }}"
+
+- name: Fail if new workers did not become Ready
+  ansible.builtin.fail:
+    msg: >-
+      New workers did not become Ready within
+      {{ (_scale_watch_retries | int) * (_scale_watch_delay | int) // 60 }} minutes —
+      Ready: {{ _scale_ready_names | default([]) }},
+      expected: {{ _scale_out_hosts }}
+  when: not (_scale_nodes_ready | bool)
+
+- name: Write eject-mounted-iso context JSON after successful join
+  ansible.builtin.include_tasks:
+    file: write-context.yaml
+  vars:
+    _context_content: "{{ _context_outputs_payload | combine({'eject-mounted-iso': {}}) }}"
+    _context_debug_path: "{{ _addnodes_dir }}/context.json"

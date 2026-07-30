@@ -1,0 +1,43 @@
+{#
+  SNO (platform none): nothing binds the allocated api/ingress VIPs that the platform
+  DNS records point at. They must NOT go into the boot-time NIC profile: during the
+  bootstrap-in-place live phase etcd registers its member with an arbitrary address
+  from the machine network, and if it picks a VIP the serving cert (issued for the
+  node IP only) fails TLS for every etcd client -> member reported unhealthy, CVO
+  stuck. Instead bind them post-boot via this day-1 MachineConfig: the live phase
+  never sees the VIPs (etcd deterministically registers the node IP) and the
+  installed node owns them from first boot on, as /32 on br-ex (same as keepalived
+  does on multi-node).
+#}
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  name: 98-master-sno-vips
+  labels:
+    machineconfiguration.openshift.io/role: master
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    systemd:
+      units:
+        - name: sno-vips.service
+          enabled: true
+          contents: |
+            [Unit]
+            Description=Bind cluster VIPs (api/ingress) on the single node
+            After=ovs-configuration.service network-online.target
+            Wants=network-online.target
+
+            [Service]
+            Type=oneshot
+            RemainAfterExit=yes
+{% if _api_vip_ip %}
+            ExecStart=/usr/sbin/ip addr replace {{ _api_vip_ip }}/32 dev br-ex
+{% endif %}
+{% if _ingress_vip_ip %}
+            ExecStart=/usr/sbin/ip addr replace {{ _ingress_vip_ip }}/32 dev br-ex
+{% endif %}
+
+            [Install]
+            WantedBy=multi-user.target

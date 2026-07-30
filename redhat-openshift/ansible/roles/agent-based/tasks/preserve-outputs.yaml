@@ -1,0 +1,31 @@
+---
+# The platform REPLACES the instance's stored outputs with the context.json of every
+# successful run — a run that writes no context.json wipes them (empty context_output
+# -> customJson.outputs = {}). Scale runs that end without a context write (scale-in,
+# no-op stages of an edit) must therefore re-emit the outputs payload so the cluster
+# credentials survive. No-op when this run already wrote a context.json (scale-out /
+# scale-monitor payloads already include the outputs) or when no credentials are
+# available to preserve.
+
+- name: Check if this run already wrote a context JSON
+  ansible.builtin.stat:
+    path: "{{ context_json_file_path }}"
+  register: _context_artifact
+
+- name: Re-emit stored outputs so the platform does not wipe them
+  when:
+    - not _context_artifact.stat.exists
+    - _cluster_kubeconfig_content | length > 0
+  block:
+    - name: Ensure scale working directory exists
+      ansible.builtin.file:
+        path: "{{ _addnodes_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Write outputs-only context JSON
+      ansible.builtin.include_tasks:
+        file: write-context.yaml
+      vars:
+        _context_content: "{{ _context_outputs_payload }}"
+        _context_debug_path: "{{ _addnodes_dir }}/context.json"

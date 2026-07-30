@@ -1,0 +1,18 @@
+---
+# Write the task's context.json (the platform output channel in artifacts/) plus a
+# persistent debug copy — the artifacts copy is consumed and then REAPED by the
+# platform's ansibleRunnerRemove job right after the task completes, so it can never
+# be inspected after the fact.
+# vars: _context_content (dict), optional _context_debug_path (default: install dir)
+
+- name: Write context JSON artifact
+  ansible.builtin.copy:
+    content: "{{ _context_content | to_nice_json }}"
+    dest: "{{ context_json_file_path }}"
+    mode: "0644"
+
+- name: Save context JSON debug copy
+  ansible.builtin.copy:
+    content: "{{ _context_content | to_nice_json }}"
+    dest: "{{ _context_debug_path | default(ocp_install_dir + '/context.json') }}"
+    mode: "0600"

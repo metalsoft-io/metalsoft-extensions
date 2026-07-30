@@ -74,9 +74,13 @@
         application: openshift
       auth-kubeadmin-password: "{{ _kubeadmin_password }}"
       auth-kubeconfig: "{{ _kubeconfig }}"
+      cluster_kubeconfig: "{{ _kubeconfig }}"
+      cluster_kubeadmin_password: "{{ _kubeadmin_password }}"
+      api_url: "{{ _api_url }}"
+      console_url: "{{ _console_url }}"
 
 - name: Construct context JSON for ISO generation
-  ansible.builtin.copy:
-    content: "{{ _context_payload | to_nice_json }}"
-    dest: "{{ context_json_file_path }}"
-    mode: "0644"
+  ansible.builtin.include_tasks:
+    file: write-context.yaml
+  vars:
+    _context_content: "{{ _context_payload }}"

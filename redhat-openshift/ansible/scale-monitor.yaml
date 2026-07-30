@@ -1,0 +1,27 @@
+---
+# onEdit postDeploy (second task): wait for the new workers booted from the node ISO
+# to join the cluster (approve CSRs, poll Ready), then eject the ISO.
+# No-op when there are no scale-out hosts (pure scale-in edit).
+
+- name: Monitor new workers joining the cluster
+  hosts: compute_scale_out
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Watch CSRs and node readiness
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: scale-monitor.yaml
+      run_once: true
+
+# On a pure scale-in edit this playbook has no hosts and would write no context.json,
+# which wipes the stored outputs platform-side. Re-emit them in that case.
+- name: Preserve stored outputs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Re-emit outputs when no context was written this run
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: preserve-outputs.yaml

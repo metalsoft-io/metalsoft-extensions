@@ -1,0 +1,85 @@
+---
+# One watch cycle for new workers joining the cluster: approve pending CSRs that
+# belong to the joining nodes (each node raises a bootstrapper client CSR, then a
+# serving CSR), then check Ready state. Caller loops this file and resets first:
+#   _scale_nodes_ready: false, _scale_ready_names: []
+
+- name: Fetch pending CSRs
+  ansible.builtin.command:
+    cmd: "{{ _oc_bin }} get csr -o json"
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+  register: _csr_raw
+  failed_when: false
+  changed_when: false
+  when: not (_scale_nodes_ready | bool)
+
+- name: Select CSRs to approve
+  ansible.builtin.set_fact:
+    _pending_csrs: >-
+      {%- set out = [] -%}
+      {%- for c in (_csr_raw.stdout | default('{}', true) | from_json).get('items', []) -%}
+      {%- if (c.status | default({})) == {} -%}
+      {%- set u = c.spec.username | default('') -%}
+      {%- if u == 'system:serviceaccount:openshift-machine-config-operator:node-bootstrapper'
+            or (u.startswith('system:node:') and u[12:] in _scale_out_hosts) -%}
+      {%- set _ = out.append(c.metadata.name) -%}
+      {%- endif -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+  when: not (_scale_nodes_ready | bool)
+
+- name: Approve pending CSRs
+  ansible.builtin.command:
+    cmd: "{{ _oc_bin }} adm certificate approve {{ item }}"
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+  loop: "{{ _pending_csrs | default([]) }}"
+  failed_when: false
+  when: not (_scale_nodes_ready | bool)
+
+- name: Fetch nodes
+  ansible.builtin.command:
+    cmd: "{{ _oc_bin }} get nodes -o json"
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+  register: _nodes_raw
+  failed_when: false
+  changed_when: false
+  when: not (_scale_nodes_ready | bool)
+
+- name: Determine which new nodes are Ready
+  ansible.builtin.set_fact:
+    _scale_ready_names: >-
+      {%- set out = [] -%}
+      {%- for n in (_nodes_raw.stdout | default('{}', true) | from_json).get('items', []) -%}
+      {%- if n.metadata.name in _scale_out_hosts -%}
+      {%- for c in n.status.conditions | default([]) -%}
+      {%- if c.type == 'Ready' and c.status == 'True' -%}
+      {%- set _ = out.append(n.metadata.name) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+  when: not (_scale_nodes_ready | bool)
+
+- name: Mark join complete when all new nodes are Ready
+  ansible.builtin.set_fact:
+    _scale_nodes_ready: "{{ (_scale_ready_names | length) == (_scale_out_hosts | length) }}"
+  when: not (_scale_nodes_ready | bool)
+
+- name: Progress of node join
+  ansible.builtin.debug:
+    msg: >-
+      scale watch cycle {{ _cycle + 1 }}/{{ _scale_watch_retries }}:
+      Ready {{ _scale_ready_names | default([]) | length }}/{{ _scale_out_hosts | length }}
+      ({{ _scale_ready_names | default([]) | join(', ') | default('none', true) }});
+      approved CSRs this cycle: {{ _pending_csrs | default([]) | join(', ') | default('none', true) }}
+  when: not (_scale_nodes_ready | bool)
+
+- name: Pause before next join check
+  ansible.builtin.wait_for:
+    timeout: "{{ _scale_watch_delay | int }}"
+  when: not (_scale_nodes_ready | bool)

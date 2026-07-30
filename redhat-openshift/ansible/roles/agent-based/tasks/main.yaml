@@ -17,17 +17,31 @@
     - _use_private_registry | bool
     - (extensionInstanceVariables.mirror_registry | default('')) == ''
 
-- name: Generate install-config.yaml in the installation directory
-  template:
-    src: install-config.yaml.j2
-    dest: "{{ ocp_install_dir }}/install-config.yaml"
-    mode: '0644'
+# Public installs pull the release payload from quay.io/openshift-release-dev —
+# a pull secret without quay.io auth fails 'unauthorized' only ~13 min into ISO
+# creation. Catch it up front.
+- name: Validate pull secret covers quay.io on public-registry installs
+  ansible.builtin.fail:
+    msg: >-
+      use_private_registry is false but the pull_secret has no auth entry for
+      quay.io — the release payload download will fail with 'unauthorized'.
+      Provide the full Red Hat pull secret (console.redhat.com/openshift/downloads)
+      or set use_private_registry to true to install from the mirror.
+  when:
+    - not (_use_private_registry | bool)
+    - "'quay.io' not in (_pull_secret.auths | default({}))"
 
-- name: Generate agent-config.yaml in the installation directory
-  template:
-    src: agent-config.yaml.j2
-    dest: "{{ ocp_install_dir }}/agent-config.yaml"
-    mode: '0644'
+# - name: Generate install-config.yaml in the installation directory
+#   template:
+#     src: install-config.yaml.j2
+#     dest: "{{ ocp_install_dir }}/install-config.yaml"
+#     mode: '0644'
+
+# - name: Generate agent-config.yaml in the installation directory
+#   template:
+#     src: agent-config.yaml.j2
+#     dest: "{{ ocp_install_dir }}/agent-config.yaml"
+#     mode: '0644'
 
 - name: Write pull secret to installation directory
   ansible.builtin.copy:

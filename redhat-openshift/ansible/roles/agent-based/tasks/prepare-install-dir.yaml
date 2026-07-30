@@ -20,3 +20,39 @@
     src: agent-config.yaml.j2
     dest: "{{ ocp_install_dir }}/agent-config.yaml"
     mode: '0644'
+
+# Catalog images (registry.redhat.io/*-operator-index) are NOT covered by
+# imageContentSources — on private-registry installs the default OperatorHub sources
+# must be disabled or marketplace pods ImagePullBackOff forever. The agent installer
+# consumes extra cluster manifests from the openshift/ subdirectory.
+- name: Ensure extra manifests directory exists
+  ansible.builtin.file:
+    path: "{{ ocp_install_dir }}/openshift"
+    state: directory
+    mode: '0755'
+  when: _use_private_registry | bool or _is_sno | bool
+
+# SNO: bind the VIPs post-boot via MachineConfig instead of the boot NIC profile —
+# VIPs in the live-phase network config can get picked as etcd's member address,
+# whose cert only covers the node IP (etcd unhealthy, install never completes).
+- name: Bind cluster VIPs on the SNO node after boot (MachineConfig)
+  ansible.builtin.template:
+    src: sno-vips-machineconfig.yaml.j2
+    dest: "{{ ocp_install_dir }}/openshift/98-master-sno-vips.yaml"
+    mode: '0644'
+  when:
+    - _is_sno | bool
+    - (_api_vip_ip | length > 0) or (_ingress_vip_ip | length > 0)
+
+- name: Disable default OperatorHub catalog sources (private registry)
+  ansible.builtin.copy:
+    dest: "{{ ocp_install_dir }}/openshift/operatorhub.yaml"
+    mode: '0644'
+    content: |
+      apiVersion: config.openshift.io/v1
+      kind: OperatorHub
+      metadata:
+        name: cluster
+      spec:
+        disableAllDefaultSources: true
+  when: _use_private_registry | bool

@@ -53,6 +53,75 @@ _release_image_override_env: >-
 _monitor_installation: false
 _retry_install_complete_check: false
 
+# Single-node: platform "none" means keepalived never binds the allocated VIPs, yet the
+# platform points api/*.apps DNS at them — the node must own those IPs itself (template
+# adds them as secondary addresses on the node NIC).
+_is_sno: "{{ (_control_plane_nodes | int == 1) and (_compute_nodes | int == 0) }}"
+_api_vip_ip: >-
+  {{ extensionInstanceRecordSet.clusterIpv4Ips | default([])
+     | selectattr('tags.role', 'defined') | selectattr('tags.role', 'equalto', 'api-vip')
+     | map(attribute='ip') | first | default('') }}
+_ingress_vip_ip: >-
+  {{ extensionInstanceRecordSet.clusterIpv4Ips | default([])
+     | selectattr('tags.role', 'defined') | selectattr('tags.role', 'equalto', 'ingress-vip')
+     | map(attribute='ip') | first | default('') }}
+
+_api_url: "https://api.{{ _cluster_name }}.{{ _base_domain }}:6443"
+_console_url: "https://console-openshift-console.apps.{{ _cluster_name }}.{{ _base_domain }}"
+
+# Cluster auth generated at deploy time and returned via context.json keys matching the
+# declared OUTPUT labels (persisted in customJson.outputs). The `context` extra-var only
+# survives within one deployment's job chain, so later (onEdit) runs need the platform to
+# re-inject outputs — accept every plausible source, newest first.
+_cluster_kubeconfig_content: >-
+  {{ extensionInstanceVariables.cluster_kubeconfig
+     | default(extensionInstanceOutputs.cluster_kubeconfig
+     | default(context['cluster_kubeconfig']
+     | default(context['auth-kubeconfig']
+     | default('', true), true), true), true) }}
+_cluster_kubeadmin_password_content: >-
+  {{ extensionInstanceVariables.cluster_kubeadmin_password
+     | default(extensionInstanceOutputs.cluster_kubeadmin_password
+     | default(context['cluster_kubeadmin_password']
+     | default(context['auth-kubeadmin-password']
+     | default('', true), true), true), true) }}
+
+# Every context.json write REPLACES customJson.outputs — always re-emit all declared
+# outputs (plus the auth-* keys consumed by same-chain follow-up tasks).
+_context_outputs_payload:
+  cluster_kubeconfig: "{{ _cluster_kubeconfig_content }}"
+  cluster_kubeadmin_password: "{{ _cluster_kubeadmin_password_content }}"
+  api_url: "{{ _api_url }}"
+  console_url: "{{ _console_url }}"
+  auth-kubeconfig: "{{ _cluster_kubeconfig_content }}"
+  auth-kubeadmin-password: "{{ _cluster_kubeadmin_password_content }}"
+
+# Scaling (onEdit) — inventory scale groups are named <instanceArray label>_scale_out/_scale_in
+_scale_out_hosts: "{{ groups['compute_scale_out'] | default([]) }}"
+_scale_in_hosts: "{{ groups['compute_scale_in'] | default([]) }}"
+_scale_out_instances: >-
+  {{ extensionInstanceRecordSet.serverInstances | default([])
+     | selectattr('host', 'in', _scale_out_hosts) | list }}
+# postDeploy-readiness predicate: at preDeploy the new servers exist in inventory but
+# are not provisioned yet — their recordSet entries lack IP/NIC data. Only act when
+# every scale-out host has allocation data.
+_scale_out_data_ready: >-
+  {{ _scale_out_hosts | length > 0
+     and (_scale_out_instances | selectattr('ipv4Ips', 'defined')
+          | selectattr('ipv4Ips') | list | length) == (_scale_out_hosts | length) }}
+
+_addnodes_dir: "{{ runner_base_data_dir }}/iso/{{ deployment_uuid }}-addnodes"
+_addnodes_iso_path: "{{ _addnodes_dir }}/ISO_{{ deployment_id }}_{{ instance_id }}_{{ image_name }}_addnodes.iso"
+_scale_kubeconfig: "{{ _addnodes_dir }}/auth/kubeconfig"
+
+_oc_bin: /usr/local/bin/oc
+_drain_timeout_seconds: 600
+_drain_retries: 3
+_drain_delay: 30
+
+_scale_watch_retries: 60
+_scale_watch_delay: 60
+
 # On a fresh deployment the API VIP only answers once the bootstrap control plane
 # is up — 20-30+ min after the nodes boot the ISO. Budget a full hour.
 _api_wait_retries: 60

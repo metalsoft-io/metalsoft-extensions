@@ -3,12 +3,14 @@
   ansible.builtin.import_tasks:
     file: prepare-install-dir.yaml
 
-- name: Assert deploy context is present
+- name: Assert deploy auth is available
   ansible.builtin.assert:
     that:
-      - context['auth-kubeadmin-password'] is defined
-      - context['auth-kubeconfig'] is defined
-    fail_msg: "context extra-var missing auth data — deploy task (create-iso) must complete first"
+      - _cluster_kubeconfig_content | length > 0
+      - _cluster_kubeadmin_password_content | length > 0
+    fail_msg: >-
+      no cluster auth available — neither the cluster_kubeconfig output nor the
+      same-deployment context carries it; the deploy task (create-iso) must complete first
 
 # `agent wait-for` loads the asset store (AgentConfig, AgentManifests, InstallConfig,
 # AgentHosts). Raw install-config.yaml/agent-config.yaml on disk trigger strict IPI
@@ -44,15 +46,15 @@
     state: directory
     mode: "0750"
 
-- name: Restore kubeadmin-password from context JSON
+- name: Restore kubeadmin-password
   ansible.builtin.copy:
-    content: "{{ context['auth-kubeadmin-password'] }}"
+    content: "{{ _cluster_kubeadmin_password_content }}"
     dest: "{{ ocp_install_dir }}/auth/kubeadmin-password"
     mode: "0600"
 
-- name: Restore kubeconfig from context JSON
+- name: Restore kubeconfig
   ansible.builtin.copy:
-    content: "{{ context['auth-kubeconfig'] }}"
+    content: "{{ _cluster_kubeconfig_content }}"
     dest: "{{ ocp_install_dir }}/auth/kubeconfig"
     mode: "0600"
 
@@ -162,11 +164,23 @@
       ansible.builtin.fail:
         msg: "Installation was not completed"
 # execution: series / parallel / parallel_per_group
+# This is the LAST onCreate task — its context.json becomes the instance's stored
+# outputs (outputs are replaced on every write), so emit the full set with values
+# read fresh from the restored auth files, same as create-iso does.
+- name: Read auth files for context outputs
+  ansible.builtin.set_fact:
+    _kubeadmin_password: "{{ lookup('file', ocp_install_dir + '/auth/kubeadmin-password') }}"
+    _kubeconfig: "{{ lookup('file', ocp_install_dir + '/auth/kubeconfig') }}"
+
 - name: Write eject-mounted-iso context JSON on successful installation
-  ansible.builtin.copy:
-    content: >-
-      {{ {'eject-mounted-iso': {},
-          'auth-kubeadmin-password': context['auth-kubeadmin-password'],
-          'auth-kubeconfig': context['auth-kubeconfig']} | to_nice_json }}
-    dest: "{{ context_json_file_path }}"
-    mode: "0644"
+  ansible.builtin.include_tasks:
+    file: write-context.yaml
+  vars:
+    _context_content:
+      eject-mounted-iso: {}
+      auth-kubeadmin-password: "{{ _kubeadmin_password }}"
+      auth-kubeconfig: "{{ _kubeconfig }}"
+      cluster_kubeconfig: "{{ _kubeconfig }}"
+      cluster_kubeadmin_password: "{{ _kubeadmin_password }}"
+      api_url: "{{ _api_url }}"
+      console_url: "{{ _console_url }}"

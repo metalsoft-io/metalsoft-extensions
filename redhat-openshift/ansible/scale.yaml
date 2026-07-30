@@ -1,0 +1,57 @@
+---
+# onEdit lifecycle playbook — runs at BOTH preDeploy and postDeploy (VCF pattern).
+# Plays self-select via the platform-generated scale groups:
+#   preDeploy:  compute_scale_in populated (hosts still up) -> drain + remove;
+#               compute_scale_out may exist but has no allocation data yet -> skipped
+#               inside scale-out.yaml (_scale_out_data_ready guard).
+#   postDeploy: compute_scale_out provisioned -> generate node ISO + mount-and-boot.
+# An edit that changes no counts is a no-op at both stages.
+
+- name: Guard against control-plane scaling
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Fail if control-plane scale requested
+      ansible.builtin.assert:
+        that:
+          - groups['cp_scale_out'] | default([]) | length == 0
+          - groups['cp_scale_in'] | default([]) | length == 0
+        fail_msg: >-
+          Control-plane scaling is not supported by this extension —
+          control_plane_nodes is immutable after creation
+
+- name: Scale in workers
+  hosts: compute_scale_in
+  connection: local
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Drain and remove worker from cluster
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: scale-in.yaml
+
+- name: Scale out workers
+  hosts: compute_scale_out
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Generate node ISO and request mount-and-boot
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: scale-out.yaml
+      run_once: true
+
+# The platform replaces stored outputs with this run's context.json — a run that wrote
+# none (scale-in only, or a no-op stage) would wipe the cluster credentials. Re-emit
+# them unless a context.json was already written above.
+- name: Preserve stored outputs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Re-emit outputs when no context was written this run
+      ansible.builtin.include_role:
+        name: agent-based
+        tasks_from: preserve-outputs.yaml

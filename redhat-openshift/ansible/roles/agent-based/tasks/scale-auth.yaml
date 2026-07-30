@@ -1,0 +1,25 @@
+---
+# Restore the cluster admin kubeconfig from the `context` extra-var (populated by the
+# deploy task's context.json write) into the scale working dir. Shared by scale-in,
+# scale-out and scale-monitor.
+
+- name: Assert cluster auth is available
+  ansible.builtin.assert:
+    that:
+      - _cluster_kubeconfig_content | length > 0
+    fail_msg: >-
+      no kubeconfig available — the cluster_kubeconfig output (set by the deploy task)
+      is not exposed to this run and the same-deployment context is empty;
+      the cluster must be deployed with a definition declaring the cluster_kubeconfig output
+
+- name: Ensure scale working directory exists
+  ansible.builtin.file:
+    path: "{{ _addnodes_dir }}/auth"
+    state: directory
+    mode: "0750"
+
+- name: Restore kubeconfig
+  ansible.builtin.copy:
+    content: "{{ _cluster_kubeconfig_content }}"
+    dest: "{{ _scale_kubeconfig }}"
+    mode: "0600"

@@ -1,0 +1,47 @@
+---
+# Safely remove one worker node (runs once per compute_scale_in host, serial: 1,
+# connection: local — inventory_hostname is the node name). Runs at onEdit preDeploy,
+# while the server is still provisioned; the platform deprovisions it afterwards.
+# Red Hat procedure: cordon -> drain -> delete node.
+
+- name: Restore kubeconfig
+  ansible.builtin.import_tasks:
+    file: scale-auth.yaml
+
+- name: Check node {{ inventory_hostname }} exists in cluster
+  ansible.builtin.command:
+    cmd: "{{ _oc_bin }} get node {{ inventory_hostname }} -o name"
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+  register: _node_exists
+  failed_when: false
+  changed_when: false
+
+- name: Drain and remove node {{ inventory_hostname }}
+  when: _node_exists.rc == 0
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+  block:
+    - name: Cordon node {{ inventory_hostname }}
+      ansible.builtin.command:
+        cmd: "{{ _oc_bin }} adm cordon {{ inventory_hostname }}"
+
+    - name: Drain node {{ inventory_hostname }}
+      ansible.builtin.command:
+        cmd: >-
+          {{ _oc_bin }} adm drain {{ inventory_hostname }}
+          --force --ignore-daemonsets --delete-emptydir-data
+          --timeout={{ _drain_timeout_seconds }}s
+      register: _drain_result
+      retries: "{{ _drain_retries }}"
+      delay: "{{ _drain_delay }}"
+      until: _drain_result.rc == 0
+
+    - name: Delete node {{ inventory_hostname }}
+      ansible.builtin.command:
+        cmd: "{{ _oc_bin }} delete node {{ inventory_hostname }}"
+
+- name: Node {{ inventory_hostname }} already absent from cluster
+  ansible.builtin.debug:
+    msg: "Node {{ inventory_hostname }} not found in cluster — nothing to drain (already removed)"
+  when: _node_exists.rc != 0

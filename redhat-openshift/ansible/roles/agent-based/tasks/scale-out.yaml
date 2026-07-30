@@ -1,0 +1,74 @@
+---
+# Generate the day-2 node ISO for the new workers (onEdit postDeploy).
+# `oc adm node-image create` runs a node-joiner pod in the target cluster and copies
+# the resulting node.<arch>.iso back; requires KUBECONFIG + a pull secret
+# (REGISTRY_AUTH_FILE). Mirror/IDMS configuration is read from the cluster itself,
+# so no release-image override is needed here.
+
+# At onEdit preDeploy the scale-out hosts can already appear in inventory while the
+# servers are not provisioned yet (no IPs/NICs in the recordSet) — end the play and
+# let the postDeploy run do the work.
+- name: Skip scale-out until new servers are provisioned
+  ansible.builtin.meta: end_play
+  when: not (_scale_out_data_ready | bool)
+
+- name: Restore kubeconfig
+  ansible.builtin.import_tasks:
+    file: scale-auth.yaml
+
+- name: Check if node ISO already exists
+  ansible.builtin.stat:
+    path: "{{ _addnodes_iso_path }}"
+  register: _addnodes_iso
+
+- name: Generate node ISO
+  when: not _addnodes_iso.stat.exists
+  environment:
+    KUBECONFIG: "{{ _scale_kubeconfig }}"
+    REGISTRY_AUTH_FILE: "{{ _addnodes_dir }}/.pull-secret.json"
+  block:
+    - name: Write pull secret for node-image create
+      ansible.builtin.copy:
+        content: "{{ _pull_secret | to_json }}"
+        dest: "{{ _addnodes_dir }}/.pull-secret.json"
+        mode: "0600"
+
+    - name: Generate nodes-config.yaml for new workers
+      ansible.builtin.template:
+        src: nodes-config.yaml.j2
+        dest: "{{ _addnodes_dir }}/nodes-config.yaml"
+        mode: "0644"
+
+    - name: Create node ISO (oc adm node-image create)
+      ansible.builtin.command:
+        cmd: "{{ _oc_bin }} adm node-image create --dir {{ _addnodes_dir }}"
+      register: _node_image_result
+
+    - name: Move node ISO to deterministic path
+      ansible.builtin.command:
+        cmd: "mv {{ _addnodes_dir }}/node.x86_64.iso {{ _addnodes_iso_path }}"
+
+# execution: series / parallel / parallel_per_group
+- name: Set context JSON payload
+  ansible.builtin.set_fact:
+    _context_payload:
+      mount-and-boot:
+        execution: parallel
+        iso:
+          path: "{{ _addnodes_iso_path }}"
+        options:
+          sendSuccessMessageAfterBoot: true
+        application: openshift
+      auth-kubeadmin-password: "{{ _cluster_kubeadmin_password_content }}"
+      auth-kubeconfig: "{{ _cluster_kubeconfig_content }}"
+      cluster_kubeconfig: "{{ _cluster_kubeconfig_content }}"
+      cluster_kubeadmin_password: "{{ _cluster_kubeadmin_password_content }}"
+      api_url: "{{ _api_url }}"
+      console_url: "{{ _console_url }}"
+
+- name: Write mount-and-boot context JSON for new workers
+  ansible.builtin.include_tasks:
+    file: write-context.yaml
+  vars:
+    _context_content: "{{ _context_payload }}"
+    _context_debug_path: "{{ _addnodes_dir }}/context.json"

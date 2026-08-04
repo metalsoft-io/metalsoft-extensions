@@ -19,7 +19,7 @@
 - name: Build | vCenter spec
   set_fact:
     vcenter_spec:
-      vm_size: "{{ extensionInstanceVariables.vcenter_vm_size | default('small') }}"
+      vm_size: "{{ configVars.vcenter_vm_size | default('small') }}"
       ip: "{{ management_vcenter_server_config.ip | default('') }}"
       vcenter_fqdn: "{{ management_vcenter_server_config.fqdn | default('vcenter.vmware.local') }}"
       vcenter_hostname: "{{ management_vcenter_server_config.fqdn | default('') | split('.') | first }}"

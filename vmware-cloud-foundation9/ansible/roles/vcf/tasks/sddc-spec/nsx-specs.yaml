@@ -11,7 +11,7 @@
 - name: Build | NSX spec
   set_fact:
     nsx_spec:
-      nsxt_manager_size: "{{ extensionInstanceVariables.nsx_manager_size | default('medium') }}"
+      nsxt_manager_size: "{{ configVars.nsx_manager_size | default('medium') }}"
       nsxt_manager_vip:
         ipv4_address: "{{ nsx_manager_vip_config.ip | default('') }}"
         hostname_fqdn: "{{ nsx_manager_vip_config.fqdn | default('') }}"

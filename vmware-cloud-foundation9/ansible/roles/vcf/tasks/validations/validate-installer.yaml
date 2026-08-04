@@ -27,7 +27,7 @@
       Effective OVA URL is missing or malformed. raw_ova_url='{{ raw_ova_url | default('') }}' derived_ova_url='{{ derived_ova_url | default('') }}'
       vcf_version='{{ vcf_version | default('') }}' ova_name='{{ ova_name | default('') }}'
       Resolution:
-        1) Provide a full extensionInstanceVariables.ova_url (https://.../something.ova)
+        1) Provide a full configVars.ova_url site config value (https://.../something.ova)
         OR
         2) Ensure depot_hostname, depot_port, and ova_name produce a valid derived_ova_url.
     success_msg: "Effective OVA URL '{{ ova_url }}' appears valid"

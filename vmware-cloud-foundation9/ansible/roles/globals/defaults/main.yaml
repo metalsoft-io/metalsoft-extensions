@@ -21,17 +21,17 @@ esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }
 esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
 esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
 
-vcf_version: "{{ extensionInstanceVariables.vcf_version | default('9.0.1.0') }}"
+vcf_version: "{{ configVars.vcf_version | default('9.0.1.0') }}"
 vcf_release_sku: "{{ extensionInstanceVariables.vcf_release_sku | default('VCF') }}" # SKU for the installer release-components API (VCF or VVF) — consumed by download-binaries.yaml
 # VCF Installer 9.0.2.0 is required by Broadcom to deploy 9.0.1 components (9.0.1 BOM)
-ova_name: "{{ extensionInstanceVariables.ova_name | default('VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova') }}"
+ova_name: "{{ configVars.ova_name | default('VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova') }}"
 
 # Offline depot (VCF Installer pulls all product binaries from here)
 depot:
-  hostname: "{{ extensionInstanceVariables.depot_hostname | default('vmware-depot.metalsoft.dev') }}"
-  port: "{{ extensionInstanceVariables.depot_port | default(443) | int }}"
-  username: "{{ extensionInstanceVariables.depot_username | default('vmware-depot') }}"
-  password: "{{ extensionInstanceVariables.depot_password | default('') }}"
+  hostname: "{{ configVars.depot_hostname | default('vmware-depot.metalsoft.dev') }}"
+  port: "{{ configVars.depot_port | default(443) | int }}"
+  username: "{{ configVars.depot_username | default('vmware-depot') }}"
+  password: "{{ configVars.depot_password | default('') }}"
   # internal mirrors typically run self-signed certs; set depot_validate_certs=true when a trusted CA is used
   validate_certs: "{{ extensionInstanceVariables.depot_validate_certs | default(false) | bool }}"
 
@@ -39,8 +39,8 @@ depot_esx_iso_name: "{{ extensionInstanceVariables.depot_esx_iso_name | default(
 
 # The installer OVA lives on the depot mirror itself (basic auth handled by get_url in deploy-vcf-installer.yaml)
 derived_ova_url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/COMP/SDDC_MANAGER_VCF/{{ ova_name }}"
-# Preserve the raw user-supplied override exactly (may be empty string)
-raw_ova_url: "{{ extensionInstanceVariables.ova_url | default('') }}"
+# Preserve the raw operator-supplied override exactly (may be empty string)
+raw_ova_url: "{{ configVars.ova_url | default('') }}"
 
 # Effective OVA URL: if raw override is non-empty (after trim) use it, else fall back to derived
 effective_ova_url: >-
@@ -50,17 +50,17 @@ effective_ova_url: >-
 ova_url: "{{ effective_ova_url }}"
 vcf:
   # Deployment architecture model: consolidated, standard, or custom
-  architecture: "{{ extensionInstanceVariables.deployment_architecture_model | default('consolidated') }}"
+  architecture: "{{ configVars.deployment_architecture_model | default('consolidated') }}"
   # Deployment platform ("workflowType": VCF | VCF_EXTEND | VVF)
   platform: "{{ extensionInstanceVariables.deployment_platform | default('VCF') }}"
   ceip_enabled: "{{ extensionInstanceVariables.ceip_enabled | default(false) | bool }}"
   distinct_vlan_id_vm_mgmt_and_esxi_mgmt: "{{ extensionInstanceVariables.distinct_vlan_id_vm_mgmt_and_esxi_mgmt | default(false) | bool }}"
   skip_esx_thumbprint_validation: "{{ extensionInstanceVariables.skip_esx_thumbprint_validation | default(false) | bool }}"
-  validation_debug: "{{ extensionInstanceVariables.validation_debug | default(false) | bool }}"
-  skip_gateway_ping_validation: "{{ extensionInstanceVariables.skip_gateway_ping_validation | default(false) | bool }}"
+  validation_debug: "{{ configVars.validation_debug | default(false) | bool }}"
+  skip_gateway_ping_validation: "{{ configVars.skip_gateway_ping_validation | default(false) | bool }}"
   # vCenter 9.x rejects specs carrying license keys — must stay true unless deploying with keys on an older stack
-  deploy_without_license_keys: "{{ extensionInstanceVariables.deploy_without_license_keys | default(true) | bool }}"
-  deploy_automation: "{{ extensionInstanceVariables.deploy_vcf_automation | default(false) | bool }}"
+  deploy_without_license_keys: "{{ configVars.deploy_without_license_keys | default(true) | bool }}"
+  deploy_automation: "{{ configVars.deploy_vcf_automation | default(false) | bool }}"
   instance_name: "{{ extensionInstanceVariables.vcf_instance_name | default(extension_instance_id ~ '-vcf', true) }}"
 
 # Extract 'management' server instance group data (base)

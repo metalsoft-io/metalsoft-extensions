@@ -4,7 +4,7 @@
 - name: Validate | Depot credentials provided
   ansible.builtin.assert:
     that: depot.password | length > 0
-    fail_msg: "depot_password input is required for VCF 9 (offline depot serves all product binaries)"
+    fail_msg: "depot_password site config variable is required for VCF 9 (offline depot serves all product binaries)"
 
 - name: Validate | Depot catalog reachable with credentials
   ansible.builtin.uri:

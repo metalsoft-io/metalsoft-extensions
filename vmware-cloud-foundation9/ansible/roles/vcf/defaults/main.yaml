@@ -1,5 +1,5 @@
 ---
-debug_vmnic_mapping: "{{ extensionInstanceVariables.get('validation_debug', false) | bool }}"
+debug_vmnic_mapping: "{{ (configVars | default({})).get('validation_debug', false) | bool }}"
 
 sddc_id: "{{ extensionInstanceRecordSet.sddc_id | default(extension_instance_id ~ '-m', true) }}"
 management_pool_name: "{{ extensionInstanceVariables.management_pool_name | default(sddc_id ~ '-np1', true) }}"

@@ -5,7 +5,7 @@
   "label": "vcf9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "2.0.0",
+  "extensionVersion": "2.1.0",
   "description": "VMware Cloud Foundation (VCF)",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
@@ -38,84 +38,9 @@
       }
     },
     {
-      "label": "deployment_architecture_model",
-      "name": "deployment_architecture_model",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "consolidated",
-      "setOnly": true,
-      "hidden": true,
-      "options": {}
-    },
-    {
-      "label": "ova_url",
-      "name": "ova_url",
-      "inputType": "ExtensionInputString",
-      "options": {}
-    },
-    {
-      "label": "depot_hostname",
-      "name": "depot_hostname",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "vmware-depot.metalsoft.dev",
-      "options": {}
-    },
-    {
-      "label": "depot_port",
-      "name": "depot_port",
-      "inputType": "ExtensionInputInteger",
-      "defaultValue": 443,
-      "options": {}
-    },
-    {
-      "label": "depot_username",
-      "name": "depot_username",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "vmware-depot",
-      "options": {}
-    },
-    {
-      "label": "depot_password",
-      "name": "depot_password",
-      "inputType": "ExtensionInputString",
-      "isPassword": true,
-      "options": {
-        "validationRegEx": ".+"
-      }
-    },
-    {
       "label": "vcf_instance_name",
       "name": "vcf_instance_name",
       "inputType": "ExtensionInputString",
-      "options": {}
-    },
-    {
-      "label": "vcf_version",
-      "name": "vcf_version",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "9.0.1.0",
-      "options": {}
-    },
-    {
-      "label": "ova_name",
-      "name": "ova_name",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova",
-      "options": {}
-    },
-    {
-      "label": "nsx_manager_size",
-      "name": "nsx_manager_size",
-      "inputType": "ExtensionInputString",
-      "isPassword": false,
-      "defaultValue": "medium",
-      "options": {}
-    },
-    {
-      "label": "vcenter_vm_size",
-      "name": "vcenter_vm_size",
-      "inputType": "ExtensionInputString",
-      "isPassword": false,
-      "defaultValue": "small",
       "options": {}
     },
     {
@@ -277,58 +202,6 @@
       "options": {
         "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
       }
-    },
-    {
-      "label": "vcf_ops_appliance_size",
-      "name": "vcf_ops_appliance_size",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "small",
-      "options": {}
-    },
-    {
-      "label": "deploy_vcf_automation",
-      "name": "deploy_vcf_automation",
-      "inputType": "ExtensionInputBoolean",
-      "defaultValue": false,
-      "options": {}
-    },
-    {
-      "label": "vcf_automation_internal_cluster_cidr",
-      "name": "vcf_automation_internal_cluster_cidr",
-      "inputType": "ExtensionInputString",
-      "defaultValue": "198.18.0.0/15",
-      "options": {}
-    },
-    {
-      "label": "skip_gateway_ping_validation",
-      "name": "skip_gateway_ping_validation",
-      "inputType": "ExtensionInputBoolean",
-      "defaultValue": false,
-      "options": {}
-    },
-    {
-      "label": "deploy_without_license_keys",
-      "name": "deploy_without_license_keys",
-      "inputType": "ExtensionInputBoolean",
-      "defaultValue": true,
-      "options": {}
-    },
-    {
-      "label": "vsan_failures_to_tolerate",
-      "name": "vsan_failures_to_tolerate",
-      "inputType": "ExtensionInputInteger",
-      "defaultValue": 1,
-      "options": {
-        "minValue": 0,
-        "maxValue": 3
-      }
-    },
-    {
-      "label": "validation_debug",
-      "name": "validation_debug",
-      "inputType": "ExtensionInputBoolean",
-      "defaultValue": false,
-      "options": {}
     }
   ],
   "outputs": [],
@@ -641,7 +514,7 @@
       "label": "vcf-ansible-bundle",
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.0.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.1.0.zip"
     },
     {
       "label": "ee-vcf9-9-0-1",
@@ -717,6 +590,132 @@
       "hidden": false,
       "isPassword": false,
       "defaultValue": "1.1.1.1",
+      "options": {}
+    },
+    {
+      "label": "deployment_architecture_model",
+      "name": "deployment_architecture_model",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "consolidated",
+      "options": {}
+    },
+    {
+      "label": "ova_url",
+      "name": "ova_url",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {}
+    },
+    {
+      "label": "depot_hostname",
+      "name": "depot_hostname",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vmware-depot.metalsoft.dev",
+      "options": {}
+    },
+    {
+      "label": "depot_port",
+      "name": "depot_port",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 443,
+      "options": {}
+    },
+    {
+      "label": "depot_username",
+      "name": "depot_username",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vmware-depot",
+      "options": {}
+    },
+    {
+      "label": "depot_password",
+      "name": "depot_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "options": {
+        "validationRegEx": ".+"
+      }
+    },
+    {
+      "label": "vcf_version",
+      "name": "vcf_version",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "9.0.1.0",
+      "options": {}
+    },
+    {
+      "label": "ova_name",
+      "name": "ova_name",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova",
+      "options": {}
+    },
+    {
+      "label": "nsx_manager_size",
+      "name": "nsx_manager_size",
+      "inputType": "ExtensionInputString",
+      "isPassword": false,
+      "defaultValue": "medium",
+      "options": {}
+    },
+    {
+      "label": "vcenter_vm_size",
+      "name": "vcenter_vm_size",
+      "inputType": "ExtensionInputString",
+      "isPassword": false,
+      "defaultValue": "small",
+      "options": {}
+    },
+    {
+      "label": "vcf_ops_appliance_size",
+      "name": "vcf_ops_appliance_size",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "small",
+      "options": {}
+    },
+    {
+      "label": "deploy_vcf_automation",
+      "name": "deploy_vcf_automation",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "vcf_automation_internal_cluster_cidr",
+      "name": "vcf_automation_internal_cluster_cidr",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "198.18.0.0/15",
+      "options": {}
+    },
+    {
+      "label": "skip_gateway_ping_validation",
+      "name": "skip_gateway_ping_validation",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "deploy_without_license_keys",
+      "name": "deploy_without_license_keys",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "vsan_failures_to_tolerate",
+      "name": "vsan_failures_to_tolerate",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 0,
+        "maxValue": 3
+      }
+    },
+    {
+      "label": "validation_debug",
+      "name": "validation_debug",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
       "options": {}
     }
   ]

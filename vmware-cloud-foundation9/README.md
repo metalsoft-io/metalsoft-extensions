@@ -101,16 +101,10 @@ Set the input defaults so they reflect your environment instead of forcing every
 
 | Input | Default in this repo | What to change |
 | --- | --- | --- |
-| `depot_hostname` / `depot_port` / `depot_username` / `depot_password` | `vmware-depot.metalsoft.dev` / `443` / `vmware-depot` / *(no default)* | Point at **your** offline depot mirror (see Prerequisites). The password has no default and is validated before deployment. |
-| `ova_name` / `ova_url` / `vcf_version` | `VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova` / *(empty)* / `9.0.1.0` | Leave as-is for the 9.0.1 BOM (the 9.0.2.0 installer OVA is intentional — see the note above). When `ova_url` is empty the download URL is derived from the depot. |
 | `mgmt_domain_cluster_node_os_template` | *(operator-selected)* | The OS template offered must exist at the target and install exactly ESX 9.0.1.0-24957456 (e.g. `esxi-9-24957456-cluster-node`). |
 | `mgmt_domain_instance_count` | `4` (min 3, max 16) | Number of management domain nodes. This is the input operators change later to scale the domain (see Scaling below). |
 | `*_password` inputs (installer, SDDC Manager, NSX, vCenter, VCF Operations, Automation) | Example values committed in this repo | **Change every one of them** — they are placeholders, not secrets. New values must satisfy the input's `validationRegEx` (`^[A-Za-z0-9!@#$%^&*+]{12,20}$`); the charset is restricted to what all VCF components accept, so keep validation at the input rather than relaxing it. |
-| `nsx_manager_size` / `vcenter_vm_size` / `vcf_ops_appliance_size` | `medium` / `small` / `small` | Appliance sizing. NSX `small` no longer exists in 9.x (`medium`/`large`/`xlarge`). |
-| `deploy_vcf_automation` / `vcf_automation_internal_cluster_cidr` | `false` / `198.18.0.0/15` | Enable VCF Automation and, if needed, change its internal cluster CIDR so it doesn't overlap existing networks. |
-| `vsan_failures_to_tolerate` | `1` | vSAN FTT for the management cluster (0–3). |
-| `deploy_without_license_keys` | `true` | Must stay `true` on VCF 9 — bring-up runs in evaluation mode and the API rejects the spec otherwise. |
-| `skip_gateway_ping_validation` / `validation_debug` | `false` / `false` | Troubleshooting aids for spec validation. |
+| `vcf_instance_name` | *(empty)* | Optional per-instance VCF instance name; when unset the playbooks derive `<extension_instance_id>-vcf`. |
 
 ### DNS records
 
@@ -120,7 +114,19 @@ All management FQDNs are declared as `dnsRecords` on the `vcf-mgmt` VIP allocati
 
 ### Site config vars
 
-`configVars.DNSResolvers` (default `1.1.1.1`) is an operator-set, site-level value: the DNS resolvers the playbooks write into the ESXi hosts and the bring-up spec. Set it to your site's internal resolvers (comma-separated string accepted). **These resolvers are configured on all hosts and appliances and MUST be able to resolve the created management records** — handing VCF a public resolver breaks bring-up.
+Admin/site-level settings live in `configVars` and are set **once per site** by an operator (Extension Site Config), not per deployment. The extension must be enabled and its site config saved on the target site **before the first deploy** — config vars without a default (currently `depot_password`) are mandatory at that point. Values reach the playbooks as `configVars.<label>`.
+
+| Config var | Default in this repo | What to change |
+| --- | --- | --- |
+| `DNSResolvers` | `1.1.1.1` | The DNS resolvers the playbooks write into the ESXi hosts and the bring-up spec (comma-separated string accepted). **These resolvers are configured on all hosts and appliances and MUST be able to resolve the created management records** — handing VCF a public resolver breaks bring-up. |
+| `depot_hostname` / `depot_port` / `depot_username` / `depot_password` | `vmware-depot.metalsoft.dev` / `443` / `vmware-depot` / *(no default)* | Point at **your** offline depot mirror (see Prerequisites). The password has no default and is validated before deployment. |
+| `ova_name` / `ova_url` / `vcf_version` | `VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova` / *(empty)* / `9.0.1.0` | Leave as-is for the 9.0.1 BOM (the 9.0.2.0 installer OVA is intentional — see the note above). When `ova_url` is empty the download URL is derived from the depot. |
+| `deployment_architecture_model` | `consolidated` | VCF deployment architecture model handed to the installer spec. |
+| `nsx_manager_size` / `vcenter_vm_size` / `vcf_ops_appliance_size` | `medium` / `small` / `small` | Appliance sizing. NSX `small` no longer exists in 9.x (`medium`/`large`/`xlarge`). |
+| `deploy_vcf_automation` / `vcf_automation_internal_cluster_cidr` | `false` / `198.18.0.0/15` | Enable VCF Automation and, if needed, change its internal cluster CIDR so it doesn't overlap existing networks. |
+| `vsan_failures_to_tolerate` | `1` | vSAN FTT for the management cluster (0–3). |
+| `deploy_without_license_keys` | `true` | Must stay `true` on VCF 9 — bring-up runs in evaluation mode and the API rejects the spec otherwise. |
+| `skip_gateway_ping_validation` / `validation_debug` | `false` / `false` | Troubleshooting aids for spec validation. |
 
 ### Asset URLs
 

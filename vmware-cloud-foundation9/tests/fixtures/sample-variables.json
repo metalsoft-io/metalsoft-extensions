@@ -1,11 +1,22 @@
 {
-  "extensionInstanceVariables": {
-    "installer_admin_password": "Q#ZT1N#uarLPoPd",
-    "installer_root_password": "SALkFJ8e8x69?Of",
+  "configVars": {
+    "DNSResolvers": "1.1.1.1",
     "depot_hostname": "vmware-depot.metalsoft.dev",
     "depot_port": 443,
     "depot_username": "vmware-depot",
     "depot_password": "fixture-depot-pass",
+    "vcf_ops_appliance_size": "small",
+    "deploy_vcf_automation": false,
+    "vcf_automation_internal_cluster_cidr": "198.18.0.0/15",
+    "nsx_manager_size": "medium",
+    "vcenter_vm_size": "small",
+    "vsan_failures_to_tolerate": 1,
+    "skip_gateway_ping_validation": false,
+    "validation_debug": false
+  },
+  "extensionInstanceVariables": {
+    "installer_admin_password": "Q#ZT1N#uarLPoPd",
+    "installer_root_password": "SALkFJ8e8x69?Of",
     "sddc_root_password": "RootP@ss1!2#3$X",
     "sddc_local_admin_password": "AdminP@ss1!2#X5",
     "sddc_second_user_password": "SecndP@ss1!2#X5",
@@ -19,15 +30,7 @@
     "ops_fleet_mgmt_root_password": "FlMgRt@Pass1!2X",
     "ops_fleet_mgmt_admin_password": "FlMgAd@Pass1!2X",
     "ops_collector_root_password": "ColRt@Pass1!2#X",
-    "vcf_automation_admin_password": "AutoAd@Pass1!2X",
-    "vcf_ops_appliance_size": "small",
-    "deploy_vcf_automation": false,
-    "vcf_automation_internal_cluster_cidr": "198.18.0.0/15",
-    "nsx_manager_size": "medium",
-    "vcenter_vm_size": "small",
-    "vsan_failures_to_tolerate": 1,
-    "skip_gateway_ping_validation": false,
-    "validation_debug": false
+    "vcf_automation_admin_password": "AutoAd@Pass1!2X"
   },
   "management": {
     "sddc_root_username": "root",

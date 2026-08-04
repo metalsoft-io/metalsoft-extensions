@@ -24,7 +24,7 @@
       node1_hostname: "{{ vcf_ops_config.fqdn | default('') | split('.') | first }}"
       root_password: "{{ extensionInstanceVariables.vcf_ops_root_password | default('VMw@re1!VMw@re1!') }}"
       admin_password: "{{ extensionInstanceVariables.vcf_ops_admin_password | default('VMw@re1!VMw@re1!') }}"
-      appliance_size: "{{ extensionInstanceVariables.vcf_ops_appliance_size | default('small') }}"
+      appliance_size: "{{ configVars.vcf_ops_appliance_size | default('small') }}"
     ops_fleet_mgmt_spec:
       hostname: "{{ ops_fleet_mgmt_config.fqdn | default('') | split('.') | first }}"
       root_password: "{{ extensionInstanceVariables.ops_fleet_mgmt_root_password | default('VMw@re1!VMw@re1!') }}"
@@ -35,7 +35,7 @@
     vcf_automation_spec:
       hostname: "{{ vcf_automation_config.fqdn | default('') | split('.') | first }}"
       admin_password: "{{ extensionInstanceVariables.vcf_automation_admin_password | default('VMw@re1!VMw@re1!') }}"
-      internal_cluster_cidr: "{{ extensionInstanceVariables.vcf_automation_internal_cluster_cidr | default('198.18.0.0/15') }}"
+      internal_cluster_cidr: "{{ configVars.vcf_automation_internal_cluster_cidr | default('198.18.0.0/15') }}"
       node_prefix: "{{ sddc_id }}-auto"
       ip_pool: >-
         {{ (automation_ip_pool_range.startIp is defined and automation_ip_pool_range.endIp is defined)

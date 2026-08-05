@@ -5,7 +5,7 @@
   "label": "redhatopenshift",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "1.0.0",
+  "extensionVersion": "1.2.0",
   "description": "Provide the installation and lifecycle management of a Red Hat OpenShift cluster",
   "icon": "https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg",
   "dependencies": {
@@ -45,13 +45,6 @@
       "defaultValue": 0
     },
     {
-      "label": "mtu",
-      "name": "mtu",
-      "inputType": "ExtensionInputInteger",
-      "options": {},
-      "defaultValue": 1500
-    },
-    {
       "label": "cluster_network",
       "name": "cluster_network",
       "inputType": "ExtensionInputString",
@@ -64,37 +57,6 @@
       "inputType": "ExtensionInputString",
       "options": {},
       "defaultValue": "172.30.0.0/16"
-    },
-    {
-      "label": "pull_secret",
-      "name": "pull_secret",
-      "helpText": "Set this to the pull secret required to download the assets from the repository.",
-      "inputType": "ExtensionInputString",
-      "isPassword": true,
-      "options": {},
-      "defaultValue": "REDACTED"
-    },
-    {
-      "label": "use_private_registry",
-      "name": "use_private_registry",
-      "helpText": "If set to true the system will download all required binaries from the provided mirror instead of the official repository.",
-      "inputType": "ExtensionInputBoolean",
-      "options": {},
-      "defaultValue": false
-    },
-    {
-      "label": "mirror_registry",
-      "name": "mirror_registry",
-      "inputType": "ExtensionInputString",
-      "options": {},
-      "defaultValue": "registry.metalsoft.dev/ocp4/openshift4"
-    },
-    {
-      "label": "ocp_version",
-      "name": "ocp_version",
-      "inputType": "ExtensionInputString",
-      "options": {},
-      "defaultValue": "4.19.0"
     }
   ],
   "outputs": [
@@ -210,7 +172,7 @@
       "label": "openshift-ansible-bundle",
       "name": "openshift-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/redhat-openshift/redhat-openshift-v1.0.1.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/redhat-openshift/redhat-openshift-v1.2.0.zip"
     },
     {
       "label": "ee-redhat-openshift",
@@ -311,6 +273,44 @@
       "isPassword": false,
       "defaultValue": "1.1.1.1",
       "options": {}
+    },
+    {
+      "label": "pull_secret",
+      "name": "pull_secret",
+      "helpText": "Set this to the pull secret required to download the assets from the repository.",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "options": {},
+      "defaultValue": "REDACTED"
+    },
+    {
+      "label": "use_private_registry",
+      "name": "use_private_registry",
+      "helpText": "If set to true the system will download all required binaries from the provided mirror instead of the official repository.",
+      "inputType": "ExtensionInputBoolean",
+      "options": {},
+      "defaultValue": false
+    },
+    {
+      "label": "mirror_registry",
+      "name": "mirror_registry",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "registry.metalsoft.dev/ocp4/openshift4"
+    },
+    {
+      "label": "ocp_version",
+      "name": "ocp_version",
+      "inputType": "ExtensionInputString",
+      "options": {},
+      "defaultValue": "4.19.0"
+    },
+    {
+      "label": "mtu",
+      "name": "mtu",
+      "inputType": "ExtensionInputInteger",
+      "options": {},
+      "defaultValue": 1500
     }
   ]
 }

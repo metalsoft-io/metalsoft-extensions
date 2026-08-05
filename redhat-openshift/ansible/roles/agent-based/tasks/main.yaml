@@ -11,11 +11,11 @@
 - name: Validate mirror_registry is defined when using a private registry
   ansible.builtin.fail:
     msg: >-
-      extensionInstanceVariables.mirror_registry must be defined and non-empty
+      The mirror_registry site config variable must be defined and non-empty
       when use_private_registry is true
   when:
     - _use_private_registry | bool
-    - (extensionInstanceVariables.mirror_registry | default('')) == ''
+    - (_mirror_registry | default('') | trim) == ''
 
 # Public installs pull the release payload from quay.io/openshift-release-dev —
 # a pull secret without quay.io auth fails 'unauthorized' only ~13 min into ISO

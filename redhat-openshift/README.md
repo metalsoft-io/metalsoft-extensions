@@ -26,11 +26,6 @@ Set the input defaults so they reflect your environment instead of forcing every
 
 | Input | Default in this repo | What to change |
 | --- | --- | --- |
-| `pull_secret` | `REDACTED` | Set to a valid Red Hat pull secret (from [console.redhat.com](https://console.redhat.com/openshift/downloads)). For public-registry installs it must contain a `quay.io` auth entry — the deploy playbook validates this up front. Default can be left `REDACTED` so as not so share sensitive information |
-| `use_private_registry` | `false` | Set to `true` if your environment installs from a private mirror instead of the official Red Hat registries (air-gapped setups). Make sure to set the `pull_secret` acordingly, with credentials for your private registry |
-| `mirror_registry` | `registry.metalsoft.dev/ocp4/openshift4` | Point at your own mirror registry (host + namespace path). Only used when `use_private_registry` is `true`. |
-| `ocp_version` | `4.19.0` | The OpenShift version to install. Must match a version your execution environment image was built for (see below). You will need particular Execution Environment built for the particular version|
-| `mtu` | `1500` | Match the MTU of the underlying network. |
 | `cluster_network` / `service_network` | `10.128.0.0/14` / `172.30.0.0/16` | Change only if these CIDRs overlap with existing networks in your environment. |
 | `control_plane_nodes` | `3` | Number of control-plane nodes. `setOnly` — it cannot be changed after creation. Set to `1` (with `compute_nodes: 0`) for a single-node cluster. |
 | `compute_nodes` | `0` | Initial number of workers. This is the input operators change later to scale the cluster (see Scaling below). |
@@ -43,7 +38,16 @@ The VIP allocations declare the cluster DNS records using placeholders resolved 
 
 ### Site config vars
 
-`configVars.DNSResolvers` (default `1.1.1.1`) is an operator-set, site-level value: the DNS resolvers written into the cluster's install configuration. Set it to your site's internal resolvers (comma-separated string accepted) — the playbooks prefer it over the recordSet resolvers, which can be stale or public. **These resolvers are set on the all OCP nodes and MUST be capable to resolve the created records**
+Admin/site-level settings live in `configVars` and are set **once per site** by an operator (Extension Site Config), not per deployment. The extension must be enabled and its site config saved on the target site **before the first deploy**. Values reach the playbooks as `configVars.<label>`.
+
+| Config var | Default in this repo | What to change |
+| --- | --- | --- |
+| `DNSResolvers` | `1.1.1.1` | The DNS resolvers written into the cluster's install configuration. Set it to your site's internal resolvers (comma-separated string accepted) — the playbooks prefer it over the recordSet resolvers, which can be stale or public. **These resolvers are set on all OCP nodes and MUST be capable to resolve the created records.** |
+| `pull_secret` | `REDACTED` | Set to a valid Red Hat pull secret (from [console.redhat.com](https://console.redhat.com/openshift/downloads)), pasted either as the raw JSON or base64-encoded — the playbooks accept both. For public-registry installs it must contain a `quay.io` auth entry — the deploy playbook validates this up front. Default can be left `REDACTED` so as not to share sensitive information. |
+| `use_private_registry` | `false` | Set to `true` if your environment installs from a private mirror instead of the official Red Hat registries (air-gapped setups). Make sure to set the `pull_secret` accordingly, with credentials for your private registry. |
+| `mirror_registry` | `registry.metalsoft.dev/ocp4/openshift4` | Point at your own mirror registry (host + namespace path). Only used when `use_private_registry` is `true`. |
+| `ocp_version` | `4.19.0` | The OpenShift version to install. Must match a version your execution environment image was built for (see below). You will need a particular Execution Environment built for the particular version. |
+| `mtu` | `1500` | Match the MTU of the underlying network. |
 
 ### Asset URLs
 
@@ -77,8 +81,8 @@ Build it from inside the `ansible/` directory:
 
 ```bash
 cd ansible
-zip -r ../redhat-openshift-v1.0.1.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../redhat-openshift-v1.0.1.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
+zip -r ../redhat-openshift-v1.2.0.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../redhat-openshift-v1.2.0.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
 ```
 
 Then upload the zip to an **HTTP(S) repository server reachable by the global MetalSoft controller** (the controller downloads it from there — there is no bundle-upload CLI command) and set that URL (max 128 characters) as the `url` of the `openshift-ansible-bundle` asset. The convention used here is:
@@ -93,7 +97,7 @@ Bump the version in the filename on every change — re-uploading under the same
 
 The lifecycle tasks run inside a container image (an ansible-runner **execution environment**) on the site controller. Every task in `extension.json` references the `ee-redhat-openshift` asset, so the playbooks run in this purpose-built image rather than the site controller's default EE.
 
-The image is defined by the `execution-environment-<version>.yml` files in this directory and built with [`ansible-builder`](https://ansible.readthedocs.io/projects/builder/). Besides the Ansible collections and Python deps, it bakes in everything the playbooks shell out to — notably the **`openshift-install`, `oc` and `kubectl` binaries pinned to a specific OCP version** (the `OCP_VERSION` build arg), plus `jq`, `curl`, and `nmstate`. This is why there is one EE definition per supported OpenShift version (`4.17.15`, `4.19.0`): **the EE image version must match the `ocp_version` input** of the instances it serves.
+The image is defined by the `execution-environment-<version>.yml` files in this directory and built with [`ansible-builder`](https://ansible.readthedocs.io/projects/builder/). Besides the Ansible collections and Python deps, it bakes in everything the playbooks shell out to — notably the **`openshift-install`, `oc` and `kubectl` binaries pinned to a specific OCP version** (the `OCP_VERSION` build arg), plus `jq`, `curl`, and `nmstate`. This is why there is one EE definition per supported OpenShift version (`4.17.15`, `4.19.0`): **the EE image version must match the `ocp_version` site config var** of the instances it serves.
 
 Important: the yml file itself is **not** read at runtime — only the built image matters. 
 -

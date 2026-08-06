@@ -14,6 +14,18 @@
     installer_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcf-installer') | first | default({}) }}"
     sddc_manager_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'sddc-manager') | first | default({}) }}"
 
+# Appliance DNS records are created as <name>.<instance-name>.<zone> ({{CLUSTER_NAME}} in
+# extension.json), and the VCF Installer composes appliance FQDNs as
+# <short hostname>.<dnsSpec.subdomain> — so the spec subdomain must be the per-instance
+# CLUSTER subdomain, derived from the installer allocation FQDN (the ground truth for
+# what was actually provisioned), never rebuilt from baseDomain (that drops the instance
+# label and every appliance FQDN fails VCF's DNS Resolution validation).
+- name: Build | Derive VCF DNS subdomain from installer allocation FQDN
+  set_fact:
+    vcf_dns_subdomain: >-
+      {{ ((installer_config.fqdn | default('') | regex_replace('\.$', '')).split('.')[1:] | join('.'))
+         or subdomain }}
+
 # VCF Installer specification construction
 - name: Build | VCF Installer spec
   set_fact:

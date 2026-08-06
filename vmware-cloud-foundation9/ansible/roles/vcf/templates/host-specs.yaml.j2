@@ -1,10 +1,12 @@
 {#
 # Host specifications for VMware Cloud Foundation 9.x
-# 9.0 hostSpecs carry only hostname/credentials/thumbprints; host IPs resolve via DNS (hostname + dnsSpec.subdomain)
+# 9.0 hostSpecs carry only hostname/credentials/thumbprints; host IPs resolve via DNS.
+# Hostnames are sent as full FQDNs — dnsSpec.subdomain is the per-instance cluster
+# subdomain and would compose wrong names for hosts, whose records sit in the site zone.
 #}
 {% from 'macros.yaml.j2' import render_host_spec %}
 
 hostSpecs:
 {% for host in groups['management'] %}
-{{ render_host_spec(host, hostvars, subdomain, vcf.skip_esx_thumbprint_validation | default(false)) | indent(2, True) }}
+{{ render_host_spec(host, hostvars, vcf.skip_esx_thumbprint_validation | default(false)) | indent(2, True) }}
 {% endfor %}

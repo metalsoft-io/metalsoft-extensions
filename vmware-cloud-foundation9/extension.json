@@ -5,7 +5,7 @@
   "label": "vcf9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "2.1.0",
+  "extensionVersion": "2.1.2",
   "description": "VMware Cloud Foundation (VCF)",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
@@ -310,7 +310,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "installer.{{default_zone_name}}",
+                "name": "installer.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -324,7 +324,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "sddc.{{default_zone_name}}",
+                "name": "sddc.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -338,7 +338,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "m-vcs1.{{default_zone_name}}",
+                "name": "m-vcs1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -352,7 +352,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "m-nsx1.{{default_zone_name}}",
+                "name": "m-nsx1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -366,7 +366,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "m-nsx1a.{{default_zone_name}}",
+                "name": "m-nsx1a.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -380,7 +380,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "m-nsx1b.{{default_zone_name}}",
+                "name": "m-nsx1b.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -394,7 +394,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "m-nsx1c.{{default_zone_name}}",
+                "name": "m-nsx1c.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -408,7 +408,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "ops1.{{default_zone_name}}",
+                "name": "ops1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -422,7 +422,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "opsfm1.{{default_zone_name}}",
+                "name": "opsfm1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -436,7 +436,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "opscp1.{{default_zone_name}}",
+                "name": "opscp1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -450,7 +450,7 @@
             "ipVersion": "ipv4",
             "dnsRecords": [
               {
-                "name": "auto1.{{default_zone_name}}",
+                "name": "auto1.{{CLUSTER_NAME}}.{{default_zone_name}}",
                 "recordType": "A",
                 "generatePtrRecord": true,
                 "ttl": 3600
@@ -514,7 +514,7 @@
       "label": "vcf-ansible-bundle",
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.1.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.1.1.zip"
     },
     {
       "label": "ee-vcf9-9-0-1",

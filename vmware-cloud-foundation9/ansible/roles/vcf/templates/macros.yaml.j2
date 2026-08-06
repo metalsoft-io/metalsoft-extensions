@@ -44,8 +44,11 @@
 {% endmacro %}
 
 {# Macro to render host specification #}
-{% macro render_host_spec(host, hostvars, subdomain, skip_thumbprints) %}
-- hostname: "{{ host | regex_replace('\\.' ~ (subdomain | regex_escape) ~ '$', '') }}"
+{% macro render_host_spec(host, hostvars, skip_thumbprints) %}
+{# ESXi host records live directly under the site zone (NOT under the per-instance
+   cluster subdomain used in dnsSpec.subdomain), so hosts must be sent fully-qualified —
+   the installer only appends dnsSpec.subdomain to names without dots. #}
+- hostname: "{{ host }}"
   credentials:
     username: "{{ hostvars[host].ansible_user }}"
     password: {{ hostvars[host].ansible_password | to_json }}

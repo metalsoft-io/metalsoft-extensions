@@ -42,10 +42,12 @@
         that:
           - sddc_spec.datastoreSpec.vsanSpec.datastoreName | length > 0
 
-    - name: Assert | host specs (short names, no ipAddressPrivate)
+    - name: Assert | host specs (full FQDNs under the site zone, no ipAddressPrivate)
       ansible.builtin.assert:
         that:
-          - sddc_spec.hostSpecs[0].hostname is not search('\.')   # VCF 9 requires short hostnames; 5.2 template renders FQDN (red)
+          # hosts are sent fully-qualified: dnsSpec.subdomain is the per-instance cluster
+          # subdomain, which would compose wrong FQDNs for hosts living in the site zone
+          - sddc_spec.hostSpecs[0].hostname is search('\.' ~ 'vcf.example.com' | regex_escape ~ '$')
           - "'ipAddressPrivate' not in sddc_spec.hostSpecs[0]"
 
     - name: Assert | removed 5.2 fields (pscSpecs/esxLicense/taskName)
@@ -66,3 +68,8 @@
         that:
           - sddc_spec.dvsSpecs[0].vmnicsToUplinks | length == 2
           - sddc_spec.dnsSpec.nameservers | length >= 1
+          # subdomain must be the per-instance cluster subdomain from the installer
+          # allocation FQDN (installer.vcftest.vcf.example.com), NOT the bare site zone —
+          # short appliance hostname + this subdomain must equal the provisioned records
+          - sddc_spec.dnsSpec.subdomain == 'vcf9test.vcf.example.com'
+          - (sddc_spec.vcenterSpec.vcenterHostname ~ '.' ~ sddc_spec.dnsSpec.subdomain) == 'm-vcs1.vcf9test.vcf.example.com'

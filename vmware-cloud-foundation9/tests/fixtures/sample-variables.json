@@ -71,7 +71,7 @@
                 "ipAllocations": [
                   {
                     "ip": "10.0.10.10",
-                    "fqdn": "installer.vcf.example.com",
+                    "fqdn": "installer.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.10/24",
@@ -79,7 +79,7 @@
                   },
                   {
                     "ip": "10.0.10.20",
-                    "fqdn": "sddc.vcf.example.com",
+                    "fqdn": "sddc.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.20/24",
@@ -87,7 +87,7 @@
                   },
                   {
                     "ip": "10.0.10.30",
-                    "fqdn": "m-vcs1.vcf.example.com",
+                    "fqdn": "m-vcs1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.30/24",
@@ -95,7 +95,7 @@
                   },
                   {
                     "ip": "10.0.10.40",
-                    "fqdn": "m-nsx1.vcf.example.com",
+                    "fqdn": "m-nsx1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.40/24",
@@ -103,7 +103,7 @@
                   },
                   {
                     "ip": "10.0.10.41",
-                    "fqdn": "m-nsx1a.vcf.example.com",
+                    "fqdn": "m-nsx1a.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.41/24",
@@ -111,7 +111,7 @@
                   },
                   {
                     "ip": "10.0.10.42",
-                    "fqdn": "m-nsx1b.vcf.example.com",
+                    "fqdn": "m-nsx1b.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.42/24",
@@ -119,7 +119,7 @@
                   },
                   {
                     "ip": "10.0.10.43",
-                    "fqdn": "m-nsx1c.vcf.example.com",
+                    "fqdn": "m-nsx1c.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.43/24",
@@ -127,7 +127,7 @@
                   },
                   {
                     "ip": "10.0.10.50",
-                    "fqdn": "ops1.vcf.example.com",
+                    "fqdn": "ops1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.50/24",
@@ -135,7 +135,7 @@
                   },
                   {
                     "ip": "10.0.10.51",
-                    "fqdn": "opsfm1.vcf.example.com",
+                    "fqdn": "opsfm1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.51/24",
@@ -143,7 +143,7 @@
                   },
                   {
                     "ip": "10.0.10.52",
-                    "fqdn": "opscp1.vcf.example.com",
+                    "fqdn": "opscp1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.52/24",
@@ -151,7 +151,7 @@
                   },
                   {
                     "ip": "10.0.10.53",
-                    "fqdn": "auto1.vcf.example.com",
+                    "fqdn": "auto1.vcf9test.vcf.example.com",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.53/24",

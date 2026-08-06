@@ -77,15 +77,17 @@ The extension allocates the following DNS records on the `vcf-mgmt` logical netw
 
 | Record | Role |
 | --- | --- |
-| `installer.<zone>` | VCF Installer |
-| `sddc.<zone>` | SDDC Manager |
-| `m-vcs1.<zone>` | Management vCenter Server |
-| `m-nsx1.<zone>` | NSX Manager VIP |
-| `m-nsx1a.<zone>` / `m-nsx1b.<zone>` / `m-nsx1c.<zone>` | NSX Manager nodes |
-| `ops1.<zone>` | VCF Operations |
-| `opsfm1.<zone>` | VCF Operations fleet management |
-| `opscp1.<zone>` | VCF Operations collector |
-| `auto1.<zone>` | VCF Automation (only used when `deploy_vcf_automation` is true) |
+| `installer.<cluster>.<zone>` | VCF Installer |
+| `sddc.<cluster>.<zone>` | SDDC Manager |
+| `m-vcs1.<cluster>.<zone>` | Management vCenter Server |
+| `m-nsx1.<cluster>.<zone>` | NSX Manager VIP |
+| `m-nsx1a.<cluster>.<zone>` / `m-nsx1b.<cluster>.<zone>` / `m-nsx1c.<cluster>.<zone>` | NSX Manager nodes |
+| `ops1.<cluster>.<zone>` | VCF Operations |
+| `opsfm1.<cluster>.<zone>` | VCF Operations fleet management |
+| `opscp1.<cluster>.<zone>` | VCF Operations collector |
+| `auto1.<cluster>.<zone>` | VCF Automation (only used when `deploy_vcf_automation` is true) |
+
+`<cluster>` is the `{{CLUSTER_NAME}}` placeholder — the extension instance name — so records from multiple VCF instances at the same site stay unique. `<zone>` is `{{default_zone_name}}`, the site's default DNS zone.
 
 ## Adapting `extension.json` to your environment
 

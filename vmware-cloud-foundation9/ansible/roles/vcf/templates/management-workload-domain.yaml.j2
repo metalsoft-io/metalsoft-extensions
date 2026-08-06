@@ -12,9 +12,11 @@ managementPoolName: "{{ management_pool_name }}"
 
 ntpServers: {{ ntp_servers | to_json }}
 
-{# VCF 9 dnsSpec accepts at most 2 nameservers #}
+{# VCF 9 dnsSpec accepts at most 2 nameservers.
+   subdomain = the per-instance cluster subdomain (<instance>.<zone>) — the installer
+   appends it to every short appliance hostname to build the FQDNs it validates. #}
 dnsSpec:
-  subdomain: "{{ subdomain }}"
+  subdomain: "{{ vcf_dns_subdomain | default(subdomain) }}"
   nameservers:
 {% for ns in dns_servers[:2] %}
   - "{{ ns }}"

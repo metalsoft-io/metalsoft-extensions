@@ -1,4 +1,4 @@
 cluster:
   enabled: true
-  server_address: "{{ ansible_host }}:8443"
+  server_address: "{{ ansible_host }}:{{ incus_core_https_port }}"
   cluster_token: {{ incus_cluster_join_token.stdout }}

@@ -1,35 +1,31 @@
 # Incus
 
-This repository contains the Ansible playbooks and roles for deploying an Incus cluster in conjunction with the MetalSoft extension defined in this directory.
+This directory contains the Ansible playbooks and roles for deploying an Incus cluster in conjunction with the MetalSoft extension defined in this directory.
 The playbooks are designed to be modular and reusable, allowing for easy customization and extension.
-The current implementation of the Ansible playbooks and roles provides the initial deployment of the Incus cluster on bare-metal servers, scale-out and scale-in of the cluster nodes, and upgrade of the Incus cluster nodes.
+The current implementation provides the initial deployment of the Incus cluster on bare-metal servers, scale-out and scale-in of the cluster nodes, upgrade of the cluster nodes, and publishing of the extension outputs.
+
+## Playbooks
+
+- `deploy.yaml` (onCreate postDeploy): installs Incus on all nodes, bootstraps the first server, joins the remaining nodes serially, publishes outputs.
+- `scale.yaml` (onEdit preDeploy + postDeploy): plays self-select via the platform-generated `incus_scale_out` / `incus_scale_in` groups — scale-in is drained/removed at preDeploy while still reachable, scale-out is installed/joined at postDeploy. Always re-publishes outputs (even on a no-op run — a successful run that writes no context.json would wipe the stored outputs).
+- `upgrade.yaml` (onEdit postDeploy, before scale): serially upgrades surviving members when `cluster_member_upgrade_enabled` is set. Always re-publishes outputs.
 
 ## Variables
 
-These variables can be customized in the `extension.json` file under the `inputs` section to suit specific deployment requirements.
+Site-level settings arrive from the Extension Site Config as `configVars.<label>`; per-deployment settings arrive as `extensionInstanceVariables.<label>`. All consumption goes through `roles/incus/defaults/main.yaml`, which resolves configVars first and keeps a legacy `extensionInstanceVariables` fallback so the bundle also works against instances deployed from the pre-configVars definition.
 
-Key variables include:
+Site config (`configVars`): `DNSResolvers`, `branch_release`, `images_auto_update_interval`, `core_https_port`, `separate_api_and_cluster_traffic`, `cluster_member_upgrade_enabled`, `cluster_member_force_remove_enabled`, `vars_debugging_enabled`.
 
-- cluster_enabled: Boolean to enable or disable the way Incus is deployed. Default is true.
+Per-deployment inputs: `cluster_server_type`, `cluster_instance_count`, `cluster_node_os_template`, `cluster_enabled`, `install_ui`, `storage_driver`.
 
-- branch_release: The release branch of Incus to deploy. Default is "stable".
+See the top-level [README](../README.md) for the full variable tables, outputs, packaging and registration steps.
 
-- cluster_node_dns_servers: List of DNS servers for the cluster nodes. Optional. This can be used to override the default DNS servers coming from the MetalSoft.
+## Outputs
 
-- install_ui: Boolean to enable or disable the installation of the Incus UI. Default is true.
+`roles/incus/tasks/emit-outputs.yaml` writes the declared extension outputs to the runner's `artifacts/<ident>/context.json`. The platform REPLACES the stored outputs with every successful run's context.json, so every playbook ends with a `Publish extension outputs` play on localhost that re-emits the full payload when the run hasn't already written one.
 
-- storage_driver: The storage driver to use for Incus. Default is "dir".
+## Tests
 
-- core_https_port: The HTTPS port for the Incus core service. Default is 8443.
-
-- separate_api_and_cluster_traffic: Boolean to enable or disable separation of API and cluster traffic. Default is false.
-  See the official Incus documentation: <https://linuxcontainers.org/incus/docs/main/howto/cluster_config_networks/#separate-rest-api-and-clustering-networks>
-
-- images_auto_update_interval: Interval for automatic image updates. Default is "6 hours".
-  See the official Incus documentation: <https://linuxcontainers.org/incus/docs/main/image-handling/#auto-update>
-
-- cluster_member_upgrade_enabled: Boolean to enable or disable upgrade of cluster members. Default is false. Can be used to control when to upgrade cluster members.
-
-- cluster_member_force_remove_enabled: Boolean to enable or disable force removal of cluster members. Default is false. Useful in scenarios where a node is unresponsive.
-
-- vars_debugging_enabled: Boolean to enable or disable debugging output for Ansible playbooks. Default is false.
+```bash
+cd ../tests && ansible-playbook -i inventory.yaml render-spec.yaml
+```

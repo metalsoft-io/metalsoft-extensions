@@ -201,10 +201,10 @@
 - name: Verify connectivity to cluster leader
   ansible.builtin.wait_for:
     host: "{{ incus_cluster_first_server_ip }}"
-    port: 8443
+    port: "{{ incus_core_https_port }}"
     state: started
     timeout: 600
-    msg: "Timeout waiting for {{ incus_cluster_first_server_ip }}:8443"
+    msg: "Timeout waiting for {{ incus_cluster_first_server_ip }}:{{ incus_core_https_port }}"
   when: not incus_server_already_member
 
 - name: Join additional servers

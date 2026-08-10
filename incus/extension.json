@@ -5,7 +5,7 @@
     "label": "incus",
     "extensionType": "application",
     "vendor": "MetalSoft",
-    "extensionVersion": "1.0.2",
+    "extensionVersion": "1.1.2",
     "description": "Provide the installation and lifecycle management of an Incus cluster with various options",
     "icon": "https://avatars.githubusercontent.com/u/2301756?s=200&v=4",
     "dependencies": {
@@ -50,19 +50,6 @@
             "options": {}
         },
         {
-            "label": "branch_release",
-            "name": "branch_release",
-            "inputType": "ExtensionInputString",
-            "defaultValue": "stable",
-            "options": {}
-        },
-        {
-            "label": "cluster_node_dns_servers",
-            "name": "cluster_node_dns_servers",
-            "inputType": "ExtensionInputString",
-            "options": {}
-        },
-        {
             "label": "install_ui",
             "name": "install_ui",
             "inputType": "ExtensionInputBoolean",
@@ -72,59 +59,46 @@
         {
             "label": "storage_driver",
             "name": "storage_driver",
+            "helpText": "Storage backend for the default pool: dir, btrfs, lvm, lvmcluster, zfs, ceph, cephfs or cephobject.",
             "inputType": "ExtensionInputString",
             "defaultValue": "dir",
-            "options": {}
-        },
-        {
-            "label": "core_https_port",
-            "name": "core_https_port",
-            "inputType": "ExtensionInputInteger",
-            "defaultValue": 8443,
-            "hidden": true,
-            "options": {}
-        },
-        {
-            "label": "separate_api_and_cluster_traffic",
-            "name": "separate_api_and_cluster_traffic",
-            "inputType": "ExtensionInputBoolean",
-            "defaultValue": false,
-            "hidden": true,
-            "options": {}
-        },
-        {
-            "label": "images_auto_update_interval",
-            "name": "images_auto_update_interval",
-            "inputType": "ExtensionInputInteger",
-            "defaultValue": 6,
             "options": {
-                "minValue": 1,
-                "maxValue": 72
+                "validationRegEx": "^(dir|btrfs|lvm|lvmcluster|zfs|ceph|cephfs|cephobject)$"
             }
-        },
-        {
-            "label": "cluster_member_upgrade_enabled",
-            "name": "cluster_member_upgrade_enabled",
-            "inputType": "ExtensionInputBoolean",
-            "defaultValue": false,
-            "options": {}
-        },
-        {
-            "label": "cluster_member_force_remove_enabled",
-            "name": "cluster_member_force_remove_enabled",
-            "inputType": "ExtensionInputBoolean",
-            "defaultValue": false,
-            "options": {}
-        },
-        {
-            "label": "vars_debugging_enabled",
-            "name": "vars_debugging_enabled",
-            "inputType": "ExtensionInputBoolean",
-            "defaultValue": false,
-            "options": {}
         }
     ],
-    "outputs": [],
+    "outputs": [
+        {
+            "label": "cluster_api_url",
+            "name": "cluster_api_url",
+            "outputType": "string"
+        },
+        {
+            "label": "cluster_ui_url",
+            "name": "cluster_ui_url",
+            "outputType": "string"
+        },
+        {
+            "label": "cluster_members",
+            "name": "cluster_members",
+            "outputType": "string"
+        },
+        {
+            "label": "cluster_member_count",
+            "name": "cluster_member_count",
+            "outputType": "string"
+        },
+        {
+            "label": "cluster_storage_driver",
+            "name": "cluster_storage_driver",
+            "outputType": "string"
+        },
+        {
+            "label": "incus_release",
+            "name": "incus_release",
+            "outputType": "string"
+        }
+    ],
     "infrastructure": {
         "instanceArrays": [
             {
@@ -159,7 +133,7 @@
         "logicalNetworks": [
             {
                 "label": "incus-mgmt",
-                "profileLabel": "incus-mgmt"
+                "profileLabel": "vcf-mgmt"
             }
         ]
     },
@@ -168,7 +142,16 @@
             "label": "incus-ansible-bundle",
             "name": "incus-ansible-bundle",
             "assetType": "AnsibleBundle",
-            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.0.2.zip"
+            "url": "https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.1.zip"
+        },
+        {
+            "label": "ee-incus-1-1-0",
+            "name": "ee-incus-1-1-0",
+            "assetType": "OciImage",
+            "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-incus-1.1.0.tar.gz",
+            "repositoryRegistry": "registry.metalsoft.dev",
+            "namespaceRegistry": "ee-incus",
+            "tagRegistry": "1.1.0"
         }
     ],
     "onCreate": [
@@ -185,6 +168,7 @@
                     "options": {
                         "asset": "incus-ansible-bundle",
                         "playbook": "deploy.yaml",
+                        "ee": "ee-incus-1-1-0",
                         "executionTimeout": 3600,
                         "executionTimeoutTick": 30
                     }
@@ -202,7 +186,8 @@
                     "options": {
                         "asset": "incus-ansible-bundle",
                         "playbook": "scale.yaml",
-                        "executionTimeout": 1800,
+                        "ee": "ee-incus-1-1-0",
+                        "executionTimeout": 3600,
                         "executionTimeoutTick": 30
                     }
                 }
@@ -217,27 +202,96 @@
                     "options": {
                         "asset": "incus-ansible-bundle",
                         "playbook": "upgrade.yaml",
+                        "ee": "ee-incus-1-1-0",
                         "executionTimeout": 3600,
                         "executionTimeoutTick": 30
                     }
-                }
-            ]
-        },
-        {
-            "stage": "postDeploy",
-            "tasks": [
+                },
                 {
                     "label": "scale-incus",
                     "taskType": "ExtensionTaskAnsible",
                     "options": {
                         "asset": "incus-ansible-bundle",
                         "playbook": "scale.yaml",
-                        "executionTimeout": 1800,
+                        "ee": "ee-incus-1-1-0",
+                        "executionTimeout": 3600,
                         "executionTimeoutTick": 30
                     }
                 }
             ]
         }
     ],
-    "onDelete": []
+    "onDelete": [],
+    "configVars": [
+        {
+            "label": "DNSResolvers",
+            "name": "DNSResolvers",
+            "helpText": "Comma-separated DNS resolver IPs handed to every cluster node (systemd-resolved).",
+            "inputType": "ExtensionInputString",
+            "setOnly": false,
+            "hidden": false,
+            "isPassword": false,
+            "defaultValue": "1.1.1.1",
+            "options": {}
+        },
+        {
+            "label": "branch_release",
+            "name": "branch_release",
+            "helpText": "Zabbly package channel to install/track: daily, stable or lts-6.0.",
+            "inputType": "ExtensionInputString",
+            "defaultValue": "stable",
+            "options": {}
+        },
+        {
+            "label": "images_auto_update_interval",
+            "name": "images_auto_update_interval",
+            "helpText": "Interval in hours at which cached images are auto-updated.",
+            "inputType": "ExtensionInputInteger",
+            "defaultValue": 6,
+            "options": {
+                "minValue": 1,
+                "maxValue": 72
+            }
+        },
+        {
+            "label": "core_https_port",
+            "name": "core_https_port",
+            "helpText": "HTTPS port the Incus API listens on.",
+            "inputType": "ExtensionInputInteger",
+            "defaultValue": 8443,
+            "options": {}
+        },
+        {
+            "label": "separate_api_and_cluster_traffic",
+            "name": "separate_api_and_cluster_traffic",
+            "helpText": "When true, cluster traffic uses a dedicated port (API port + 1) instead of sharing the API address.",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        },
+        {
+            "label": "cluster_member_upgrade_enabled",
+            "name": "cluster_member_upgrade_enabled",
+            "helpText": "When true, edit deployments apply OS/package upgrades to existing members one node at a time before scaling.",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        },
+        {
+            "label": "cluster_member_force_remove_enabled",
+            "name": "cluster_member_force_remove_enabled",
+            "helpText": "When true, scale-in force-removes a member that stays offline after evacuation.",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        },
+        {
+            "label": "vars_debugging_enabled",
+            "name": "vars_debugging_enabled",
+            "helpText": "When true, playbooks print the resolved extension variables for debugging.",
+            "inputType": "ExtensionInputBoolean",
+            "defaultValue": false,
+            "options": {}
+        }
+    ]
 }

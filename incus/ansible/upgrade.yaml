@@ -5,14 +5,13 @@
   gather_facts: true
   serial: 1
   tasks:
+    # Computed at play level (role defaults are not in scope in a task-level `when`
+    # before the role is included). configVars first, legacy per-instance input second.
     - name: Set fact | incus_cluster_member_upgrade_enabled
       ansible.builtin.set_fact:
         incus_cluster_member_upgrade_enabled: >-
-          {%- if extensionInstanceVariables.cluster_member_upgrade_enabled is defined -%}
-          {{ extensionInstanceVariables.cluster_member_upgrade_enabled | bool }}
-          {%- else -%}
-          false
-          {%- endif -%}
+          {{ ((configVars | default({})).get('cluster_member_upgrade_enabled',
+              extensionInstanceVariables.cluster_member_upgrade_enabled | default(false))) | bool }}
     - name: Apply all updates | one server at a time
       ansible.builtin.include_role:
         name: incus
@@ -21,3 +20,15 @@
         - (groups.get('incus') | default([]) | length) > 0
         - ansible_facts['distribution'] | default('') | lower in ['ubuntu', 'debian']
         - (incus_cluster_member_upgrade_enabled | default(false))
+
+# Stored outputs are REPLACED by every successful run's context.json — a run that
+# writes none (upgrade disabled -> all tasks skipped) would WIPE them. Always
+# re-publish as the last play.
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: emit-outputs.yaml

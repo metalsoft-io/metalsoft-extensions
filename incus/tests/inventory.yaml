@@ -1,0 +1,20 @@
+---
+# Static inventory mirroring the platform-generated groups: the instance-array label
+# verbatim plus the <label>_scale_out/_scale_in edit groups (empty here, but they must
+# exist — `groups` is a magic var and cannot be faked via play vars).
+all:
+  children:
+    incus:
+      hosts:
+        # dot-less hostnames must be qualified with the recordSet baseDomain...
+        node-a:
+          ansible_host: 10.0.10.11
+        node-b:
+          ansible_host: 10.0.10.12
+        # ...while already-qualified hostnames must pass through UNCHANGED (live
+        # platforms hand out FQDNs like instance-683.us06.metalsoft.io — appending
+        # the base domain again doubled the domain in the published outputs)
+        node-c.incus.example.com:
+          ansible_host: 10.0.10.13
+    incus_scale_out:
+    incus_scale_in:

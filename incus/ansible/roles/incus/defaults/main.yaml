@@ -1,21 +1,25 @@
 ---
-incus_vars_debugging_enabled: >-
-  {%- if extensionInstanceVariables.vars_debugging_enabled is defined -%}
-  {{ extensionInstanceVariables.vars_debugging_enabled | bool }}
-  {%- else -%}
-  false
-  {%- endif -%}
+# Site-level admin settings arrive under configVars.<label> (Extension Site Config);
+# per-instance settings arrive under extensionInstanceVariables.<label>. Migrated
+# settings keep the legacy extensionInstanceVariables fallback so this bundle also
+# works against instances deployed from the pre-configVars definition.
+# Boolean chains use dict-get with an explicit fallback (not `default(x, true)`)
+# because a legitimate `false` value is falsy and would fall through.
 
+incus_vars_debugging_enabled: >-
+  {{ ((configVars | default({})).get('vars_debugging_enabled',
+      extensionInstanceVariables.vars_debugging_enabled | default(false))) | bool }}
+
+# Normalized to a LIST. Site configVars may arrive as a comma-separated string; the
+# legacy per-instance input did too. The recordSet resolvers can be stale/public
+# (1.1.1.1) — they are the fallback, not the authority.
 incus_cluster_node_dns_servers: >-
-  {{ extensionInstanceVariables.cluster_node_dns_servers
-      if (extensionInstanceVariables.cluster_node_dns_servers is defined and
-          extensionInstanceVariables.cluster_node_dns_servers is not none and
-          extensionInstanceVariables.cluster_node_dns_servers | length)
-      else (extensionInstanceRecordSet.dnsResolvers
-            if extensionInstanceRecordSet.dnsResolvers is defined and
-            extensionInstanceRecordSet.dnsResolvers is not none and
-            extensionInstanceRecordSet.dnsResolvers | length
-            else ['1.1.1.1', '8.8.8.8']) }}
+  {{ (((configVars | default({})).get('DNSResolvers', '') ~ '').split(',')
+      | map('trim') | reject('equalto', '') | list)
+     or ((extensionInstanceVariables.cluster_node_dns_servers | default('', true) ~ '').split(',')
+      | map('trim') | reject('equalto', '') | list)
+     or (extensionInstanceRecordSet.dnsResolvers | default([], true))
+     or ['1.1.1.1', '8.8.8.8'] }}
 
 incus_host_architecture_groups:
   x86_64: amd64
@@ -67,11 +71,9 @@ incus_cluster_enabled: >-
 
 # possible values: daily, stable or lts-6.0
 incus_branch_release: >-
-  {%- if extensionInstanceVariables.branch_release is defined and extensionInstanceVariables.branch_release != "" -%}
-  {{ extensionInstanceVariables.branch_release }}
-  {%- else -%}
-  stable
-  {%- endif -%}
+  {{ (configVars | default({})).get('branch_release')
+     | default(extensionInstanceVariables.branch_release | default('', true), true)
+     | default('stable', true) }}
 
 incus_install_ui: >-
   {%- if extensionInstanceVariables.install_ui is defined -%}
@@ -90,20 +92,19 @@ incus_storage_driver: >-
   {%- endif -%}
 
 incus_core_https_port: >-
-  {%- if extensionInstanceVariables.core_https_port is defined and extensionInstanceVariables.core_https_port is not none -%}
-  {{ extensionInstanceVariables.core_https_port }}
-  {%- else -%}
-  8443
-  {%- endif -%}
+  {{ (configVars | default({})).get('core_https_port')
+     | default(extensionInstanceVariables.core_https_port | default(8443, true), true) }}
 
 incus_core_https_address: "{{ ansible_facts['default_ipv4']['address'] }}:{{ incus_core_https_port }}"
 
+# When true, cluster traffic uses a dedicated port (API port + 1) instead of the API address.
+incus_separate_api_and_cluster_traffic: >-
+  {{ ((configVars | default({})).get('separate_api_and_cluster_traffic',
+      extensionInstanceVariables.separate_api_and_cluster_traffic | default(false))) | bool }}
+
 incus_images_auto_update_interval: >-
-  {%- if extensionInstanceVariables.images_auto_update_interval is defined -%}
-  {{ extensionInstanceVariables.images_auto_update_interval }}
-  {%- else -%}
-  6
-  {%- endif -%}
+  {{ (configVars | default({})).get('images_auto_update_interval')
+     | default(extensionInstanceVariables.images_auto_update_interval | default(6, true), true) }}
 
 incus_cluster_scale_out_enabled: >-
   {%- if groups['incus_scale_out'] is defined and groups['incus_scale_out'] is not none and groups['incus_scale_out'] | length -%}
@@ -120,15 +121,48 @@ incus_cluster_scale_in_enabled: >-
   {%- endif -%}
 
 incus_cluster_member_force_remove_enabled: >-
-  {%- if extensionInstanceVariables.cluster_member_force_remove_enabled is defined -%}
-  {{ extensionInstanceVariables.cluster_member_force_remove_enabled | bool }}
-  {%- else -%}
-  false
-  {%- endif -%}
+  {{ ((configVars | default({})).get('cluster_member_force_remove_enabled',
+      extensionInstanceVariables.cluster_member_force_remove_enabled | default(false))) | bool }}
 
 incus_cluster_member_upgrade_enabled: >-
-  {%- if extensionInstanceVariables.cluster_member_upgrade_enabled is defined -%}
-  {{ extensionInstanceVariables.cluster_member_upgrade_enabled | bool }}
-  {%- else -%}
-  false
-  {%- endif -%}
+  {{ ((configVars | default({})).get('cluster_member_upgrade_enabled',
+      extensionInstanceVariables.cluster_member_upgrade_enabled | default(false))) | bool }}
+
+# --- Extension outputs (context.json) ---
+# The platform REPLACES the instance's stored outputs with every successful run's
+# context.json top-level keys — see tasks/emit-outputs.yaml. All values below are
+# derivable from the recordSet/inventory on ANY run, so every lifecycle playbook
+# re-emits the full payload. FQDNs: inventory hostnames are the permanent subdomain;
+# compose <host>.<baseDomain> for dot-less names, strip trailing dots.
+context_json_file_path: "/runner/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+
+_output_base_domain: "{{ extensionInstanceRecordSet.baseDomain | default('') | regex_replace('\\.$', '') }}"
+
+# Qualify ONLY dot-less inventory hostnames with the base domain — hostnames may
+# already arrive fully qualified (e.g. instance-683.us06.metalsoft.io) and appending
+# unconditionally doubles the domain. Named group ref (\g<short>) on purpose: numeric
+# backreferences (\1) don't survive the folded-scalar + Jinja escaping on
+# ansible-core 2.20.
+_output_member_fqdns: >-
+  {{ (groups['incus'] | default([])
+      | map('regex_replace', '\.$', '')
+      | map('regex_replace', '^(?P<short>[^.]+)$', '\g<short>.' ~ _output_base_domain)
+      | list)
+     if _output_base_domain else
+     (groups['incus'] | default([]) | map('regex_replace', '\.$', '') | list) }}
+
+_output_first_member_fqdn: "{{ _output_member_fqdns | first | default('') }}"
+
+_output_api_url: >-
+  {{ ('https://' ~ _output_first_member_fqdn ~ ':' ~ incus_core_https_port)
+     if _output_first_member_fqdn else '' }}
+
+# Every declared output label must be present on every write — partial writes wipe
+# the omitted keys. cluster_ui_url is deliberately '' when the UI is not installed.
+incus_outputs_payload:
+  cluster_api_url: "{{ _output_api_url }}"
+  cluster_ui_url: "{{ _output_api_url if (incus_install_ui | bool) else '' }}"
+  cluster_members: "{{ _output_member_fqdns | join(',') }}"
+  cluster_member_count: "{{ _output_member_fqdns | length }}"
+  cluster_storage_driver: "{{ incus_storage_driver }}"
+  incus_release: "{{ incus_branch_release }}"

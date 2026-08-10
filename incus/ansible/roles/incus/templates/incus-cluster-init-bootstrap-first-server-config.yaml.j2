@@ -13,8 +13,8 @@ config:
   core.trust_ca_certificates: true
   # Cluster configuration - https://linuxcontainers.org/incus/docs/main/server_config/#cluster-configuration
   cluster.healing_threshold: 0
-{% if separate_api_and_cluster_traffic is defined and separate_api_and_cluster_traffic | bool %}
-  cluster.https_address: {{ ansible_facts['default_ipv4']['address'] }}:8444
+{% if incus_separate_api_and_cluster_traffic | bool %}
+  cluster.https_address: {{ ansible_facts['default_ipv4']['address'] }}:{{ incus_core_https_port | int + 1 }}
 {% else %}
   cluster.https_address: {{ incus_core_https_address }}
 {% endif %}

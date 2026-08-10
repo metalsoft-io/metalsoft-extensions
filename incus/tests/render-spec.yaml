@@ -1,0 +1,99 @@
+---
+# Offline render/contract test for the incus extension bundle.
+# Run: cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+- name: Render incus bundle templates and outputs from fixture
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  vars:
+    # The harness fakes the facts and registered results the templates normally get
+    # from the target nodes.
+    ansible_facts:
+      default_ipv4:
+        address: 10.0.10.11
+      architecture: x86_64
+      fqdn: node-a.incus.example.com
+    incus_cluster_join_token:
+      stdout: fake-join-token
+    ansible_host: 10.0.10.12
+  tasks:
+    - name: Load incus role defaults
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/incus/defaults
+
+    - name: Assert | configVars-first defaults resolution
+      ansible.builtin.assert:
+        that:
+          # configVars comma-string split into a LIST, beating recordSet.dnsResolvers
+          - incus_cluster_node_dns_servers == ['10.0.0.10', '10.0.0.11']
+          - incus_branch_release == 'stable'
+          - incus_core_https_port | int == 8443
+          - not (incus_separate_api_and_cluster_traffic | bool)
+          - incus_images_auto_update_interval | int == 6
+          - not (incus_cluster_member_upgrade_enabled | bool)
+          - not (incus_cluster_member_force_remove_enabled | bool)
+          - incus_storage_driver == 'dir'
+          - incus_install_ui | bool
+          - incus_cluster_enabled | bool
+
+    - name: Render bootstrap (first server) preseed
+      ansible.builtin.set_fact:
+        bootstrap_config: "{{ lookup('template', '../ansible/roles/incus/templates/incus-cluster-init-bootstrap-first-server-config.yaml.j2') | from_yaml }}"
+
+    - name: Assert | bootstrap preseed (shared API/cluster address)
+      ansible.builtin.assert:
+        that:
+          - bootstrap_config.config['core.https_address'] == '10.0.10.11:8443'
+          - bootstrap_config.config['cluster.https_address'] == bootstrap_config.config['core.https_address']
+          - bootstrap_config.storage_pools[0].driver == 'dir'
+          - bootstrap_config.config['images.auto_update_interval'] | int == 6
+          - bootstrap_config.cluster.enabled | bool
+
+    # set_fact (not task vars) — include_vars-loaded defaults outrank task vars
+    - name: Override | enable separate cluster traffic
+      ansible.builtin.set_fact:
+        incus_separate_api_and_cluster_traffic: true
+
+    - name: Render bootstrap preseed with separate cluster traffic
+      ansible.builtin.set_fact:
+        bootstrap_config_split: "{{ lookup('template', '../ansible/roles/incus/templates/incus-cluster-init-bootstrap-first-server-config.yaml.j2') | from_yaml }}"
+
+    - name: Assert | bootstrap preseed (dedicated cluster port = API port + 1)
+      ansible.builtin.assert:
+        that:
+          - bootstrap_config_split.config['cluster.https_address'] == '10.0.10.11:8444'
+          - bootstrap_config_split.config['core.https_address'] == '10.0.10.11:8443'
+
+    - name: Render join (additional server) preseed
+      ansible.builtin.set_fact:
+        join_config: "{{ lookup('template', '../ansible/roles/incus/templates/incus-cluster-join-bootstrap-additional-server-config.yaml.j2') | from_yaml }}"
+
+    - name: Assert | join preseed uses configured port and token
+      ansible.builtin.assert:
+        that:
+          - join_config.cluster.server_address == '10.0.10.12:8443'
+          - join_config.cluster.cluster_token == 'fake-join-token'
+
+    - name: Render outputs payload (context.json content)
+      ansible.builtin.set_fact:
+        outputs_payload: "{{ incus_outputs_payload }}"
+
+    - name: Debug | outputs payload
+      ansible.builtin.debug:
+        var: outputs_payload
+
+    - name: Assert | extension outputs payload
+      ansible.builtin.assert:
+        that:
+          # FQDNs composed as <inventory host>.<recordSet baseDomain>, never from an input
+          - outputs_payload.cluster_api_url == 'https://node-a.incus.example.com:8443'
+          # install_ui true in fixture -> UI URL mirrors the API URL
+          - outputs_payload.cluster_ui_url == outputs_payload.cluster_api_url
+          - outputs_payload.cluster_members == 'node-a.incus.example.com,node-b.incus.example.com,node-c.incus.example.com'
+          - outputs_payload.cluster_member_count | int == 3
+          - outputs_payload.cluster_storage_driver == 'dir'
+          - outputs_payload.incus_release == 'stable'
+          # every write must carry ALL declared output labels (partial writes wipe keys)
+          - outputs_payload | length == 6
+          - outputs_payload.values() | map('string') | select('search', '\.$') | list | length == 0

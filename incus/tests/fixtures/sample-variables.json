@@ -1,0 +1,75 @@
+{
+    "configVars": {
+        "DNSResolvers": "10.0.0.10,10.0.0.11",
+        "branch_release": "stable",
+        "images_auto_update_interval": 6,
+        "core_https_port": 8443,
+        "separate_api_and_cluster_traffic": false,
+        "cluster_member_upgrade_enabled": false,
+        "cluster_member_force_remove_enabled": false,
+        "vars_debugging_enabled": false
+    },
+    "extensionInstanceVariables": {
+        "cluster_server_type": "dell-r640",
+        "cluster_instance_count": 3,
+        "cluster_node_os_template": "incus-ubuntu-24-04-cluster-node",
+        "cluster_enabled": true,
+        "install_ui": true,
+        "storage_driver": "dir"
+    },
+    "extensionInstanceRecordSet": {
+        "deploymentId": 1,
+        "extensionInstanceId": 42,
+        "extensionInstanceName": "incustest",
+        "siteLabel": "test-site",
+        "baseDomain": "incus.example.com",
+        "dnsResolverIp": "8.8.8.8",
+        "dnsResolvers": ["8.8.8.8"],
+        "ntpServers": [],
+        "serverInstanceGroups": [
+            {
+                "serverInstanceGroupId": 100,
+                "serverInstanceGroupLabel": "incus",
+                "tags": ["incus_cluster"],
+                "logicalNetworks": [
+                    {
+                        "id": 1,
+                        "name": "incus-mgmt",
+                        "label": "incus-mgmt",
+                        "vlan_id": 100,
+                        "subnets": [
+                            {
+                                "subnet": "10.0.10.0",
+                                "netmask": "255.255.255.0",
+                                "gateway": "10.0.10.1",
+                                "ipType": "ipv4",
+                                "ipAllocations": [],
+                                "ipRanges": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "serverInstances": [
+            {
+                "serverInstanceId": 1,
+                "serverInstanceGroupId": 100,
+                "host": "node-a",
+                "ipv4Ips": ["10.0.10.11"]
+            },
+            {
+                "serverInstanceId": 2,
+                "serverInstanceGroupId": 100,
+                "host": "node-b",
+                "ipv4Ips": ["10.0.10.12"]
+            },
+            {
+                "serverInstanceId": 3,
+                "serverInstanceGroupId": 100,
+                "host": "node-c",
+                "ipv4Ips": ["10.0.10.13"]
+            }
+        ]
+    }
+}

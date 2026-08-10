@@ -3,6 +3,12 @@
   hosts: incus
   become: true
   gather_facts: true
+  pre_tasks:
+    # Stale-bundle detection: proves which bundle version actually ran.
+    - name: Debug | incus extension bundle version
+      ansible.builtin.debug:
+        msg: "incus extension bundle v1.1.1"
+      run_once: true
   roles:
     - role: incus
       tags: incus
@@ -12,6 +18,23 @@
   become: true
   gather_facts: true
   tasks:
+    # Validates the FQDN composition used by the extension outputs (<host>.<baseDomain>)
+    # against the node's real FQDN. Non-fatal: a mismatch means the published URLs need
+    # the composition adjusted, not that the deployment is broken.
+    - name: Preflight | derived output FQDN matches node FQDN
+      ansible.builtin.assert:
+        that: >-
+          (inventory_hostname ~ '.' ~ (extensionInstanceRecordSet.baseDomain | default('') | regex_replace('\.$', '')))
+          == ansible_facts['fqdn']
+        fail_msg: >-
+          Output FQDN composition mismatch: derived
+          {{ inventory_hostname }}.{{ extensionInstanceRecordSet.baseDomain | default('') | regex_replace('\.$', '') }}
+          but node reports {{ ansible_facts['fqdn'] }} — published cluster URLs may not resolve.
+      ignore_errors: true
+      when:
+        - "'.' not in inventory_hostname"
+        - (extensionInstanceRecordSet.baseDomain | default('') | length) > 0
+
     - name: Initialize Incus cluster | Bootstrap first server
       ansible.builtin.include_role:
         name: incus
@@ -27,3 +50,15 @@
       ansible.builtin.include_role:
         name: incus
         tasks_from: incus-join-server.yaml
+
+# Stored outputs are REPLACED by every successful run's context.json — a run that
+# writes none WIPES them. localhost always matches, so this play re-emits the full
+# payload whenever no earlier play wrote a context.json this run.
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: emit-outputs.yaml

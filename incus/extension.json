@@ -133,7 +133,7 @@
         "logicalNetworks": [
             {
                 "label": "incus-mgmt",
-                "profileLabel": "vcf-mgmt"
+                "profileLabel": "incus-mgmt"
             }
         ]
     },

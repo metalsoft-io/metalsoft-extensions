@@ -1,0 +1,29 @@
+---
+# Emit the extension outputs via the artifacts context.json (the platform's output
+# channel). The platform REPLACES customJson.outputs with every successful run's
+# context.json — a run that writes none WIPES the stored outputs — so every lifecycle
+# playbook ends here (including no-op onEdit runs where the scale groups are empty).
+# Guarded on the file's existence so a flow that already wrote a context.json is a
+# no-op. NEVER add platform action keys (mount-and-boot, eject-mounted-iso) here.
+
+- name: Check if this run already wrote a context JSON
+  ansible.builtin.stat:
+    path: "{{ context_json_file_path }}"
+  register: _context_artifact
+
+- name: Emit extension outputs (context JSON artifact)
+  when: not _context_artifact.stat.exists
+  block:
+    - name: Write outputs context JSON artifact
+      ansible.builtin.copy:
+        content: "{{ vcf_outputs_payload | to_nice_json }}"
+        dest: "{{ context_json_file_path }}"
+        mode: "0644"
+
+    # The artifacts copy is consumed and reaped by the platform right after the task
+    # completes — keep a debug copy that survives for the lifetime of the container.
+    - name: Save outputs context JSON debug copy
+      ansible.builtin.copy:
+        content: "{{ vcf_outputs_payload | to_nice_json }}"
+        dest: "/tmp/context.json"
+        mode: "0600"

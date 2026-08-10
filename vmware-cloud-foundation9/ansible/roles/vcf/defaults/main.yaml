@@ -15,3 +15,40 @@ vmotion_portgroup_name: "{{ extensionInstanceVariables.vmotion_portgroup_name | 
 vsan_portgroup_name: "{{ extensionInstanceVariables.vsan_portgroup_name | default(sddc_id ~ '-cl1-vds1-vsan', true) }}"
 
 nsx_host_overlay_ip_pool_name: "{{ extensionInstanceVariables.nsx_host_overlay_ip_pool_name | default(sddc_id ~ '-cl1-tep1', true) }}"
+
+# --- Extension outputs (context.json) ------------------------------------------------
+# The platform stores a run's artifacts/<ident>/context.json top-level keys that match
+# declared output labels into the instance's customJson.outputs — and REPLACES the
+# stored outputs on EVERY successful run (a run writing no context.json wipes them).
+# Every playbook therefore ends with emit-outputs.yaml. All values derive from the
+# recordSet allocations, so they can be recomputed on any run; allocation fqdn values
+# carry a trailing dot which must be stripped.
+context_json_file_path: "/runner/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+
+# vm_mgmt_network (globals) already falls back to mgmt_network unless the distinct
+# VM-management VLAN mode is enabled — same source network-specs.yaml uses.
+_output_allocations: "{{ vm_mgmt_network | json_query('subnets[].ipAllocations[]') | default([], true) }}"
+
+_output_installer_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-installer') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_sddc_manager_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'sddc-manager') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_vcenter_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'management-vcenter-server') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_nsx_vip_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'nsx-manager-vip') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_vcf_ops_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-operations') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_ops_fleet_mgmt_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-fleet-management') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_ops_collector_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-collector') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_vcf_automation_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-automation') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+
+# Every declared output label must be present on every write (partial writes wipe the
+# omitted keys). vcf_automation_url is deliberately '' when automation is not deployed.
+vcf_outputs_payload:
+  installer_url: "{{ ('https://' ~ _output_installer_fqdn ~ '/vcf-installer-ui') if _output_installer_fqdn else '' }}"
+  sddc_manager_url: "{{ ('https://' ~ _output_sddc_manager_fqdn) if _output_sddc_manager_fqdn else '' }}"
+  vcenter_url: "{{ ('https://' ~ _output_vcenter_fqdn) if _output_vcenter_fqdn else '' }}"
+  nsx_manager_url: "{{ ('https://' ~ _output_nsx_vip_fqdn) if _output_nsx_vip_fqdn else '' }}"
+  vcf_ops_url: "{{ ('https://' ~ _output_vcf_ops_fqdn) if _output_vcf_ops_fqdn else '' }}"
+  ops_fleet_mgmt_url: "{{ ('https://' ~ _output_ops_fleet_mgmt_fqdn) if _output_ops_fleet_mgmt_fqdn else '' }}"
+  ops_collector_url: "{{ ('https://' ~ _output_ops_collector_fqdn) if _output_ops_collector_fqdn else '' }}"
+  vcf_automation_url: "{{ ('https://' ~ _output_vcf_automation_fqdn) if (vcf.deploy_automation | bool and _output_vcf_automation_fqdn) else '' }}"
+  sddc_id: "{{ sddc_id }}"
+  datacenter_name: "{{ extensionInstanceVariables.vcenter_datacenter_name | default(sddc_id ~ '-dc1') }}"
+  cluster_name: "{{ vcenter_cluster_name }}"

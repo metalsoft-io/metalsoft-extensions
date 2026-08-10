@@ -30,3 +30,16 @@
         name: vcf
         tasks_from: scale-in.yaml
       when: groups['management_scale_in'] is defined and (groups['management_scale_in'] | length > 0)
+
+# Stored outputs are REPLACED by every successful run's context.json, and BOTH onEdit
+# stages run this playbook — a run that writes none (no-op edit, scale-in-only) would
+# WIPE the outputs. Always re-publish them as the last play; localhost always matches
+# even when both scale groups are empty.
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: emit-outputs.yaml

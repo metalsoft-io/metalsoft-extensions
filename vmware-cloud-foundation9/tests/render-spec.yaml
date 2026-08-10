@@ -63,6 +63,31 @@
           - sddc_spec.nsxtSpec.vipFqdn | length > 0
           - "'vip' not in sddc_spec.nsxtSpec"
 
+    - name: Render outputs payload (context.json content)
+      ansible.builtin.set_fact:
+        outputs_payload: "{{ vcf_outputs_payload }}"
+
+    - name: Assert | extension outputs payload
+      ansible.builtin.assert:
+        that:
+          # URLs come from the allocation FQDNs (per-instance cluster subdomain), never
+          # rebuilt from baseDomain; trailing dots must be stripped
+          - outputs_payload.installer_url == 'https://installer.vcf9test.vcf.example.com/vcf-installer-ui'
+          - outputs_payload.sddc_manager_url == 'https://sddc.vcf9test.vcf.example.com'
+          - outputs_payload.vcenter_url == 'https://m-vcs1.vcf9test.vcf.example.com'
+          - outputs_payload.nsx_manager_url == 'https://m-nsx1.vcf9test.vcf.example.com'
+          - outputs_payload.vcf_ops_url == 'https://ops1.vcf9test.vcf.example.com'
+          - outputs_payload.ops_fleet_mgmt_url == 'https://opsfm1.vcf9test.vcf.example.com'
+          - outputs_payload.ops_collector_url == 'https://opscp1.vcf9test.vcf.example.com'
+          # fixture has deploy_vcf_automation=false -> emitted empty on purpose
+          - outputs_payload.vcf_automation_url == ''
+          - outputs_payload.sddc_id == 'vcf9test-m'
+          - outputs_payload.datacenter_name == 'vcf9test-m-dc1'
+          - outputs_payload.cluster_name == 'vcf9test-m-cl1'
+          # every write must carry ALL declared output labels (partial writes wipe keys)
+          - outputs_payload | length == 11
+          - outputs_payload.values() | select('search', '\.$') | list | length == 0
+
     - name: Assert | dvs + dns specs
       ansible.builtin.assert:
         that:

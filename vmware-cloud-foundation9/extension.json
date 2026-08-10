@@ -5,7 +5,7 @@
   "label": "vcf9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "2.1.2",
+  "extensionVersion": "2.2.0",
   "description": "VMware Cloud Foundation (VCF)",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
@@ -204,7 +204,63 @@
       }
     }
   ],
-  "outputs": [],
+  "outputs": [
+    {
+      "label": "installer_url",
+      "name": "installer_url",
+      "outputType": "string"
+    },
+    {
+      "label": "sddc_manager_url",
+      "name": "sddc_manager_url",
+      "outputType": "string"
+    },
+    {
+      "label": "vcenter_url",
+      "name": "vcenter_url",
+      "outputType": "string"
+    },
+    {
+      "label": "nsx_manager_url",
+      "name": "nsx_manager_url",
+      "outputType": "string"
+    },
+    {
+      "label": "vcf_ops_url",
+      "name": "vcf_ops_url",
+      "outputType": "string"
+    },
+    {
+      "label": "ops_fleet_mgmt_url",
+      "name": "ops_fleet_mgmt_url",
+      "outputType": "string"
+    },
+    {
+      "label": "ops_collector_url",
+      "name": "ops_collector_url",
+      "outputType": "string"
+    },
+    {
+      "label": "vcf_automation_url",
+      "name": "vcf_automation_url",
+      "outputType": "string"
+    },
+    {
+      "label": "sddc_id",
+      "name": "sddc_id",
+      "outputType": "string"
+    },
+    {
+      "label": "datacenter_name",
+      "name": "datacenter_name",
+      "outputType": "string"
+    },
+    {
+      "label": "cluster_name",
+      "name": "cluster_name",
+      "outputType": "string"
+    }
+  ],
   "infrastructure": {
     "instanceArrays": [
       {
@@ -514,7 +570,7 @@
       "label": "vcf-ansible-bundle",
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.1.1.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.2.0.zip"
     },
     {
       "label": "ee-vcf9-9-0-1",

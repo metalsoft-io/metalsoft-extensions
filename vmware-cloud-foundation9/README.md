@@ -149,6 +149,26 @@ metalcloud-cli extension publish <id_or_label>
 
 Extensions are created as drafts; only drafts can be updated in place. Once published, update with a new version increment, or archive and recreate to change the definition.
 
+## Outputs
+
+The extension publishes these outputs on the instance (visible in the UI / API after deploy):
+
+| Output | Content |
+| --- | --- |
+| `installer_url` | VCF Installer UI (`https://installer.<instance>.<zone>/vcf-installer-ui`) |
+| `sddc_manager_url` | SDDC Manager UI |
+| `vcenter_url` | Management vCenter Server UI |
+| `nsx_manager_url` | NSX Manager (VIP) UI |
+| `vcf_ops_url` | VCF Operations UI |
+| `ops_fleet_mgmt_url` | VCF Operations fleet management UI |
+| `ops_collector_url` | VCF Operations collector UI |
+| `vcf_automation_url` | VCF Automation UI — empty string when `deploy_vcf_automation` is false |
+| `sddc_id` / `datacenter_name` / `cluster_name` | SDDC identifiers (e.g. `212-m` / `212-m-dc1` / `212-m-cl1`) for follow-up automation against the vCenter / SDDC Manager APIs |
+
+A playbook returns outputs by writing an `artifacts/<ident>/context.json` whose top-level keys match the declared output labels; the platform stores them on the instance. All values are derived from the `extensionInstanceRecordSet` allocations (the per-instance appliance FQDNs), so every run can recompute them.
+
+**Stored outputs are replaced on every successful run**, and a run that writes no `context.json` wipes them. Every lifecycle playbook therefore ends with a `Publish extension outputs` play (`roles/vcf/tasks/emit-outputs.yaml`, guarded on the context file's existence) — keep that play intact when modifying the bundle, or a no-op edit or scale-in run will silently erase the stored outputs.
+
 ## Building and hosting the Ansible bundle
 
 The runtime does not read the `ansible/` directory from git — the playbooks are delivered as a **zip bundle** fetched from the URL declared in the `vcf-ansible-bundle` asset.
@@ -162,8 +182,8 @@ Build it from inside the `ansible/` directory:
 
 ```bash
 cd ansible
-zip -r ../vmware-cloud-foundation9-v2.0.0.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../vmware-cloud-foundation9-v2.0.0.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
+zip -r ../vmware-cloud-foundation9-v2.2.0.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../vmware-cloud-foundation9-v2.2.0.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
 ```
 
 Then upload the zip to an **HTTP(S) repository server reachable by the global MetalSoft controller** (the controller downloads it from there — there is no bundle-upload CLI command) and set that URL (max 128 characters) as the `url` of the `vcf-ansible-bundle` asset. The convention used here is:

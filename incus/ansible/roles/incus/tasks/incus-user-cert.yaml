@@ -1,0 +1,154 @@
+---
+# Browser (user) client certificate for the Incus web UI / API. Generated ONCE on
+# the first cluster member; the trust entry lives in the cluster-wide database, so
+# it survives node removal. Idempotency: files on the node's persistent filesystem
+# gate generation; the trust entry is matched by SHA-256 FINGERPRINT (a name match
+# alone would skip re-trusting a regenerated cert). The PEM pair is set as facts
+# for the trailing localhost outputs play (via hostvars) and persists across
+# deployments through the same-label hidden-input/output pair (see defaults).
+
+- name: Create user certificate directory
+  ansible.builtin.file:
+    path: "{{ incus_user_cert_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Check for existing browser client certificate
+  ansible.builtin.stat:
+    path: "{{ incus_user_cert_path }}"
+  register: _user_cert_stat
+
+- name: Check for existing browser client key
+  ansible.builtin.stat:
+    path: "{{ incus_user_key_path }}"
+  register: _user_key_stat
+
+# Reimaged/replaced first node: restore the persisted pair (re-injected stored
+# outputs, see defaults) so certificates already imported into browsers keep
+# working and the published outputs stay stable.
+- name: Restore persisted browser client certificate
+  ansible.builtin.copy:
+    content: "{{ _persisted_browser_client_certificate }}"
+    dest: "{{ incus_user_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not (_user_cert_stat.stat.exists and _user_key_stat.stat.exists)
+    - _persisted_browser_client_certificate | length > 0
+    - _persisted_browser_client_certificate_key | length > 0
+
+- name: Restore persisted browser client key
+  ansible.builtin.copy:
+    content: "{{ _persisted_browser_client_certificate_key }}"
+    dest: "{{ incus_user_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when:
+    - not (_user_cert_stat.stat.exists and _user_key_stat.stat.exists)
+    - _persisted_browser_client_certificate | length > 0
+    - _persisted_browser_client_certificate_key | length > 0
+
+- name: Re-check browser client certificate presence
+  ansible.builtin.stat:
+    path: "{{ incus_user_cert_path }}"
+  register: _user_cert_stat
+
+- name: Re-check browser client key presence
+  ansible.builtin.stat:
+    path: "{{ incus_user_key_path }}"
+  register: _user_key_stat
+
+- name: Generate browser client certificate | EC secp384r1 self-signed
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - ec
+      - -pkeyopt
+      - ec_paramgen_curve:secp384r1
+      - -sha384
+      - -noenc
+      - -days
+      - "{{ incus_user_cert_validity_days }}"
+      - -subj
+      - "/CN={{ incus_user_cert_name }}"
+      - -keyout
+      - "{{ incus_user_key_path }}"
+      - -out
+      - "{{ incus_user_cert_path }}"
+  changed_when: true
+  when: not (_user_cert_stat.stat.exists and _user_key_stat.stat.exists)
+
+- name: Enforce key file permissions
+  ansible.builtin.file:
+    path: "{{ incus_user_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Compute certificate fingerprint | incus trust-list format
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      openssl x509 -in {{ incus_user_cert_path }} -noout -fingerprint -sha256
+      | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+    executable: /bin/bash
+  register: _user_cert_fingerprint
+  changed_when: false
+
+- name: Get trust store entries
+  ansible.builtin.command:
+    cmd: "incus config trust list --format=json"
+  register: _incus_trust_list
+  changed_when: false
+
+- name: Set fact | browser cert already trusted
+  ansible.builtin.set_fact:
+    incus_user_cert_trusted: >-
+      {{ (_incus_trust_list.stdout | default('[]') | from_json
+          | selectattr('fingerprint', 'equalto', _user_cert_fingerprint.stdout | trim)
+          | list | length) > 0 }}
+
+# Rotation path: a regenerated cert must not collide with the stale entry's name.
+- name: Remove stale trust entries with our name but a different fingerprint
+  ansible.builtin.command:
+    cmd: "incus config trust remove {{ item.fingerprint }}"
+  loop: >-
+    {{ _incus_trust_list.stdout | default('[]') | from_json
+       | selectattr('name', 'equalto', incus_user_cert_name)
+       | rejectattr('fingerprint', 'equalto', _user_cert_fingerprint.stdout | trim)
+       | list }}
+  loop_control:
+    label: "{{ item.fingerprint }}"
+  changed_when: true
+  when: not (incus_user_cert_trusted | bool)
+
+- name: Add browser client certificate to the trust store
+  ansible.builtin.command:
+    cmd: "incus config trust add-certificate {{ incus_user_cert_path }} --name {{ incus_user_cert_name }}"
+  changed_when: true
+  when: not (incus_user_cert_trusted | bool)
+
+- name: Slurp browser client certificate
+  ansible.builtin.slurp:
+    src: "{{ incus_user_cert_path }}"
+  register: _user_cert_slurp
+
+- name: Slurp browser client key
+  ansible.builtin.slurp:
+    src: "{{ incus_user_key_path }}"
+  register: _user_key_slurp
+  no_log: true
+
+- name: Set fact | browser client certificate PEMs for the outputs play
+  ansible.builtin.set_fact:
+    incus_browser_client_certificate_pem: "{{ _user_cert_slurp.content | b64decode }}"
+    incus_browser_client_certificate_key_pem: "{{ _user_key_slurp.content | b64decode }}"
+  no_log: true

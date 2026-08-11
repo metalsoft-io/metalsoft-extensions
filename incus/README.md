@@ -56,6 +56,46 @@ Published after every successful deployment/edit and visible on the extension in
 | `cluster_member_count` | Number of cluster members |
 | `cluster_storage_driver` | Storage driver of the default pool |
 | `incus_release` | Zabbly channel the cluster tracks |
+| `browser_client_certificate` | PEM user (browser) client certificate trusted by the cluster |
+| `browser_client_certificate_key` | PEM private key for the browser certificate (see security note below) |
+
+## Browser access to the Incus UI (client certificate)
+
+Each deployment generates a dedicated user client certificate on the first cluster
+member (EC secp384r1, self-signed, valid 10 years, CN `<instance name>-browser-user`)
+and registers it in the cluster-wide trust store. The PEM certificate and private key
+are published as the `browser_client_certificate` / `browser_client_certificate_key`
+outputs so a person can authenticate to the Incus web UI (`cluster_ui_url`).
+
+1. Copy the two output values into local files, keeping the `BEGIN`/`END` lines and
+   line breaks intact: `browser-client.crt` and `browser-client.key`.
+2. Convert the pair to a PKCS#12 bundle (choose an export password — Firefox asks for
+   it at import):
+
+   ```bash
+   openssl pkcs12 -export \
+     -in browser-client.crt \
+     -inkey browser-client.key \
+     -name "incus-browser-user" \
+     -out incus-browser-user.p12
+   ```
+
+   OpenSSL 3 encrypts the bundle with AES-256/PBKDF2, which Firefox 91+ imports fine;
+   if an older browser rejects the file, re-run with the additional `-legacy` flag.
+3. Import into Firefox: Settings → Privacy & Security → Certificates → View
+   Certificates… → Your Certificates → Import… → select `incus-browser-user.p12` and
+   enter the export password.
+4. Open the `cluster_ui_url` output. Accept the self-signed *server* certificate
+   warning first, then select the imported certificate when Firefox prompts for a
+   client certificate (restart Firefox if no prompt appears — it caches a "no
+   certificate" choice per host). The UI logs you in as a trusted client.
+
+**Security note:** the private key is published as a plaintext extension output —
+anyone who can view this extension instance in MetalSoft can read it, and the
+certificate grants full, unrestricted admin access to the Incus API and UI. Restrict
+instance visibility accordingly. To revoke: `incus config trust list` on any member,
+then `incus config trust remove <fingerprint>` and delete
+`/var/lib/incus/user-certs/` on the first member.
 
 ## Scaling
 
@@ -77,11 +117,11 @@ Playbooks must sit at the archive root (no wrapper directory), and never ship a 
 
 ```bash
 cd ansible
-zip -r ../incus-v1.1.1.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../incus-v1.1.1.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
+zip -r ../incus-v1.1.3.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../incus-v1.1.3.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
 ```
 
-Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.1.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
+Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.3.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
 
 ### Execution environment image
 

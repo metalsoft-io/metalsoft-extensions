@@ -128,6 +128,14 @@ incus_cluster_member_upgrade_enabled: >-
   {{ ((configVars | default({})).get('cluster_member_upgrade_enabled',
       extensionInstanceVariables.cluster_member_upgrade_enabled | default(false))) | bool }}
 
+# --- Browser client certificate (generated once on incus[0], deploy.yaml only) ---
+incus_user_cert_dir: /var/lib/incus/user-certs
+incus_user_cert_path: "{{ incus_user_cert_dir }}/browser-client.crt"
+incus_user_key_path: "{{ incus_user_cert_dir }}/browser-client.key"
+incus_user_cert_name: >-
+  {{ (extensionInstanceRecordSet.extensionInstanceName | default('incus', true)) ~ '-browser-user' }}
+incus_user_cert_validity_days: 3650
+
 # --- Extension outputs (context.json) ---
 # The platform REPLACES the instance's stored outputs with every successful run's
 # context.json top-level keys — see tasks/emit-outputs.yaml. All values below are
@@ -157,6 +165,35 @@ _output_api_url: >-
   {{ ('https://' ~ _output_first_member_fqdn ~ ':' ~ incus_core_https_port)
      if _output_first_member_fqdn else '' }}
 
+_output_first_member_host: "{{ groups['incus'] | default([]) | first | default('') }}"
+
+# Persisted cert/key from a previous deployment: the platform re-injects stored
+# customJson.outputs into extensionInstanceVariables on later deployments
+# (controllers >= 2026-07); some builds expose them as extensionInstanceOutputs.
+# (The validator on this platform rejects same-label input/output pairs, so the
+# hidden-input persistence channel is not available — outputs re-injection is
+# the only cross-deployment read-back path.)
+_persisted_browser_client_certificate: >-
+  {{ extensionInstanceVariables.browser_client_certificate
+     | default(extensionInstanceOutputs.browser_client_certificate | default('', true), true) }}
+
+_persisted_browser_client_certificate_key: >-
+  {{ extensionInstanceVariables.browser_client_certificate_key
+     | default(extensionInstanceOutputs.browser_client_certificate_key | default('', true), true) }}
+
+# Browser cert/key fallback chain — first non-empty wins:
+#   1. fact slurped on incus[0] THIS run (fresh deploy / rotation),
+#   2. persisted stored-output value re-injected by the platform
+#      (scale/upgrade runs — the localhost emit play never touches the nodes),
+#   3. '' before the first successful deploy (also legacy pre-1.1.2 instances).
+_output_browser_client_certificate: >-
+  {{ hostvars.get(_output_first_member_host, {}).get('incus_browser_client_certificate_pem', '')
+     or _persisted_browser_client_certificate }}
+
+_output_browser_client_certificate_key: >-
+  {{ hostvars.get(_output_first_member_host, {}).get('incus_browser_client_certificate_key_pem', '')
+     or _persisted_browser_client_certificate_key }}
+
 # Every declared output label must be present on every write — partial writes wipe
 # the omitted keys. cluster_ui_url is deliberately '' when the UI is not installed.
 incus_outputs_payload:
@@ -166,3 +203,5 @@ incus_outputs_payload:
   cluster_member_count: "{{ _output_member_fqdns | length }}"
   cluster_storage_driver: "{{ incus_storage_driver }}"
   incus_release: "{{ incus_branch_release }}"
+  browser_client_certificate: "{{ _output_browser_client_certificate }}"
+  browser_client_certificate_key: "{{ _output_browser_client_certificate_key }}"

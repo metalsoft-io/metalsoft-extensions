@@ -94,6 +94,11 @@
           - outputs_payload.cluster_member_count | int == 3
           - outputs_payload.cluster_storage_driver == 'dir'
           - outputs_payload.incus_release == 'stable'
+          # persisted-input fallback: no slurp fact on node-a in this harness, so the
+          # chain must pass the extensionInstanceVariables values through verbatim
+          - outputs_payload.browser_client_certificate == extensionInstanceVariables.browser_client_certificate
+          - outputs_payload.browser_client_certificate_key == extensionInstanceVariables.browser_client_certificate_key
+          - _output_first_member_host == 'node-a'
           # every write must carry ALL declared output labels (partial writes wipe keys)
-          - outputs_payload | length == 6
+          - outputs_payload | length == 8
           - outputs_payload.values() | map('string') | select('search', '\.$') | list | length == 0

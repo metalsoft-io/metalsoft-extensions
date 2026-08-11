@@ -7,7 +7,7 @@
     # Stale-bundle detection: proves which bundle version actually ran.
     - name: Debug | incus extension bundle version
       ansible.builtin.debug:
-        msg: "incus extension bundle v1.1.1"
+        msg: "incus extension bundle v1.1.3"
       run_once: true
   roles:
     - role: incus
@@ -39,6 +39,13 @@
       ansible.builtin.include_role:
         name: incus
         tasks_from: incus-init.yaml
+
+    # Unconditional (not gated on install_ui): the certificate also authenticates
+    # to the API, and the outputs payload must carry every declared label anyway.
+    - name: Configure browser client certificate | UI/API user auth
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: incus-user-cert.yaml
 
 - name: Bootstrap additional servers
   hosts: incus[1:]

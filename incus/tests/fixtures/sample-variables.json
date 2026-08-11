@@ -15,7 +15,9 @@
         "cluster_node_os_template": "incus-ubuntu-24-04-cluster-node",
         "cluster_enabled": true,
         "install_ui": true,
-        "storage_driver": "dir"
+        "storage_driver": "dir",
+        "browser_client_certificate": "-----BEGIN CERTIFICATE-----\nFIXTURECERT\n-----END CERTIFICATE-----\n",
+        "browser_client_certificate_key": "-----BEGIN EC PRIVATE KEY-----\nFIXTUREKEY\n-----END EC PRIVATE KEY-----\n"
     },
     "extensionInstanceRecordSet": {
         "deploymentId": 1,

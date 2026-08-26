@@ -88,6 +88,31 @@ management_server_instance_group_data: >-
      if management_server_instance_group_base
      else {} }}
 
+# Extract 'workload' server instance group data (base) — VI workload domain hosts.
+# Empty {} when the workload array is at 0 instances (management-only deployment).
+workload_server_instance_group_base: >-
+  {{ extensionInstanceRecordSet.serverInstanceGroups
+     | default([])
+     | selectattr('serverInstanceGroupLabel', 'equalto', 'workload')
+     | first
+     | default({}) }}
+
+# Filter server instances by workload server instance group ID
+workload_server_instances: >-
+  {{ extensionInstanceRecordSet.serverInstances
+     | default([])
+     | selectattr('serverInstanceGroupId', 'equalto', workload_server_instance_group_base.serverInstanceGroupId | default(-1))
+     | list
+     if workload_server_instance_group_base.serverInstanceGroupId is defined
+     else [] }}
+
+# Combine workload server instance group data with server instances
+workload_server_instance_group_data: >-
+  {{ workload_server_instance_group_base
+     | combine({'serverInstances': workload_server_instances}, recursive=True)
+     if workload_server_instance_group_base
+     else {} }}
+
 # Build an index (name -> logical network object)
 logical_networks_index: >-
   {{ dict(

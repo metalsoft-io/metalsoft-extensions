@@ -1,0 +1,66 @@
+---
+# Idempotently ensures the workload domain network pool (wld_pool_name) exists and sets
+# wld_network_pool_id. The pool carries the VMOTION + VSAN ranges commissioned workload
+# hosts draw their vmk IPs from (NSX host overlay TEPs come from the domain spec's
+# ipAddressPoolSpec, NOT from the network pool).
+- name: SDDC Manager API | Get Network Pools
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/network-pools"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_network_pools_response
+  delegate_to: localhost
+
+- name: Set fact | existing wld network pool
+  ansible.builtin.set_fact:
+    _wld_existing_pool: >-
+      {{ sddc_manager_network_pools_response.json.elements | default([])
+         | selectattr('name', 'equalto', wld_pool_name)
+         | first | default({}) }}
+
+- name: SDDC Manager API | Create WLD Network Pool
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/network-pools"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    body_format: json
+    body: "{{ lookup('template', 'wld/network-pool-spec.json.j2') | from_json }}"
+    status_code:
+      - 200
+      - 201
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_network_pool_create_response
+  when: _wld_existing_pool.id is not defined
+  delegate_to: localhost
+
+- name: Set fact | wld_network_pool_id
+  ansible.builtin.set_fact:
+    wld_network_pool_id: >-
+      {{ _wld_existing_pool.id
+         | default(sddc_manager_network_pool_create_response.json.id | default('')) }}
+
+- name: Assert WLD network pool id resolved
+  ansible.builtin.assert:
+    that: wld_network_pool_id | length > 0
+    fail_msg: >-
+      Could not resolve the workload domain network pool '{{ wld_pool_name }}'
+      (create response: {{ sddc_manager_network_pool_create_response.json | default({}) }}).
+
+- name: Debug WLD network pool
+  ansible.builtin.debug:
+    msg: "WLD network pool '{{ wld_pool_name }}' id: {{ wld_network_pool_id }}"
+  when: sddc_manager.api_call_debug | bool

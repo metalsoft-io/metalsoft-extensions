@@ -23,6 +23,20 @@
     - role: vcf
       tags: vcf
 
+# Optional VI workload domain — created through SDDC Manager once the management
+# bring-up above completed. No-op when the workload array is at 0 instances.
+- name: Deploy VI workload domain
+  hosts: management[0]
+  gather_facts: false
+  collections:
+    - community.vmware
+  tasks:
+    - name: VI workload domain flow
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: wld/deploy-vi-workload-domain.yaml
+      when: (groups['workload'] | default([]) | length) > 0
+
 # Stored outputs are REPLACED by every successful run's context.json — always publish
 # them as the last step (only reached when the bring-up play above succeeded).
 - name: Publish extension outputs

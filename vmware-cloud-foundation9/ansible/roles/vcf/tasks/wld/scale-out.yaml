@@ -1,0 +1,65 @@
+---
+# onEdit growth of the workload array. Two branches:
+#   A) no workload domain exists yet (0→N edit)  -> full domain creation
+#   B) domain exists (N→N+k edit)                -> commission + cluster expansion
+# Runs on the workload_scale_out hosts (esxi role already prepped them in the play).
+
+- name: WLD scale | Build workload domain facts
+  ansible.builtin.include_tasks: wld/build-wld-spec.yaml
+
+- name: WLD scale | Assert resulting host count is valid
+  ansible.builtin.assert:
+    that: (wld_host_count | int) >= 3
+    fail_msg: >-
+      The workload array would end up with {{ wld_host_count }} host(s) — VCF requires
+      at least 3 hosts for a vSAN VI workload domain (or 0 to have none).
+
+- name: WLD scale | Scale out / create workload domain
+  run_once: true
+  block:
+    - name: WLD scale | Authenticate to SDDC Manager
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: WLD scale | Check for an existing workload domain
+      ansible.builtin.include_tasks: wld/get-domains.yaml
+
+    # 0→N: groups['workload'] is the final host set (scale-out hosts included) — the
+    # full creation flow handles pool/commission/spec itself.
+    - name: WLD scale | Create the workload domain (none exists yet)
+      ansible.builtin.include_tasks: wld/deploy-vi-workload-domain.yaml
+      when: wld_existing_domain.id is not defined
+
+    - name: WLD scale | Expand the existing workload domain cluster
+      when: wld_existing_domain.id is defined
+      block:
+        - name: WLD scale | Discover workload host vmnic uplinks
+          ansible.builtin.include_tasks: vmnics-to-uplinks.yaml
+          vars:
+            vmnic_target_group_data: "{{ workload_server_instance_group_data }}"
+
+        - name: WLD scale | Snapshot workload uplink names
+          ansible.builtin.set_fact:
+            wld_uplink1_vmnic_name: "{{ uplink1_vmnic_name | default('') }}"
+            wld_uplink2_vmnic_name: "{{ uplink2_vmnic_name | default('') }}"
+
+        - name: WLD scale | Ensure workload network pool
+          ansible.builtin.include_tasks: wld/ensure-network-pool.yaml
+
+        - name: WLD scale | Commission new workload hosts
+          ansible.builtin.include_tasks: sddc-manager/host-commission.yaml
+          vars:
+            commission_hosts: "{{ groups['workload_scale_out'] }}"
+            commission_network_pool_id: "{{ wld_network_pool_id }}"
+            commission_network_pool_name: "{{ wld_pool_name }}"
+
+        - name: WLD scale | Re-authenticate to SDDC Manager
+          ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+        - name: WLD scale | Add new hosts to the workload cluster
+          ansible.builtin.include_tasks: sddc-manager/add-hosts-to-cluster.yaml
+          vars:
+            expansion_cluster_name: "{{ wld_cluster_name }}"
+            expansion_hosts: "{{ groups['workload_scale_out'] }}"
+            expansion_vds_name: "{{ wld_vds_name }}"
+            expansion_uplink1_vmnic_name: "{{ wld_uplink1_vmnic_name }}"
+            expansion_uplink2_vmnic_name: "{{ wld_uplink2_vmnic_name }}"

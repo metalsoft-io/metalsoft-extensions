@@ -12,7 +12,8 @@
     "vcenter_vm_size": "small",
     "vsan_failures_to_tolerate": 1,
     "skip_gateway_ping_validation": false,
-    "validation_debug": false
+    "validation_debug": false,
+    "wld_nsx_manager_count": 3
   },
   "extensionInstanceVariables": {
     "installer_admin_password": "Q#ZT1N#uarLPoPd",
@@ -30,7 +31,16 @@
     "ops_fleet_mgmt_root_password": "FlMgRt@Pass1!2X",
     "ops_fleet_mgmt_admin_password": "FlMgAd@Pass1!2X",
     "ops_collector_root_password": "ColRt@Pass1!2#X",
-    "vcf_automation_admin_password": "AutoAd@Pass1!2X"
+    "vcf_automation_admin_password": "AutoAd@Pass1!2X",
+    "wld_vcenter_root_password": "WldVcs@Pass1!2X",
+    "wld_nsx_manager_admin_password": "WldNsxAd@Pas1!X",
+    "wld_nsx_manager_audit_password": "WldNsxAu@Pas1!X",
+    "wld_sso_admin_password": "WldSso@Pass1!2X"
+  },
+  "workload": {
+    "wld_vcenter_root_username": "root",
+    "wld_nsx_manager_admin_username": "admin",
+    "wld_nsx_manager_audit_username": "audit"
   },
   "management": {
     "sddc_root_username": "root",
@@ -156,6 +166,46 @@
                     "netmask": "255.255.255.0",
                     "cidr": "10.0.10.53/24",
                     "tags": {"role": "vcf-automation"}
+                  },
+                  {
+                    "ip": "10.0.10.60",
+                    "fqdn": "w-vcs1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.60/24",
+                    "tags": {"role": "wld-vcenter-server"}
+                  },
+                  {
+                    "ip": "10.0.10.61",
+                    "fqdn": "w-nsx1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.61/24",
+                    "tags": {"role": "wld-nsx-manager-vip"}
+                  },
+                  {
+                    "ip": "10.0.10.62",
+                    "fqdn": "w-nsx1a.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.62/24",
+                    "tags": {"role": "wld-nsx-manager-node1"}
+                  },
+                  {
+                    "ip": "10.0.10.63",
+                    "fqdn": "w-nsx1b.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.63/24",
+                    "tags": {"role": "wld-nsx-manager-node2"}
+                  },
+                  {
+                    "ip": "10.0.10.64",
+                    "fqdn": "w-nsx1c.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.64/24",
+                    "tags": {"role": "wld-nsx-manager-node3"}
                   }
                 ],
                 "ipRanges": [
@@ -190,6 +240,14 @@
                     "gateway": "10.0.12.1",
                     "netmask": "255.255.255.0",
                     "tags": {"role": "vsan-pool"}
+                  },
+                  {
+                    "startIp": "10.0.12.111",
+                    "endIp": "10.0.12.126",
+                    "gateway": "10.0.12.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.12.0",
+                    "tags": {"role": "wld-vsan-pool"}
                   }
                 ]
               }
@@ -215,6 +273,14 @@
                     "gateway": "10.0.11.1",
                     "netmask": "255.255.255.0",
                     "tags": {"role": "vmotion-pool"}
+                  },
+                  {
+                    "startIp": "10.0.11.111",
+                    "endIp": "10.0.11.126",
+                    "gateway": "10.0.11.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.11.0",
+                    "tags": {"role": "wld-vmotion-pool"}
                   }
                 ]
               }
@@ -240,6 +306,116 @@
                     "gateway": "10.0.13.1",
                     "netmask": "255.255.255.0",
                     "tags": {"role": "nsx-host-overlay-pool"}
+                  },
+                  {
+                    "startIp": "10.0.13.121",
+                    "endIp": "10.0.13.140",
+                    "gateway": "10.0.13.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.13.0",
+                    "tags": {"role": "wld-nsx-host-overlay-pool"}
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "serverInstanceGroupId": 2,
+        "serverInstanceGroupLabel": "workload",
+        "tags": ["wld_domain"],
+        "logicalNetworks": [
+          {
+            "id": 1,
+            "name": "vcf-mgmt",
+            "label": "vcf-mgmt",
+            "vlan_id": 10,
+            "subnets": [
+              {
+                "subnet": "10.0.10.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.10.1",
+                "mtu": 1500,
+                "ipType": "ipv4",
+                "ipAllocations": [],
+                "ipRanges": []
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "name": "vcf-vsan",
+            "label": "vcf-vsan",
+            "vlan_id": 12,
+            "subnets": [
+              {
+                "subnet": "10.0.12.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.12.1",
+                "mtu": 9000,
+                "ipType": "ipv4",
+                "ipAllocations": [],
+                "ipRanges": [
+                  {
+                    "startIp": "10.0.12.111",
+                    "endIp": "10.0.12.126",
+                    "gateway": "10.0.12.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.12.0",
+                    "tags": {"role": "wld-vsan-pool"}
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "name": "vcf-vmotion",
+            "label": "vcf-vmotion",
+            "vlan_id": 11,
+            "subnets": [
+              {
+                "subnet": "10.0.11.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.11.1",
+                "mtu": 9000,
+                "ipType": "ipv4",
+                "ipAllocations": [],
+                "ipRanges": [
+                  {
+                    "startIp": "10.0.11.111",
+                    "endIp": "10.0.11.126",
+                    "gateway": "10.0.11.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.11.0",
+                    "tags": {"role": "wld-vmotion-pool"}
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "name": "vcf-nsx",
+            "label": "vcf-nsx",
+            "vlan_id": 13,
+            "subnets": [
+              {
+                "subnet": "10.0.13.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.13.1",
+                "mtu": 9000,
+                "ipType": "ipv4",
+                "ipAllocations": [],
+                "ipRanges": [
+                  {
+                    "startIp": "10.0.13.121",
+                    "endIp": "10.0.13.140",
+                    "gateway": "10.0.13.1",
+                    "netmask": "255.255.255.0",
+                    "networkAddress": "10.0.13.0",
+                    "tags": {"role": "wld-nsx-host-overlay-pool"}
                   }
                 ]
               }
@@ -266,11 +442,12 @@
         "serverInstanceGroupId": 1,
         "serverInstanceLabel": "esx02",
         "host": "esx02.vcf.example.com",
+        "_comment": "uplink MAC order deliberately REVERSED — the platform does not guarantee a stable uplinks order (observed live on us06); the vmnic mapping must not treat it as ordered",
         "logicalNetworks": [
-          {"name": "vcf-mgmt", "label": "vcf-mgmt", "vlan_id": 10, "uplinks": ["aa:bb:cc:00:02:01", "aa:bb:cc:00:02:02"]},
-          {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:02:01", "aa:bb:cc:00:02:02"]},
-          {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:02:01", "aa:bb:cc:00:02:02"]},
-          {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:02:01", "aa:bb:cc:00:02:02"]}
+          {"name": "vcf-mgmt", "label": "vcf-mgmt", "vlan_id": 10, "uplinks": ["aa:bb:cc:00:02:02", "aa:bb:cc:00:02:01"]},
+          {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:02:02", "aa:bb:cc:00:02:01"]},
+          {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:02:02", "aa:bb:cc:00:02:01"]},
+          {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:02:02", "aa:bb:cc:00:02:01"]}
         ]
       },
       {
@@ -295,6 +472,42 @@
           {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:04:01", "aa:bb:cc:00:04:02"]},
           {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:04:01", "aa:bb:cc:00:04:02"]},
           {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:04:01", "aa:bb:cc:00:04:02"]}
+        ]
+      },
+      {
+        "serverInstanceId": 5,
+        "serverInstanceGroupId": 2,
+        "serverInstanceLabel": "esx05",
+        "host": "esx05.vcf.example.com",
+        "logicalNetworks": [
+          {"name": "vcf-mgmt", "label": "vcf-mgmt", "vlan_id": 10, "uplinks": ["aa:bb:cc:00:05:01", "aa:bb:cc:00:05:02"]},
+          {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:05:01", "aa:bb:cc:00:05:02"]},
+          {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:05:01", "aa:bb:cc:00:05:02"]},
+          {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:05:01", "aa:bb:cc:00:05:02"]}
+        ]
+      },
+      {
+        "serverInstanceId": 6,
+        "serverInstanceGroupId": 2,
+        "serverInstanceLabel": "esx06",
+        "host": "esx06.vcf.example.com",
+        "logicalNetworks": [
+          {"name": "vcf-mgmt", "label": "vcf-mgmt", "vlan_id": 10, "uplinks": ["aa:bb:cc:00:06:01", "aa:bb:cc:00:06:02"]},
+          {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:06:01", "aa:bb:cc:00:06:02"]},
+          {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:06:01", "aa:bb:cc:00:06:02"]},
+          {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:06:01", "aa:bb:cc:00:06:02"]}
+        ]
+      },
+      {
+        "serverInstanceId": 7,
+        "serverInstanceGroupId": 2,
+        "serverInstanceLabel": "esx07",
+        "host": "esx07.vcf.example.com",
+        "logicalNetworks": [
+          {"name": "vcf-mgmt", "label": "vcf-mgmt", "vlan_id": 10, "uplinks": ["aa:bb:cc:00:07:01", "aa:bb:cc:00:07:02"]},
+          {"name": "vcf-vsan", "label": "vcf-vsan", "vlan_id": 12, "uplinks": ["aa:bb:cc:00:07:01", "aa:bb:cc:00:07:02"]},
+          {"name": "vcf-vmotion", "label": "vcf-vmotion", "vlan_id": 11, "uplinks": ["aa:bb:cc:00:07:01", "aa:bb:cc:00:07:02"]},
+          {"name": "vcf-nsx", "label": "vcf-nsx", "vlan_id": 13, "uplinks": ["aa:bb:cc:00:07:01", "aa:bb:cc:00:07:02"]}
         ]
       }
     ]

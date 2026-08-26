@@ -52,6 +52,57 @@
       automation-ip-pool ipRange (2 IPs) are missing from the vcf-mgmt logical network.
   when: vcf.deploy_automation | bool
 
+- name: Validate | Workload domain allocations present (when workload hosts requested)
+  ansible.builtin.assert:
+    that:
+      - wld_allocation_item.found.ip | default('') | length > 0
+      - wld_allocation_item.found.fqdn | default('') | length > 0
+    fail_msg: >-
+      Missing or incomplete vcf-mgmt ipAllocation with tags.role={{ wld_allocation_item.role }}
+      (need both an allocated IP and a DNS record) — required for the VI workload domain.
+    quiet: true
+  loop:
+    - { role: 'wld-vcenter-server' }
+    - { role: 'wld-nsx-manager-vip' }
+    - { role: 'wld-nsx-manager-node1' }
+    - { role: 'wld-nsx-manager-node2' }
+    - { role: 'wld-nsx-manager-node3' }
+  loop_control:
+    loop_var: wld_allocation_item_role
+    label: "{{ wld_allocation_item_role.role }}"
+  vars:
+    wld_allocation_item:
+      role: "{{ wld_allocation_item_role.role }}"
+      found: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', wld_allocation_item_role.role) | first | default({}) }}"
+  when: _wld_active | bool
+
+- name: Validate | Workload domain IP ranges present (when workload hosts requested)
+  ansible.builtin.assert:
+    that:
+      - wld_range_item.found.startIp | default('') | length > 0
+      - wld_range_item.found.endIp | default('') | length > 0
+    fail_msg: >-
+      Missing ipRange with tags.role={{ wld_range_item.role }} on the {{ wld_range_item.network_name }}
+      logical network — required for the VI workload domain network pool / NSX TEPs.
+    quiet: true
+  loop:
+    - { role: 'wld-vsan-pool', network: 'vsan' }
+    - { role: 'wld-vmotion-pool', network: 'vmotion' }
+    - { role: 'wld-nsx-host-overlay-pool', network: 'nsx' }
+  loop_control:
+    loop_var: wld_range_item_role
+    label: "{{ wld_range_item_role.role }}"
+  vars:
+    wld_range_source: >-
+      {{ {'vsan': vsan_network, 'vmotion': vmotion_network, 'nsx': nsx_network}[wld_range_item_role.network] }}
+    wld_range_item:
+      role: "{{ wld_range_item_role.role }}"
+      network_name: "vcf-{{ wld_range_item_role.network }}"
+      found: >-
+        {{ wld_range_source | json_query('subnets[].ipRanges[]') | default([], true)
+           | selectattr('tags.role', 'equalto', wld_range_item_role.role) | first | default({}) }}
+  when: _wld_active | bool
+
 - name: Validate | NSX host overlay TEP VLAN present
   ansible.builtin.assert:
     that: nsx_network_subnet.vlan_id | default('') | string | length > 0

@@ -1,3 +1,5 @@
+# Management-only variant: the workload array is at 0 instances (empty group).
+# Run: cd tests && ansible-playbook -i inventory-wld0.yaml render-spec-wld0.yaml
 all:
   children:
     management:
@@ -27,22 +29,4 @@ all:
           esxi_ssh_thumbprint: ""
           esxi_ssl_thumbprint: ""
     workload:
-      hosts:
-        esx05.vcf.example.com:
-          ansible_host: 10.0.10.15
-          ansible_user: root
-          ansible_password: "EsxPassw0rd!123"
-          esxi_ssh_thumbprint: ""
-          esxi_ssl_thumbprint: ""
-        esx06.vcf.example.com:
-          ansible_host: 10.0.10.16
-          ansible_user: root
-          ansible_password: "EsxPassw0rd!123"
-          esxi_ssh_thumbprint: ""
-          esxi_ssl_thumbprint: ""
-        esx07.vcf.example.com:
-          ansible_host: 10.0.10.17
-          ansible_user: root
-          ansible_password: "EsxPassw0rd!123"
-          esxi_ssh_thumbprint: ""
-          esxi_ssl_thumbprint: ""
+      hosts: {}

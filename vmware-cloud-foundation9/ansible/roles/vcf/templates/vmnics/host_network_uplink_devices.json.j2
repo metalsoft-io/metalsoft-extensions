@@ -1,6 +1,10 @@
-{# JSON mapping: host -> network -> [vmnic devices] #}
+{# JSON mapping: host -> network -> [vmnic devices]
+   The recordSet's per-network `uplinks` MAC array order is NOT stable across hosts
+   (observed live: one host's array reversed) and encodes nothing — device lists are
+   therefore SORTED by name so cross-host comparison and the uplink1/uplink2 export
+   are deterministic regardless of MAC order. #}
 {%- set outer = {} -%}
-{%- for server_instance in management_server_instance_group_data.serverInstances | default([]) -%}
+{%- for server_instance in (vmnic_target_group_data | default(management_server_instance_group_data)).serverInstances | default([]) -%}
   {%- set host = server_instance.host -%}
   {%- set vmnic_details = all_vmnic_info.get(host, {}).vmnic_details | default([]) -%}
   {%- set connected = vmnic_details | selectattr('status','equalto','Connected') | list -%}
@@ -18,7 +22,7 @@
           {%- set _ = devices.append(dev) -%}
         {%- endif -%}
       {%- endfor -%}
-      {%- set _ = net_map.update({ logical_network.name: devices }) -%}
+      {%- set _ = net_map.update({ logical_network.name: devices | sort }) -%}
     {%- endif -%}
   {%- endfor -%}
   {%- set _ = outer.update({ host: net_map }) -%}

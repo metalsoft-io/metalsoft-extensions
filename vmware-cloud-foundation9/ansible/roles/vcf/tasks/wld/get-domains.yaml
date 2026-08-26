@@ -1,0 +1,29 @@
+---
+# https://developer.broadcom.com/xapis/vmware-cloud-foundation-api/latest/domains/
+- name: SDDC Manager API | Get Domains
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_domains_response
+  delegate_to: localhost
+
+- name: Set fact | wld_existing_domain
+  ansible.builtin.set_fact:
+    wld_existing_domain: >-
+      {{ sddc_manager_domains_response.json.elements | default([])
+         | selectattr('name', 'equalto', wld_domain_name)
+         | first | default({}) }}
+
+- name: Debug SDDC Manager Domains
+  ansible.builtin.debug:
+    msg: "Existing workload domain '{{ wld_domain_name }}': {{ wld_existing_domain | default({}) }}"
+  when: sddc_manager.api_call_debug | bool

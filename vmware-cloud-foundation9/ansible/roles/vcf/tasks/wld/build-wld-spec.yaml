@@ -1,0 +1,82 @@
+---
+# VI workload domain fact builder. Requires the base SDDC facts (management_ip_allocations,
+# vsan/vmotion/nsx network objects, sddc_manager_spec, psc_specs) — built here when absent
+# so callers can include this file first from any entry point (deploy, scale, delete).
+
+- name: WLD | Build base SDDC facts when missing
+  ansible.builtin.include_tasks: build-sddc-spec.yaml
+  when: sddc_manager_spec is not defined
+
+- name: WLD | Preflight | Validate workload host count (0 or >= 3)
+  ansible.builtin.assert:
+    that: (wld_host_count | int) == 0 or (wld_host_count | int) >= 3
+    fail_msg: >-
+      The workload instance array has {{ wld_host_count }} host(s) — VCF requires at least
+      3 hosts for a vSAN VI workload domain (or 0 for a management-only deployment).
+
+- name: WLD | Extract appliance IP allocations (role tags)
+  ansible.builtin.set_fact:
+    wld_vcenter_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'wld-vcenter-server') | first | default({}) }}"
+    wld_nsx_vip_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-vip') | first | default({}) }}"
+    wld_nsx_node1_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-node1') | first | default({}) }}"
+    wld_nsx_node2_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-node2') | first | default({}) }}"
+    wld_nsx_node3_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-node3') | first | default({}) }}"
+
+# Same role-tag-first-match extraction pattern as sddc-spec/network-specs.yaml — the
+# wld-* ranges live on the same vcf-vsan/vcf-vmotion/vcf-nsx logical networks as the
+# management ranges, only the role tag differs.
+- name: WLD | Build network subnets (role-tag first match)
+  vars:
+    _wld_net_objects:
+      - var_name: wld_vsan_subnet
+        net: "{{ vsan_network }}"
+        role: wld-vsan-pool
+      - var_name: wld_vmotion_subnet
+        net: "{{ vmotion_network }}"
+        role: wld-vmotion-pool
+      - var_name: wld_nsx_overlay_subnet
+        net: "{{ nsx_network }}"
+        role: wld-nsx-host-overlay-pool
+  ansible.builtin.set_fact:
+    "{{ item.var_name }}": >-
+      {%- set found = {} -%}
+      {%- set net_obj = item.net -%}
+      {%- if net_obj and net_obj.get('subnets') -%}
+        {%- for subnet in net_obj.subnets -%}
+          {%- for ipr in subnet.get('ipRanges', []) -%}
+            {%- if (not found) and ipr.get('tags', {}).get('role') == item.role -%}
+              {%- set _ = found.update({
+                'vlan_id': net_obj.get('vlan_id', ''),
+                'subnet': subnet.get('subnet', ''),
+                'netmask': ipr.get('netmask', subnet.get('netmask', '')),
+                'gateway': ipr.get('gateway', subnet.get('gateway', '')),
+                'maskBits': ipr.get('maskBits', ''),
+                'networkAddress': ipr.get('networkAddress', ''),
+                'mtu': subnet.get('mtu', 9000),
+                'startIp': ipr.get('startIp', ''),
+                'endIp': ipr.get('endIp', ''),
+                'ipType': subnet.get('ipType', '')
+              }) -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{- found -}}
+  loop: "{{ _wld_net_objects }}"
+
+- name: WLD | Assert required allocations and ranges present
+  ansible.builtin.assert:
+    that:
+      - wld_vcenter_config.ip | default('') | length > 0
+      - wld_vcenter_config.fqdn | default('') | length > 0
+      - wld_nsx_vip_config.ip | default('') | length > 0
+      - wld_nsx_vip_config.fqdn | default('') | length > 0
+      - wld_vsan_subnet.startIp | default('') | length > 0
+      - wld_vmotion_subnet.startIp | default('') | length > 0
+      - wld_nsx_overlay_subnet.startIp | default('') | length > 0
+    fail_msg: >-
+      Missing VI workload domain allocations/ranges — need vcf-mgmt ipAllocations tagged
+      wld-vcenter-server / wld-nsx-manager-vip (+node1..3) with DNS records, and ipRanges
+      tagged wld-vsan-pool / wld-vmotion-pool / wld-nsx-host-overlay-pool. Check the
+      extension definition's logicalNetworks.
+  when: _wld_active | bool

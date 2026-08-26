@@ -3,34 +3,42 @@
 #
 # Flow summary:
 # 1. Collect vmnic info for all management hosts (Connected adapters only) in a single run_once operation.
-# 2. Build per-host mapping of logical network -> ordered unique vmnic devices (preserves provided MAC order, connected-only) via Jinja JSON templates + from_json.
-# 3. Validate every logical network shares identical device ordering across all hosts (hard fail on inconsistency; no minimum uplink count enforced).
+# 2. Build per-host mapping of logical network -> unique vmnic devices (connected-only, SORTED by device name — the recordSet's uplink MAC order is not stable across hosts and carries no meaning) via Jinja JSON templates + from_json.
+# 3. Validate every logical network resolves to the identical device set on all hosts (hard fail on inconsistency; no minimum uplink count enforced).
 # 4. Export a canonical per-network uplink pair map (management uplinks are simply the pair for the 'vcf-mgmt' network) plus uplink1/uplink2 convenience vars for mgmt.
 # 5. Provide per-network individual variables <network>_uplink1_vmnic_name / <network>_uplink2_vmnic_name for downstream tasks.
 # 6. Produce a structured validation summary fact (vcf_uplink_validation_summary) capturing reference host, networks checked, inconsistencies list, pass flag, and timestamp.
 #
 # Debugging: enable vcf.validation_debug (propagates to debug_vmnic_mapping) to see intermediate structures and exported maps.
+#
+# Parameterization: callers may set vmnic_target_group_data to run the discovery against a
+# different instance group (e.g. the 'workload' array); defaults to the management group.
 
-- name: Preflight | Ensure management server instance data is present
+- name: Resolve | Target server instance group for vmnic discovery
+  set_fact:
+    vmnic_group_data: "{{ vmnic_target_group_data | default(management_server_instance_group_data) }}"
+  run_once: true
+
+- name: Preflight | Ensure target server instance data is present
   assert:
     that:
-      - management_server_instance_group_data.serverInstances is defined
-      - (management_server_instance_group_data.serverInstances | length) > 0
-    fail_msg: "No management serverInstances available for vmnic mapping."
+      - vmnic_group_data.serverInstances is defined
+      - (vmnic_group_data.serverInstances | length) > 0
+    fail_msg: "No serverInstances available for vmnic mapping (group: {{ vmnic_group_data.serverInstanceGroupLabel | default('management') }})."
   run_once: true
 
-- name: Preflight | Build list of management hosts
+- name: Preflight | Build list of target hosts
   set_fact:
-    mgmt_hosts: "{{ management_server_instance_group_data.serverInstances | map(attribute='host') | list }}"
+    mgmt_hosts: "{{ vmnic_group_data.serverInstances | map(attribute='host') | list }}"
   run_once: true
 
-- name: Debug | Management hosts list
+- name: Debug | Target hosts list
   debug:
     var: mgmt_hosts
   when: debug_vmnic_mapping | default(false)
   run_once: true
 
-- name: Gather vmnic info for all management hosts
+- name: Gather vmnic info for all target hosts
   community.vmware.vmware_host_vmnic_info:
     hostname: "{{ hostvars[item].ansible_host }}"
     username: "{{ hostvars[item].ansible_user | default('root') }}"
@@ -139,7 +147,7 @@
     - name: Fail if inconsistencies detected
       fail:
         msg: >-
-          Uplink vmnic device inconsistency detected across management hosts:
+          Uplink vmnic device inconsistency detected across hosts:
           {{ uplink_inconsistencies | to_nice_json }}
       when: uplink_inconsistencies | length > 0
       run_once: true

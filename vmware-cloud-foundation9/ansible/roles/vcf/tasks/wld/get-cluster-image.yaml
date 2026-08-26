@@ -1,0 +1,55 @@
+---
+# VCF 9 requires a vLCM cluster image (personality) for new VI workload domains. The
+# management domain's image is reusable. Select by wld_cluster_image_name when set,
+# otherwise take the first available personality.
+# NOTE: response shape (elements[].personalityId/personalityName) carried over from the
+# published API docs — confirm against a live 9.x /v1/personalities on first E2E.
+- name: SDDC Manager API | Get Personalities (vLCM cluster images)
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/personalities"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_personalities_response
+  delegate_to: localhost
+
+- name: Set fact | selected cluster image (personality)
+  vars:
+    _personalities: >-
+      {{ sddc_manager_personalities_response.json.elements
+         | default(sddc_manager_personalities_response.json | default([]), true) }}
+    _by_name: >-
+      {{ _personalities | selectattr('personalityName', 'defined')
+         | selectattr('personalityName', 'equalto', wld_cluster_image_name)
+         | list }}
+  ansible.builtin.set_fact:
+    _wld_personality: >-
+      {{ (_by_name | first)
+         if (wld_cluster_image_name | length > 0 and _by_name | length > 0)
+         else (_personalities | first | default({})) }}
+
+- name: Set fact | wld_cluster_image_id
+  ansible.builtin.set_fact:
+    wld_cluster_image_id: "{{ _wld_personality.personalityId | default(_wld_personality.id | default('')) }}"
+
+- name: Assert a vLCM cluster image was found
+  ansible.builtin.assert:
+    that: wld_cluster_image_id | length > 0
+    fail_msg: >-
+      No vLCM cluster image (personality) found on SDDC Manager — VCF 9 requires one for
+      VI workload domain creation. Reuse the management domain image or import one, then
+      re-run (raw response: {{ sddc_manager_personalities_response.json | default({}) }}).
+
+- name: Debug selected cluster image
+  ansible.builtin.debug:
+    msg: >-
+      WLD cluster image: {{ _wld_personality.personalityName | default('?') }}
+      ({{ wld_cluster_image_id }})
+  when: sddc_manager.api_call_debug | bool

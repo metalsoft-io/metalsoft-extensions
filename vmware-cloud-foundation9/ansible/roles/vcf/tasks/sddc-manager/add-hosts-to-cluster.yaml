@@ -3,11 +3,13 @@
 - name: Include SDDC Manager | Clusters API task | get clusters
   ansible.builtin.import_tasks: clusters/get-clusters.yaml
 
+# Callers may override expansion_cluster_name / expansion_hosts / expansion_vds_name
+# (workload domain flow); defaults preserve the management cluster behavior.
 - name: Set fact | cluster ID by name
   ansible.builtin.set_fact:
     sddc_manager_cluster_id: "{{ item.id }}"
   loop: "{{ sddc_manager_clusters_response.json.elements }}"
-  when: item.name == vcenter_cluster_name
+  when: item.name == (expansion_cluster_name | default(vcenter_cluster_name))
 
 - name: Include SDDC Manager | Clusters API task | get cluster by ID
   ansible.builtin.import_tasks: clusters/get-cluster.yaml
@@ -23,7 +25,7 @@
 - name: Set fact | host_expansion_specs_list
   ansible.builtin.set_fact:
     host_expansion_specs_list: "{{ host_expansion_specs_list | default([]) + [host_item_spec] }}"
-  loop: "{{ groups['management_scale_out'] }}"
+  loop: "{{ expansion_hosts | default(groups['management_scale_out']) }}"
   vars:
     target_host_fqdn: "{{ hostvars[item].ansible_fqdn | default(item) }}"
     sddc_host_info: >-
@@ -33,18 +35,18 @@
         | first
         | default({})
       }}
-    # must match dvsName in templates/dvs-specs.yaml.j2
-    current_vds_name: "{{ vcf.dvs_name | default('m-cl1-vds1') }}"
+    # must match dvsName in templates/dvs-specs.yaml.j2 (mgmt) / wld_vds_name (workload)
+    current_vds_name: "{{ expansion_vds_name | default(vcf.dvs_name | default('m-cl1-vds1')) }}"
 
     host_item_spec:
       id: "{{ sddc_host_info.id }}"
       hostNetworkSpec:
         vmNics:
-          - id: "{{ uplink1_vmnic_name | default('vmnic0') }}"
+          - id: "{{ expansion_uplink1_vmnic_name | default(uplink1_vmnic_name) | default('vmnic0') }}"
             vdsName: "{{ current_vds_name }}"
             moveToNvds: false
             uplink: "uplink1"
-          - id: "{{ uplink2_vmnic_name | default('vmnic1') }}"
+          - id: "{{ expansion_uplink2_vmnic_name | default(uplink2_vmnic_name) | default('vmnic1') }}"
             vdsName: "{{ current_vds_name }}"
             moveToNvds: false
             uplink: "uplink2"

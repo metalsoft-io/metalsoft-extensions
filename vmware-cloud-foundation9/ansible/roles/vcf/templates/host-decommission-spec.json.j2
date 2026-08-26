@@ -1,5 +1,7 @@
+{# Callers may override the host list (decommission_hosts) — e.g. the workload domain
+   flows; the default preserves the management scale-in behavior. #}
 [
-{% for host in groups['management_scale_in'] %}
+{% for host in decommission_hosts | default(groups['management_scale_in']) %}
     {
         "fqdn": "{{ host }}"
     }{% if not loop.last %},{% endif %}

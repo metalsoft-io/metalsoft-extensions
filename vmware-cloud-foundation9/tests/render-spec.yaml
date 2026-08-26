@@ -11,6 +11,14 @@
     # the harness fakes the facts that vmnics-to-uplinks normally discovers via vCenter APIs
     uplink1_vmnic_name: vmnic0
     uplink2_vmnic_name: vmnic1
+    wld_uplink1_vmnic_name: vmnic0
+    wld_uplink2_vmnic_name: vmnic1
+    # the harness fakes what get-cluster-image.yaml / host-commission normally resolve live
+    wld_cluster_image_id: fixture-image-id
+    wld_sddc_host_ids:
+      esx05.vcf.example.com: host-id-05
+      esx06.vcf.example.com: host-id-06
+      esx07.vcf.example.com: host-id-07
   tasks:
     - name: Load globals defaults
       ansible.builtin.include_vars: { dir: ../ansible/roles/globals/defaults }
@@ -75,6 +83,7 @@
           - outputs_payload.installer_url == 'https://installer.vcf9test.vcf.example.com/vcf-installer-ui'
           - outputs_payload.sddc_manager_url == 'https://sddc.vcf9test.vcf.example.com'
           - outputs_payload.vcenter_url == 'https://m-vcs1.vcf9test.vcf.example.com'
+          - outputs_payload.vcenter_sso_username == 'administrator@vsphere.local'
           - outputs_payload.nsx_manager_url == 'https://m-nsx1.vcf9test.vcf.example.com'
           - outputs_payload.vcf_ops_url == 'https://ops1.vcf9test.vcf.example.com'
           - outputs_payload.ops_fleet_mgmt_url == 'https://opsfm1.vcf9test.vcf.example.com'
@@ -84,8 +93,13 @@
           - outputs_payload.sddc_id == 'vcf9test-m'
           - outputs_payload.datacenter_name == 'vcf9test-m-dc1'
           - outputs_payload.cluster_name == 'vcf9test-m-cl1'
+          # workload group has 3 hosts in this inventory -> WLD keys populated
+          - outputs_payload.wld_vcenter_url == 'https://w-vcs1.vcf9test.vcf.example.com'
+          - outputs_payload.wld_nsx_manager_url == 'https://w-nsx1.vcf9test.vcf.example.com'
+          - outputs_payload.wld_domain_name == 'vcf9test-w'
+          - outputs_payload.wld_vcenter_sso_username == 'administrator@wld-vcf9test-w.sso.local'
           # every write must carry ALL declared output labels (partial writes wipe keys)
-          - outputs_payload | length == 11
+          - outputs_payload | length == 16
           - outputs_payload.values() | select('search', '\.$') | list | length == 0
 
     - name: Assert | dvs + dns specs
@@ -98,3 +112,94 @@
           # short appliance hostname + this subdomain must equal the provisioned records
           - sddc_spec.dnsSpec.subdomain == 'vcf9test.vcf.example.com'
           - (sddc_spec.vcenterSpec.vcenterHostname ~ '.' ~ sddc_spec.dnsSpec.subdomain) == 'm-vcs1.vcf9test.vcf.example.com'
+
+    # ---- VI workload domain (workload array at 3 hosts in this inventory) -------------
+    - name: Build WLD spec facts
+      ansible.builtin.include_tasks: ../ansible/roles/vcf/tasks/wld/build-wld-spec.yaml
+
+    - name: Render WLD domain creation spec
+      ansible.builtin.set_fact:
+        wld_spec: "{{ lookup('template', '../ansible/roles/vcf/templates/wld/vi-workload-domain-spec.yaml.j2') | from_yaml }}"
+
+    - name: Write rendered WLD spec
+      ansible.builtin.copy: { content: "{{ wld_spec | to_nice_json }}", dest: /tmp/wld-spec-9.json }
+
+    - name: Assert | WLD domain spec shape
+      ansible.builtin.assert:
+        that:
+          - wld_spec.domainName == 'vcf9test-w'
+          - wld_spec.deployWithoutLicenseKeys == true
+          - wld_spec.vcenterSpec.name == 'w-vcs1'
+          # allocation fqdn trailing dots must be stripped everywhere
+          - wld_spec.vcenterSpec.networkDetailsSpec.dnsName == 'w-vcs1.vcf9test.vcf.example.com'
+          - wld_spec.vcenterSpec.datacenterName == 'vcf9test-w-dc1'
+          # VCF 9 requires an isolated SSO domain (joining the mgmt ELM ring is rejected)
+          # must start with a letter (INVALID_SSO_DOMAIN_NAME) — domain names start with the numeric cluster id
+          - wld_spec.ssoDomainSpec.ssoDomainName == 'wld-vcf9test-w.sso.local'
+          - wld_spec.ssoDomainSpec.ssoDomainPassword == 'WldSso@Pass1!2X'
+
+    - name: Assert | WLD cluster spec
+      ansible.builtin.assert:
+        that:
+          - wld_spec.computeSpec.clusterSpecs[0].name == 'vcf9test-w-cl1'
+          - wld_spec.computeSpec.clusterSpecs[0].clusterImageId == 'fixture-image-id'
+          - wld_spec.computeSpec.clusterSpecs[0].hostSpecs | length == 3
+          - wld_spec.computeSpec.clusterSpecs[0].hostSpecs | map(attribute='id') | sort == ['host-id-05', 'host-id-06', 'host-id-07']
+          - wld_spec.computeSpec.clusterSpecs[0].datastoreSpec.vsanDatastoreSpec.datastoreName == 'vcf9test-w-cl1-ds1'
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.vdsSpecs[0].name == 'w-cl1-vds1'
+          # custom vmNic uplinks require activeUplinks + teamingPolicy on every portgroup
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.vdsSpecs[0].portGroupSpecs | length == 3
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.vdsSpecs[0].portGroupSpecs | map(attribute='teamingPolicy') | unique | list == ['loadbalance_loadbased']
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.vdsSpecs[0].portGroupSpecs | map(attribute='activeUplinks') | unique | list == [['uplink1', 'uplink2']]
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.nsxClusterSpec.nsxTClusterSpec.geneveVlanId == 13
+          - wld_spec.computeSpec.clusterSpecs[0].networkSpec.nsxClusterSpec.nsxTClusterSpec.ipAddressPoolSpec.subnets[0].ipAddressPoolRanges[0].start == '10.0.13.121'
+
+    - name: Assert | WLD nsx spec
+      ansible.builtin.assert:
+        that:
+          - wld_spec.nsxTSpec.nsxManagerSpecs | length == 3
+          - wld_spec.nsxTSpec.vipFqdn == 'w-nsx1.vcf9test.vcf.example.com'
+          - wld_spec.nsxTSpec.vip == '10.0.10.61'
+          - wld_spec.nsxTSpec.nsxManagerSpecs[0].name == 'w-nsx1a'
+          - wld_spec.nsxTSpec.nsxManagerSpecs | map(attribute='networkDetailsSpec.dnsName') | select('search', '\.$') | list | length == 0
+
+    # ---- vmnic mapping: recordSet uplink MAC order is NOT stable (fixture reverses
+    # esx02's) — the rendered device lists must still be identical across hosts --------
+    - name: Build synthetic vmnic info (vmnic0 = lowest MAC on every host)
+      ansible.builtin.set_fact:
+        all_vmnic_info: >-
+          {%- set out = {} -%}
+          {%- for si in management_server_instance_group_data.serverInstances -%}
+          {%- set macs = si.logicalNetworks[0].uplinks | map('upper') | sort -%}
+          {%- set _ = out.update({si.host: {'vmnic_details': [
+                {'device': 'vmnic0', 'mac': macs[0], 'status': 'Connected'},
+                {'device': 'vmnic1', 'mac': macs[1], 'status': 'Connected'}]}}) -%}
+          {%- endfor -%}
+          {{ out }}
+
+    - name: Render host -> network -> uplink devices mapping
+      ansible.builtin.set_fact:
+        rendered_uplink_devices: "{{ lookup('template', '../ansible/roles/vcf/templates/vmnics/host_network_uplink_devices.json.j2') | from_json }}"
+
+    - name: Assert | uplink device lists identical across hosts despite reversed MAC order
+      ansible.builtin.assert:
+        that:
+          - rendered_uplink_devices['esx01.vcf.example.com']['vcf-mgmt'] == ['vmnic0', 'vmnic1']
+          - rendered_uplink_devices['esx02.vcf.example.com']['vcf-mgmt'] == ['vmnic0', 'vmnic1']
+          - >-
+            rendered_uplink_devices.values() | map(attribute='vcf-mgmt') | unique | list | length == 1
+        fail_msg: >-
+          The vmnic mapping treated the recordSet uplinks MAC order as meaningful —
+          esx02 (reversed order) rendered {{ rendered_uplink_devices['esx02.vcf.example.com']['vcf-mgmt'] }}.
+
+    - name: Render WLD network pool spec
+      ansible.builtin.set_fact:
+        wld_pool_spec: "{{ lookup('template', '../ansible/roles/vcf/templates/wld/network-pool-spec.json.j2') | from_json }}"
+
+    - name: Assert | WLD network pool spec
+      ansible.builtin.assert:
+        that:
+          - wld_pool_spec.name == 'vcf9test-w-np1'
+          - wld_pool_spec.networks | map(attribute='type') | sort == ['VMOTION', 'VSAN']
+          - wld_pool_spec.networks | selectattr('type', 'equalto', 'VMOTION') | map(attribute='ipPools') | first | first | dict2items | map(attribute='value') | select('equalto', '') | list | length == 0
+          - wld_pool_spec.networks | selectattr('type', 'equalto', 'VSAN') | map(attribute='ipPools') | first | first | dict2items | map(attribute='value') | select('equalto', '') | list | length == 0

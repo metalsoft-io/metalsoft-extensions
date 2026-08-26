@@ -1,0 +1,49 @@
+---
+# Offline render test for the management-only path: workload array at 0 instances.
+# Run: cd tests && ansible-playbook -i inventory-wld0.yaml render-spec-wld0.yaml
+# Uses the SAME fixture as render-spec.yaml (wld allocations/ranges are provisioned even
+# at count 0) — only the inventory differs (empty workload group), which must gate every
+# WLD output key to '' and keep the mgmt flow untouched.
+- name: Render outputs for a management-only deployment
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  vars:
+    uplink1_vmnic_name: vmnic0
+    uplink2_vmnic_name: vmnic1
+  tasks:
+    - name: Load globals defaults
+      ansible.builtin.include_vars: { dir: ../ansible/roles/globals/defaults }
+    - name: Load vcf role defaults
+      ansible.builtin.include_vars: { dir: ../ansible/roles/vcf/defaults }
+    - name: Build SDDC spec facts
+      ansible.builtin.include_tasks: ../ansible/roles/vcf/tasks/build-sddc-spec.yaml
+
+    - name: Assert | workload gating facts
+      ansible.builtin.assert:
+        that:
+          - (wld_host_count | int) == 0
+          - not (_wld_active | bool)
+
+    # 0 hosts must pass the build-wld-spec preflight (0 or >= 3)
+    - name: Build WLD spec facts (must no-op cleanly at count 0)
+      ansible.builtin.include_tasks: ../ansible/roles/vcf/tasks/wld/build-wld-spec.yaml
+
+    - name: Render outputs payload (context.json content)
+      ansible.builtin.set_fact:
+        outputs_payload: "{{ vcf_outputs_payload }}"
+
+    - name: Assert | outputs payload (mgmt keys populated, WLD keys empty)
+      ansible.builtin.assert:
+        that:
+          - outputs_payload | length == 16
+          - outputs_payload.vcenter_sso_username == 'administrator@vsphere.local'
+          - outputs_payload.wld_vcenter_sso_username == ''
+          - outputs_payload.sddc_manager_url == 'https://sddc.vcf9test.vcf.example.com'
+          - outputs_payload.vcenter_url == 'https://m-vcs1.vcf9test.vcf.example.com'
+          - outputs_payload.sddc_id == 'vcf9test-m'
+          - outputs_payload.wld_vcenter_url == ''
+          - outputs_payload.wld_nsx_manager_url == ''
+          - outputs_payload.wld_domain_name == ''
+          - outputs_payload.values() | select('search', '\.$') | list | length == 0

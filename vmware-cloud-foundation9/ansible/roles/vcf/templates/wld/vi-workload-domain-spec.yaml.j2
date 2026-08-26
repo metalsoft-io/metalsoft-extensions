@@ -1,0 +1,96 @@
+{#
+# VI Workload Domain creation spec (SDDC Manager POST /v1/domains), rendered as YAML and
+# converted `| from_yaml | to_json` by the caller — same pattern as the bring-up spec.
+# ssoDomainSpec is REQUIRED on VCF 9: joining the management SSO/ELM ring is rejected with
+# ELM_DOMAIN_CREATION_IS_NOT_ALLOWED — every VI domain must be an isolated SSO domain.
+# NOTE: confirm on first E2E against the SDDC Manager UI "JSON Preview" / live /v1/api-doc:
+#  - ipAddressPoolSpec placement (cluster-level nsxTClusterSpec chosen; an nsxTSpec-level
+#    variant is also documented across versions)
+#  - vsanDatastoreSpec esaConfig field name (mirrors the bring-up datastore-spec)
+#  - vmNics uplink/moveToNvds field acceptance (mirrors clusters/cluster-expand.json.j2)
+#}
+domainName: "{{ wld_domain_name }}"
+deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys | bool | to_json }}
+ssoDomainSpec:
+  ssoDomainName: "{{ wld_sso_domain_name }}"
+  ssoDomainPassword: {{ extensionInstanceVariables.wld_sso_admin_password | default('') | to_json }}
+vcenterSpec:
+  name: "{{ wld_vcenter_config.fqdn | default('') | regex_replace('\\.$', '') | split('.') | first }}"
+  networkDetailsSpec:
+    ipAddress: "{{ wld_vcenter_config.ip | default('') }}"
+    dnsName: "{{ wld_vcenter_config.fqdn | default('') | regex_replace('\\.$', '') }}"
+    gateway: "{{ wld_vcenter_config.gateway | default('') }}"
+    subnetMask: "{{ wld_vcenter_config.netmask | default('') }}"
+  rootPassword: {{ extensionInstanceVariables.wld_vcenter_root_password | default('') | to_json }}
+  datacenterName: "{{ wld_datacenter_name }}"
+  vmSize: "{{ configVars.vcenter_vm_size | default('small') }}"
+computeSpec:
+  clusterSpecs:
+    - name: "{{ wld_cluster_name }}"
+      clusterImageId: "{{ wld_cluster_image_id | default('') }}"
+      hostSpecs:
+{% for host in groups['workload'] %}
+        - id: "{{ (wld_sddc_host_ids | default({})).get(host, '') }}"
+          hostNetworkSpec:
+            vmNics:
+              - id: "{{ wld_uplink1_vmnic_name | default('vmnic0', true) }}"
+                vdsName: "{{ wld_vds_name }}"
+                moveToNvds: false
+                uplink: "uplink1"
+              - id: "{{ wld_uplink2_vmnic_name | default('vmnic1', true) }}"
+                vdsName: "{{ wld_vds_name }}"
+                moveToNvds: false
+                uplink: "uplink2"
+{% endfor %}
+      datastoreSpec:
+        vsanDatastoreSpec:
+          datastoreName: "{{ wld_datastore_name }}"
+          failuresToTolerate: {{ configVars.vsan_failures_to_tolerate | default(1) | int }}
+{% if extensionInstanceVariables.vsan_esa_enabled | default(false) | bool %}
+          esaConfig:
+            enabled: true
+{% endif %}
+      networkSpec:
+        vdsSpecs:
+          - name: "{{ wld_vds_name }}"
+            portGroupSpecs:
+{# Custom uplink names on vmNics above make activeUplinks + teamingPolicy mandatory on
+   every portgroup (PORTGROUP_UPLINK_CONFIGURATION_UNDEFINED / _INSUFFICIENT_VMNICS /
+   PORTGROUP_TEAMING_POLICY_UNDEFINED). Same default policy as the mgmt bring-up spec. #}
+{% for pg in [{'suffix': 'mgmt', 'type': 'MANAGEMENT'},
+              {'suffix': 'vmotion', 'type': 'VMOTION'},
+              {'suffix': 'vsan', 'type': 'VSAN'}] %}
+              - name: "{{ wld_vds_name }}-{{ pg.suffix }}"
+                transportType: {{ pg.type }}
+                teamingPolicy: "loadbalance_loadbased"
+                activeUplinks:
+                  - "uplink1"
+                  - "uplink2"
+{% endfor %}
+        nsxClusterSpec:
+          nsxTClusterSpec:
+            geneveVlanId: {{ wld_nsx_overlay_subnet.vlan_id | default(0) | int }}
+            ipAddressPoolSpec:
+              name: "{{ wld_tep_pool_name }}"
+              description: "ESXi Host Overlay TEP IP Pool ({{ wld_domain_name }})"
+              subnets:
+                - ipAddressPoolRanges:
+                    - start: "{{ wld_nsx_overlay_subnet.startIp | default('') }}"
+                      end: "{{ wld_nsx_overlay_subnet.endIp | default('') }}"
+                  cidr: "{{ wld_nsx_overlay_subnet.subnet | default('') }}"
+                  gateway: "{{ wld_nsx_overlay_subnet.gateway | default('') }}"
+nsxTSpec:
+  formFactor: "{{ configVars.nsx_manager_size | default('medium') }}"
+  vip: "{{ wld_nsx_vip_config.ip | default('') }}"
+  vipFqdn: "{{ wld_nsx_vip_config.fqdn | default('') | regex_replace('\\.$', '') }}"
+  nsxManagerAdminPassword: {{ extensionInstanceVariables.wld_nsx_manager_admin_password | default('') | to_json }}
+  nsxManagerAuditPassword: {{ extensionInstanceVariables.wld_nsx_manager_audit_password | default('') | to_json }}
+  nsxManagerSpecs:
+{% for node_config in [wld_nsx_node1_config, wld_nsx_node2_config, wld_nsx_node3_config][:(wld_nsx_manager_count | int)] %}
+    - name: "{{ node_config.fqdn | default('') | regex_replace('\\.$', '') | split('.') | first }}"
+      networkDetailsSpec:
+        ipAddress: "{{ node_config.ip | default('') }}"
+        dnsName: "{{ node_config.fqdn | default('') | regex_replace('\\.$', '') }}"
+        gateway: "{{ node_config.gateway | default('') }}"
+        subnetMask: "{{ node_config.netmask | default('') }}"
+{% endfor %}

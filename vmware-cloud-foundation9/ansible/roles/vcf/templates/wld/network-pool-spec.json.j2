@@ -1,0 +1,40 @@
+{#
+# SDDC Manager POST /v1/network-pools spec for the workload domain host pool.
+# VMOTION is mandatory; VSAN carries the vSAN vmk range. NSX host overlay TEPs do NOT
+# come from the network pool (they come from the domain spec's ipAddressPoolSpec).
+# NOTE: field names verified against published 4.x/5.x API docs; endpoint unchanged in
+# 9.x — confirm field-level shape against a live /v1/api-doc on first E2E.
+#}
+{
+  "name": "{{ wld_pool_name }}",
+  "networks": [
+    {
+      "type": "VMOTION",
+      "vlanId": {{ wld_vmotion_subnet.vlan_id | default(0) | int }},
+      "mtu": {{ wld_vmotion_subnet.mtu | default(9000) | int }},
+      "subnet": "{{ wld_vmotion_subnet.networkAddress | default('') }}",
+      "mask": "{{ wld_vmotion_subnet.netmask | default('') }}",
+      "gateway": "{{ wld_vmotion_subnet.gateway | default('') }}",
+      "ipPools": [
+        {
+          "start": "{{ wld_vmotion_subnet.startIp | default('') }}",
+          "end": "{{ wld_vmotion_subnet.endIp | default('') }}"
+        }
+      ]
+    },
+    {
+      "type": "VSAN",
+      "vlanId": {{ wld_vsan_subnet.vlan_id | default(0) | int }},
+      "mtu": {{ wld_vsan_subnet.mtu | default(9000) | int }},
+      "subnet": "{{ wld_vsan_subnet.networkAddress | default('') }}",
+      "mask": "{{ wld_vsan_subnet.netmask | default('') }}",
+      "gateway": "{{ wld_vsan_subnet.gateway | default('') }}",
+      "ipPools": [
+        {
+          "start": "{{ wld_vsan_subnet.startIp | default('') }}",
+          "end": "{{ wld_vsan_subnet.endIp | default('') }}"
+        }
+      ]
+    }
+  ]
+}

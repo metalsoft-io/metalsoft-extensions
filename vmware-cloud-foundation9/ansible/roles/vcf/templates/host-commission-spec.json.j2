@@ -1,5 +1,8 @@
+{# Callers may override the host list (commission_hosts) and target pool
+   (commission_network_pool_id / commission_network_pool_name) — e.g. the workload domain
+   flow; defaults preserve the management scale-out behavior. #}
 [
-{% for host in groups['management_scale_out'] %}
+{% for host in commission_hosts_effective | default(commission_hosts) | default(groups['management_scale_out']) %}
     {
         "fqdn": "{{ host }}",
         "username": "{{ hostvars[host].ansible_user }}",
@@ -10,12 +13,12 @@
 {% else %}
         "storageType": "VSAN",
 {% endif %}
-        "networkPoolId": "{{ management_network_pool_id }}",
+        "networkPoolId": "{{ commission_network_pool_id | default(management_network_pool_id) }}",
 {% if not (vcf.skip_esx_thumbprint_validation | default(false) | bool) %}
         "sshThumbprint": "{{ hostvars[host].esxi_ssh_thumbprint | default('') }}",
         "sslThumbprint": "{{ hostvars[host].esxi_ssl_thumbprint | default('') }}",
 {% endif %}
-        "networkPoolName": "{{ management_pool_name }}"
+        "networkPoolName": "{{ commission_network_pool_name | default(management_pool_name) }}"
     }{% if not loop.last %},{% endif %}
 
 {% endfor %}

@@ -31,6 +31,48 @@
         tasks_from: scale-in.yaml
       when: groups['management_scale_in'] is defined and (groups['management_scale_in'] | length > 0)
 
+# Workload domain growth: 0→N creates the VI workload domain, N→N+k expands its cluster.
+- name: Scale out / create VI workload domain
+  hosts: workload_scale_out
+  gather_facts: false
+  tasks:
+    - name: Scale out workload domain
+      when: groups['workload_scale_out'] is defined and (groups['workload_scale_out'] | length > 0)
+      block:
+        - name: Pre-configure new ESXi hosts
+          ansible.builtin.include_role:
+            name: esxi
+        - name: Include workload scale out tasks
+          ansible.builtin.include_role:
+            name: vcf
+            tasks_from: wld/scale-out.yaml
+
+# Workload domain shrink: N→0 DELETES the whole VI workload domain (irreversible);
+# N→N-k removes individual hosts from its cluster (same flow as management scale-in).
+- name: Scale in / delete VI workload domain
+  hosts: workload_scale_in
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Delete the VI workload domain (target count is 0)
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: wld/delete-domain.yaml
+      run_once: true
+      when: >-
+        groups['workload_scale_in'] is defined and (groups['workload_scale_in'] | length > 0)
+        and (groups['workload'] | default([]) | length) == 0
+
+    - name: Remove workload host from cluster (partial scale-in)
+      ansible.builtin.include_role:
+        name: vcf
+        tasks_from: scale-in.yaml
+      vars:
+        decommission_hosts: ["{{ inventory_hostname }}"]
+      when: >-
+        groups['workload_scale_in'] is defined and (groups['workload_scale_in'] | length > 0)
+        and (groups['workload'] | default([]) | length) > 0
+
 # Stored outputs are REPLACED by every successful run's context.json, and BOTH onEdit
 # stages run this playbook — a run that writes none (no-op edit, scale-in-only) would
 # WIPE the outputs. Always re-publish them as the last play; localhost always matches

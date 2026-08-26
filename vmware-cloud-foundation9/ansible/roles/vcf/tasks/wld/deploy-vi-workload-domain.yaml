@@ -1,0 +1,245 @@
+---
+# Creates the VI workload domain through SDDC Manager (POST /v1/domains).
+# Requires a completed management domain bring-up. Runs against the workload host set
+# in groups['workload'] (which on a 0→N edit equals the scale-out set); every API call
+# delegates to localhost. Whole-playbook retry safe: an existing ACTIVE domain short-
+# circuits, a failed/in-flight creation is resumed via PATCH /v1/tasks/{id}, and spec
+# validation runs on the fresh path only (its checks fail by design on partials).
+
+- name: WLD | Build workload domain facts
+  ansible.builtin.include_tasks: wld/build-wld-spec.yaml
+
+- name: WLD | Assert deployable host count
+  ansible.builtin.assert:
+    that: (wld_host_count | int) >= 3
+    fail_msg: >-
+      VI workload domain creation requires >= 3 workload hosts, found {{ wld_host_count }}.
+
+- name: WLD | Deploy VI workload domain
+  run_once: true
+  block:
+    - name: WLD | Authenticate to SDDC Manager
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: WLD | Check for an existing workload domain
+      ansible.builtin.include_tasks: wld/get-domains.yaml
+
+    - name: WLD | Existing domain is ACTIVE — nothing to do
+      ansible.builtin.debug:
+        msg: >-
+          Workload domain '{{ wld_domain_name }}' already exists with status
+          '{{ wld_existing_domain.status | default('?') }}' — skipping creation.
+      when:
+        - wld_existing_domain.id is defined
+        - (wld_existing_domain.status | default('') | upper) == 'ACTIVE'
+
+    # Resume: domain exists but is not ACTIVE (creation failed or still running).
+    # Skip spec validation entirely — pristine-environment checks fail on partials.
+    - name: WLD | Resume in-flight or failed domain creation
+      ansible.builtin.include_tasks: wld/retry-domain-task.yaml
+      when:
+        - wld_existing_domain.id is defined
+        - (wld_existing_domain.status | default('') | upper) != 'ACTIVE'
+
+    - name: WLD | Fresh domain creation
+      when: wld_existing_domain.id is not defined
+      block:
+        - name: WLD | Discover workload host vmnic uplinks
+          ansible.builtin.include_tasks: vmnics-to-uplinks.yaml
+          vars:
+            vmnic_target_group_data: "{{ workload_server_instance_group_data }}"
+
+        - name: WLD | Snapshot workload uplink names
+          ansible.builtin.set_fact:
+            wld_uplink1_vmnic_name: "{{ uplink1_vmnic_name | default('') }}"
+            wld_uplink2_vmnic_name: "{{ uplink2_vmnic_name | default('') }}"
+
+        - name: WLD | Ensure workload network pool
+          ansible.builtin.include_tasks: wld/ensure-network-pool.yaml
+
+        - name: WLD | Commission workload hosts
+          ansible.builtin.include_tasks: sddc-manager/host-commission.yaml
+          vars:
+            commission_hosts: "{{ groups['workload'] }}"
+            commission_network_pool_id: "{{ wld_network_pool_id }}"
+            commission_network_pool_name: "{{ wld_pool_name }}"
+
+        - name: WLD | Resolve vLCM cluster image
+          ansible.builtin.include_tasks: wld/get-cluster-image.yaml
+
+        - name: WLD | Re-authenticate to SDDC Manager
+          ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+        - name: WLD | Get hosts (post-commission)
+          ansible.builtin.include_tasks: sddc-manager/hosts/get-hosts.yaml
+
+        - name: WLD | Map workload host FQDNs to SDDC Manager host ids
+          ansible.builtin.set_fact:
+            wld_sddc_host_ids: "{{ wld_sddc_host_ids | default({}) | combine({item: _wld_sddc_host.id}) }}"
+          loop: "{{ groups['workload'] }}"
+          vars:
+            _wld_sddc_host: >-
+              {{ sddc_manager_hosts_response.json.elements | default([])
+                 | selectattr('fqdn', 'equalto', hostvars[item].ansible_fqdn | default(item))
+                 | first | default({}) }}
+          when:
+            - _wld_sddc_host.id is defined
+            - (_wld_sddc_host.status | default('')) == 'UNASSIGNED_USEABLE'
+
+        - name: WLD | Assert all workload hosts are commissioned and usable
+          ansible.builtin.assert:
+            that: (wld_sddc_host_ids | default({}) | length) == (wld_host_count | int)
+            fail_msg: >-
+              Not all workload hosts are in UNASSIGNED_USEABLE state on SDDC Manager —
+              mapped: {{ wld_sddc_host_ids | default({}) }}. Check host commissioning results.
+
+        - name: SDDC Manager API | Validate Domain Creation Spec
+          ansible.builtin.uri:
+            url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains/validations"
+            method: POST
+            headers:
+              Content-Type: "application/json"
+              Accept: "application/json"
+              Authorization: "Bearer {{ sddc_manager_access_token }}"
+            body_format: json
+            body: "{{ lookup('template', 'wld/vi-workload-domain-spec.yaml.j2') | from_yaml | to_json }}"
+            status_code:
+              - 200
+              - 202
+            follow_redirects: all
+            return_content: yes
+            validate_certs: "{{ sddc_manager.validate_certs }}"
+          register: wld_domain_validation_response
+          no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+          delegate_to: localhost
+
+        # On VCF 9 this POST is synchronous: it returns 200 with executionStatus COMPLETED in
+        # the body, and a finished validation is NOT retrievable afterwards — GET
+        # /v1/domains/validations/{id} answers 400 TASK_NOT_FOUND. Poll only while the POST
+        # itself reported IN_PROGRESS (same pattern as clusters/get-cluster-validation-status).
+        - name: SDDC Manager API | Get Domain Validation By ID
+          ansible.builtin.uri:
+            url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains/validations/{{ wld_domain_validation_response.json.id }}"
+            method: GET
+            headers:
+              Content-Type: "application/json"
+              Accept: "application/json"
+              Authorization: "Bearer {{ sddc_manager_access_token }}"
+            status_code:
+              - 200
+              - 202
+            follow_redirects: all
+            return_content: yes
+            validate_certs: "{{ sddc_manager.validate_certs }}"
+          register: wld_domain_validation_status
+          until: (wld_domain_validation_status.json.executionStatus | default('')) in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED']
+          retries: 60
+          delay: 10
+          delegate_to: localhost
+          when: >-
+            (wld_domain_validation_response.json.executionStatus | default(''))
+            not in ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED']
+
+        - name: WLD | Set validation result (polled status, else the synchronous POST body)
+          ansible.builtin.set_fact:
+            wld_domain_validation_result: >-
+              {{ wld_domain_validation_status.json
+                 if (wld_domain_validation_status.skipped is not defined)
+                 else wld_domain_validation_response.json }}
+
+        - name: Debug | Domain validation outcome (status + any non-SUCCEEDED checks)
+          ansible.builtin.debug:
+            msg: >-
+              Domain spec validation executionStatus={{ wld_domain_validation_result.executionStatus | default('?') }}
+              resultStatus={{ wld_domain_validation_result.resultStatus | default('?') }}
+              :: non-success checks: {{ wld_domain_validation_result.validationChecks | default([])
+                 | rejectattr('resultStatus', 'equalto', 'SUCCEEDED') | list }}
+
+        - name: WLD | Fail if domain spec validation failed
+          ansible.builtin.fail:
+            msg: >-
+              Domain creation spec validation failed:
+              {{ wld_domain_validation_result.validationChecks | default([])
+                 | rejectattr('resultStatus', 'equalto', 'SUCCEEDED') | list
+                 | default(wld_domain_validation_result, true) }}
+          when: >-
+            (wld_domain_validation_result.executionStatus | default('')) != 'COMPLETED'
+            or (wld_domain_validation_result.resultStatus | default('') is search('FAILED'))
+
+        - name: SDDC Manager API | Create VI Workload Domain
+          ansible.builtin.uri:
+            url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains"
+            method: POST
+            headers:
+              Content-Type: "application/json"
+              Accept: "application/json"
+              Authorization: "Bearer {{ sddc_manager_access_token }}"
+            body_format: json
+            body: "{{ lookup('template', 'wld/vi-workload-domain-spec.yaml.j2') | from_yaml | to_json }}"
+            status_code:
+              - 200
+              - 202
+              - 400   # tolerated so an already-started creation (pre-check race) can be resumed below
+            follow_redirects: all
+            return_content: yes
+            validate_certs: "{{ sddc_manager.validate_certs }}"
+          register: wld_domain_create_response
+          no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+          delegate_to: localhost
+
+        - name: WLD | Set domain creation task id
+          ansible.builtin.set_fact:
+            wld_domain_task_id: "{{ wld_domain_create_response.json.id }}"
+            wld_domain_task_complete: false
+          when:
+            - wld_domain_create_response.json.id is defined
+            - wld_domain_create_response.status != 400
+
+        - name: WLD | Creation already in flight — locate its task
+          ansible.builtin.include_tasks: wld/retry-domain-task.yaml
+          when: wld_domain_create_response.status == 400
+
+    - name: WLD | Wait for domain task completion (re-auth each cycle)
+      ansible.builtin.include_tasks: wld/wait-domain-task.yaml
+      loop: "{{ range(0, wld_domain_wait_cycles | default(180) | int) | list }}"
+      loop_control:
+        loop_var: wld_domain_wait_cycle
+      vars:
+        wld_domain_wait_cycles_total: "{{ wld_domain_wait_cycles | default(180) }}"
+      when: wld_domain_task_id is defined
+
+    - name: WLD | Assert domain task completed
+      ansible.builtin.assert:
+        that: wld_domain_task_complete | default(false)
+        fail_msg: >-
+          Workload domain task did not complete within the wait budget
+          ({{ wld_domain_wait_cycles | default(180) }} cycles x
+          {{ wld_domain_poll_interval | default(60) }}s). Check SDDC Manager tasks.
+      when: wld_domain_task_id is defined
+  rescue:
+    - name: Debug response | Domain validation
+      ansible.builtin.debug:
+        var: wld_domain_validation_status
+      when: wld_domain_validation_status is defined
+
+    - name: Debug response | Domain validation result (normalized)
+      ansible.builtin.debug:
+        var: wld_domain_validation_result
+      when: wld_domain_validation_result is defined
+
+    - name: Debug response | Domain create POST
+      ansible.builtin.debug:
+        var: wld_domain_create_response
+      when: wld_domain_create_response is defined
+
+    # ignore_errors: the failure may have happened before every spec input was built —
+    # a template gap here must never hide the real error carried to the final fail below
+    - name: Debug rendered domain spec
+      ansible.builtin.debug:
+        msg: "{{ lookup('template', 'wld/vi-workload-domain-spec.yaml.j2') | from_yaml | to_json }}"
+      when: vcf.validation_debug | default(false) | bool
+      ignore_errors: true
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "VI workload domain deployment failed. Check the responses above and the SDDC Manager UI."

@@ -1,0 +1,56 @@
+---
+# One wait cycle for a long-running SDDC Manager workflow task (domain create/delete —
+# runs 1-3 h; the generic tasks/get-task.yaml 20-min budget is NOT enough here).
+# Included in an outer loop (loop_var: wld_domain_wait_cycle); each cycle re-authenticates
+# (SDDC Manager tokens expire ~1 h), does ONE poll, prints ONE progress line, and sleeps.
+# Post-completion cycles skip in milliseconds.
+- name: WLD | Wait cycle {{ wld_domain_wait_cycle | default(0) }}
+  when: not (wld_domain_task_complete | default(false))
+  block:
+    - name: WLD | Re-authenticate to SDDC Manager
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: SDDC Manager API | Poll domain task status
+      ansible.builtin.uri:
+        url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/tasks/{{ wld_domain_task_id }}"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+          Accept: "application/json"
+          Authorization: "Bearer {{ sddc_manager_access_token }}"
+        status_code:
+          - 200
+        follow_redirects: all
+        return_content: yes
+        validate_certs: "{{ sddc_manager.validate_certs }}"
+      register: wld_domain_task_status
+      failed_when: false
+      delegate_to: localhost
+
+    - name: WLD | Progress
+      ansible.builtin.debug:
+        msg: >-
+          [cycle {{ wld_domain_wait_cycle | default(0) }}/{{ wld_domain_wait_cycles_total | default('?') }}]
+          task '{{ wld_domain_task_status.json.name | default('?') }}'
+          status={{ wld_domain_task_status.json.status | default('unreachable') }}
+
+    # Match terminal states by substring — external status enums grow variants.
+    - name: WLD | Mark task complete
+      ansible.builtin.set_fact:
+        wld_domain_task_complete: true
+      when: (wld_domain_task_status.json.status | default('') | upper) is search('SUCCESSFUL')
+
+    - name: WLD | Fail on terminal failure
+      ansible.builtin.fail:
+        msg: >-
+          SDDC Manager domain task {{ wld_domain_task_id }} ended in
+          '{{ wld_domain_task_status.json.status }}'. A re-run of this playbook resumes it
+          via PATCH /v1/tasks/{{ wld_domain_task_id }}. Details:
+          {{ wld_domain_task_status.json.errors | default(wld_domain_task_status.json) }}
+      when: (wld_domain_task_status.json.status | default('') | upper) is search('FAILED|CANCELLED')
+
+    - name: WLD | Sleep until next poll
+      ansible.builtin.wait_for:
+        timeout: "{{ wld_domain_poll_interval | default(60) }}"
+      when: not (wld_domain_task_complete | default(false))
+      delegate_to: localhost

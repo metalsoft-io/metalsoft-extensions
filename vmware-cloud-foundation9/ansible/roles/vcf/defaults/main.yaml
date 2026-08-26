@@ -16,6 +16,28 @@ vsan_portgroup_name: "{{ extensionInstanceVariables.vsan_portgroup_name | defaul
 
 nsx_host_overlay_ip_pool_name: "{{ extensionInstanceVariables.nsx_host_overlay_ip_pool_name | default(sddc_id ~ '-cl1-tep1', true) }}"
 
+# --- VI workload domain (optional second domain, 'workload' instance array) -----------
+# Naming mirrors the management domain: '-m' suffix -> '-w'.
+wld_id: "{{ extensionInstanceVariables.wld_id | default(extension_instance_id ~ '-w', true) }}"
+wld_domain_name: "{{ extensionInstanceVariables.wld_domain_name | default(wld_id, true) }}"
+wld_pool_name: "{{ extensionInstanceVariables.wld_pool_name | default(wld_id ~ '-np1', true) }}"
+wld_cluster_name: "{{ extensionInstanceVariables.wld_cluster_name | default(wld_id ~ '-cl1', true) }}"
+wld_datacenter_name: "{{ extensionInstanceVariables.wld_datacenter_name | default(wld_id ~ '-dc1', true) }}"
+# Mirrors the literal mgmt vds name 'm-cl1-vds1' (dvs-specs.yaml.j2)
+wld_vds_name: "{{ extensionInstanceVariables.wld_vds_name | default('w-cl1-vds1', true) }}"
+wld_datastore_name: "{{ extensionInstanceVariables.wld_datastore_name | default(wld_id ~ '-cl1-ds1', true) }}"
+# Isolated SSO domain (required on VCF 9). Must start with an ASCII letter (3-63 chars of
+# A-Za-z0-9-), and wld_domain_name starts with the numeric cluster id — hence the prefix.
+wld_sso_domain_name: "{{ extensionInstanceVariables.wld_sso_domain_name | default('wld-' ~ wld_domain_name | lower ~ '.sso.local', true) }}"
+wld_tep_pool_name: "{{ extensionInstanceVariables.wld_tep_pool_name | default(wld_id ~ '-cl1-tep1', true) }}"
+# 3-node NSX cluster is the VCF default; 1 is allowed for small deployments
+wld_nsx_manager_count: "{{ configVars.wld_nsx_manager_count | default(3) | int }}"
+# When empty, the first available vLCM cluster image (personality) is used
+wld_cluster_image_name: "{{ extensionInstanceVariables.wld_cluster_image_name | default('', true) }}"
+wld_host_count: "{{ groups['workload'] | default([]) | length }}"
+# The workload domain is only in play with >= 3 hosts (vSAN minimum; 0 = mgmt-only)
+_wld_active: "{{ (wld_host_count | int) >= 3 }}"
+
 # --- Extension outputs (context.json) ------------------------------------------------
 # The platform stores a run's artifacts/<ident>/context.json top-level keys that match
 # declared output labels into the instance's customJson.outputs — and REPLACES the
@@ -37,6 +59,8 @@ _output_vcf_ops_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto
 _output_ops_fleet_mgmt_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-fleet-management') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_ops_collector_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-collector') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_vcf_automation_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-automation') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_wld_vcenter_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'wld-vcenter-server') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_wld_nsx_vip_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-vip') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 
 # Every declared output label must be present on every write (partial writes wipe the
 # omitted keys). vcf_automation_url is deliberately '' when automation is not deployed.
@@ -44,6 +68,7 @@ vcf_outputs_payload:
   installer_url: "{{ ('https://' ~ _output_installer_fqdn ~ '/vcf-installer-ui') if _output_installer_fqdn else '' }}"
   sddc_manager_url: "{{ ('https://' ~ _output_sddc_manager_fqdn) if _output_sddc_manager_fqdn else '' }}"
   vcenter_url: "{{ ('https://' ~ _output_vcenter_fqdn) if _output_vcenter_fqdn else '' }}"
+  vcenter_sso_username: "administrator@{{ extensionInstanceVariables.psc_sso_domain_name | default('vsphere.local') }}"
   nsx_manager_url: "{{ ('https://' ~ _output_nsx_vip_fqdn) if _output_nsx_vip_fqdn else '' }}"
   vcf_ops_url: "{{ ('https://' ~ _output_vcf_ops_fqdn) if _output_vcf_ops_fqdn else '' }}"
   ops_fleet_mgmt_url: "{{ ('https://' ~ _output_ops_fleet_mgmt_fqdn) if _output_ops_fleet_mgmt_fqdn else '' }}"
@@ -52,3 +77,8 @@ vcf_outputs_payload:
   sddc_id: "{{ sddc_id }}"
   datacenter_name: "{{ extensionInstanceVariables.vcenter_datacenter_name | default(sddc_id ~ '-dc1') }}"
   cluster_name: "{{ vcenter_cluster_name }}"
+  # WLD keys are '' while the workload array is at 0 instances (like vcf_automation_url)
+  wld_vcenter_url: "{{ ('https://' ~ _output_wld_vcenter_fqdn) if (_wld_active | bool and _output_wld_vcenter_fqdn) else '' }}"
+  wld_vcenter_sso_username: "{{ ('administrator@' ~ wld_sso_domain_name) if _wld_active | bool else '' }}"
+  wld_nsx_manager_url: "{{ ('https://' ~ _output_wld_nsx_vip_fqdn) if (_wld_active | bool and _output_wld_nsx_vip_fqdn) else '' }}"
+  wld_domain_name: "{{ wld_domain_name if _wld_active | bool else '' }}"

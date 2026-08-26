@@ -5,7 +5,7 @@
   "label": "vcf9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "2.2.0",
+  "extensionVersion": "2.3.2",
   "description": "VMware Cloud Foundation (VCF)",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
@@ -35,6 +35,72 @@
       "inputType": "ExtensionInputOsTemplate",
       "options": {
         "osFamily": "ESXi"
+      }
+    },
+    {
+      "label": "wld_domain_cluster_node_server_type",
+      "name": "wld_domain_cluster_node_server_type",
+      "inputType": "ExtensionInputServerType",
+      "options": {}
+    },
+    {
+      "label": "wld_domain_instance_count",
+      "name": "wld_domain_instance_count",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 0,
+      "helpText": "0 = no VI workload domain; otherwise a minimum of 3 hosts is required (vSAN)",
+      "options": {
+        "minValue": 0,
+        "maxValue": 16,
+        "deniedValues": [1, 2]
+      }
+    },
+    {
+      "label": "wld_domain_cluster_node_os_template",
+      "name": "wld_domain_cluster_node_os_template",
+      "inputType": "ExtensionInputOsTemplate",
+      "options": {
+        "osFamily": "ESXi"
+      }
+    },
+    {
+      "label": "wld_vcenter_root_password",
+      "name": "wld_vcenter_root_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "pV7#tKq2$Rw9Lm4",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "wld_nsx_manager_admin_password",
+      "name": "wld_nsx_manager_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "Xn3!fGh8@Jd5Qz6",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "wld_nsx_manager_audit_password",
+      "name": "wld_nsx_manager_audit_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "bT4^mWc9+Ke2Ns7",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
+      }
+    },
+    {
+      "label": "wld_sso_admin_password",
+      "name": "wld_sso_admin_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "Ss0Adm!n9#Vc2f",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{12,20}$"
       }
     },
     {
@@ -221,6 +287,11 @@
       "outputType": "string"
     },
     {
+      "label": "vcenter_sso_username",
+      "name": "vcenter_sso_username",
+      "outputType": "string"
+    },
+    {
       "label": "nsx_manager_url",
       "name": "nsx_manager_url",
       "outputType": "string"
@@ -258,6 +329,26 @@
     {
       "label": "cluster_name",
       "name": "cluster_name",
+      "outputType": "string"
+    },
+    {
+      "label": "wld_vcenter_url",
+      "name": "wld_vcenter_url",
+      "outputType": "string"
+    },
+    {
+      "label": "wld_vcenter_sso_username",
+      "name": "wld_vcenter_sso_username",
+      "outputType": "string"
+    },
+    {
+      "label": "wld_nsx_manager_url",
+      "name": "wld_nsx_manager_url",
+      "outputType": "string"
+    },
+    {
+      "label": "wld_domain_name",
+      "name": "wld_domain_name",
       "outputType": "string"
     }
   ],
@@ -352,6 +443,76 @@
           }
         ],
         "tags": ["mgmt_domain"]
+      },
+      {
+        "label": "workload",
+        "instanceCount": "#/input/wld_domain_instance_count",
+        "serverType": "#/input/wld_domain_cluster_node_server_type",
+        "osTemplate": "#/input/wld_domain_cluster_node_os_template",
+        "logicalNetworks": [
+          {
+            "label": "vcf-mgmt",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "redundancy": {
+                "mode": "active-active"
+              },
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          },
+          {
+            "label": "vcf-vsan",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          },
+          {
+            "label": "vcf-vmotion",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          },
+          {
+            "label": "vcf-nsx",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "disableAutoIpAllocation": true,
+              "redundancy": {
+                "mode": "active-active"
+              }
+            }
+          }
+        ],
+        "customVariables": [
+          {
+            "name": "wld_vcenter_root_username",
+            "value": "root"
+          },
+          {
+            "name": "wld_nsx_manager_admin_username",
+            "value": "admin"
+          },
+          {
+            "name": "wld_nsx_manager_audit_username",
+            "value": "audit"
+          }
+        ],
+        "tags": ["wld_domain"]
       }
     ],
     "logicalNetworks": [
@@ -512,6 +673,76 @@
                 "ttl": 3600
               }
             ]
+          },
+          {
+            "tags": {
+              "role": "wld-vcenter-server"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "w-vcs1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "wld-nsx-manager-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "w-nsx1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "wld-nsx-manager-node1"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "w-nsx1a.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "wld-nsx-manager-node2"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "w-nsx1b.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "wld-nsx-manager-node3"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "w-nsx1c.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
           }
         ],
         "ipRanges": [
@@ -534,6 +765,13 @@
             },
             "ipVersion": "ipv4",
             "ipCount": 8
+          },
+          {
+            "tags": {
+              "role": "wld-vsan-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 16
           }
         ]
       },
@@ -547,6 +785,13 @@
             },
             "ipVersion": "ipv4",
             "ipCount": 8
+          },
+          {
+            "tags": {
+              "role": "wld-vmotion-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 16
           }
         ]
       },
@@ -560,6 +805,13 @@
             },
             "ipVersion": "ipv4",
             "ipCount": 20
+          },
+          {
+            "tags": {
+              "role": "wld-nsx-host-overlay-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 20
           }
         ]
       }
@@ -570,7 +822,7 @@
       "label": "vcf-ansible-bundle",
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.2.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.3.2.zip"
     },
     {
       "label": "ee-vcf9-9-0-1",
@@ -614,7 +866,8 @@
           "options": {
             "asset": "vcf-ansible-bundle",
             "playbook": "scale.yaml",
-            "executionTimeout": 7200,
+            "ee": "ee-vcf9-9-0-1",
+            "executionTimeout": 21600,
             "executionTimeoutTick": 30
           }
         }
@@ -629,7 +882,8 @@
           "options": {
             "asset": "vcf-ansible-bundle",
             "playbook": "scale.yaml",
-            "executionTimeout": 7200,
+            "ee": "ee-vcf9-9-0-1",
+            "executionTimeout": 21600,
             "executionTimeoutTick": 30
           }
         }
@@ -773,6 +1027,16 @@
       "inputType": "ExtensionInputBoolean",
       "defaultValue": false,
       "options": {}
+    },
+    {
+      "label": "wld_nsx_manager_count",
+      "name": "wld_nsx_manager_count",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 3,
+      "options": {
+        "minValue": 1,
+        "maxValue": 3
+      }
     }
   ]
 }

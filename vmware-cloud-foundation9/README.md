@@ -44,6 +44,7 @@ Supported VCF version: **9.0.1** (Bill of Materials below).
 4. Binary downloads from the depot (~30 minutes to 2 hours from a LAN mirror).
 5. SDDC spec validation via the installer API.
 6. Bring-up of the management workload domain (~3 hours on physical hosts).
+7. **Optional:** creation of a VI workload domain through SDDC Manager (network pool, host commissioning, `POST /v1/domains`) — only when the `workload` instance array has hosts (see the VI Workload Domain section below).
 
 ## Prerequisites
 
@@ -86,6 +87,9 @@ The extension allocates the following DNS records on the `vcf-mgmt` logical netw
 | `opsfm1.<cluster>.<zone>` | VCF Operations fleet management |
 | `opscp1.<cluster>.<zone>` | VCF Operations collector |
 | `auto1.<cluster>.<zone>` | VCF Automation (only used when `deploy_vcf_automation` is true) |
+| `w-vcs1.<cluster>.<zone>` | Workload domain vCenter Server (only used when the workload array has hosts) |
+| `w-nsx1.<cluster>.<zone>` | Workload domain NSX Manager VIP (idem) |
+| `w-nsx1a.<cluster>.<zone>` / `w-nsx1b.<cluster>.<zone>` / `w-nsx1c.<cluster>.<zone>` | Workload domain NSX Manager nodes (idem) |
 
 `<cluster>` is the `{{CLUSTER_NAME}}` placeholder — the extension instance name — so records from multiple VCF instances at the same site stay unique. `<zone>` is `{{default_zone_name}}`, the site's default DNS zone.
 
@@ -95,7 +99,7 @@ The definition in this repository is a template — several values are environme
 
 ### Network profiles
 
-The extension declares four logical networks — `vcf-mgmt`, `vcf-vsan`, `vcf-vmotion`, `vcf-nsx` — and each one's `infrastructure.logicalNetworks[].profileLabel` must match a logical network profile that an operator has already created at the target site (in this repo the profile labels equal the network labels). The profiles are deployment-specific and the extension will fail to deploy if a label does not resolve. `vcf-mgmt` provides the default route and carries all the management appliance IP allocations; `vcf-vsan`, `vcf-vmotion` and `vcf-nsx` only carry IP pools (8, 8 and 20 addresses respectively) handed to VCF for vmkernel/TEP addressing.
+The extension declares four logical networks — `vcf-mgmt`, `vcf-vsan`, `vcf-vmotion`, `vcf-nsx` — and each one's `infrastructure.logicalNetworks[].profileLabel` must match a logical network profile that an operator has already created at the target site (in this repo the profile labels equal the network labels). The profiles are deployment-specific and the extension will fail to deploy if a label does not resolve. `vcf-mgmt` provides the default route and carries all the management appliance IP allocations; `vcf-vsan`, `vcf-vmotion` and `vcf-nsx` only carry IP pools handed to VCF for vmkernel/TEP addressing — one set for the management domain (8, 8 and 20 addresses) and a separate set for the optional workload domain (16, 16 and 20 addresses, role tags `wld-*`). Both the `management` and `workload` instance arrays attach to the same four networks; **all IP allocations and pools (including the `wld-*` ones) are reserved at deploy time even when the workload array is at 0 instances.**
 
 ### Input default values
 
@@ -107,6 +111,9 @@ Set the input defaults so they reflect your environment instead of forcing every
 | `mgmt_domain_instance_count` | `4` (min 3, max 16) | Number of management domain nodes. This is the input operators change later to scale the domain (see Scaling below). |
 | `*_password` inputs (installer, SDDC Manager, NSX, vCenter, VCF Operations, Automation) | Example values committed in this repo | **Change every one of them** — they are placeholders, not secrets. New values must satisfy the input's `validationRegEx` (`^[A-Za-z0-9!@#$%^&*+]{12,20}$`); the charset is restricted to what all VCF components accept, so keep validation at the input rather than relaxing it. |
 | `vcf_instance_name` | *(empty)* | Optional per-instance VCF instance name; when unset the playbooks derive `<extension_instance_id>-vcf`. |
+| `wld_domain_instance_count` | `0` (0 or 3–16; 1 and 2 are rejected via `deniedValues`) | Number of VI workload domain nodes. `0` = management domain only. Change it later to create/scale/delete the workload domain (see below). |
+| `wld_domain_cluster_node_server_type` / `wld_domain_cluster_node_os_template` | *(operator-selected)* | Server type and ESXi OS template for workload hosts. **Must be selected even when the count is 0** (ServerType/OsTemplate inputs cannot carry defaults). |
+| `wld_vcenter_root_password` / `wld_nsx_manager_admin_password` / `wld_nsx_manager_audit_password` / `wld_sso_admin_password` | Example values committed in this repo | Workload domain appliance credentials and the isolated SSO domain administrator password — **change them** like the other password inputs (same `validationRegEx`). |
 
 ### DNS records
 
@@ -129,6 +136,7 @@ Admin/site-level settings live in `configVars` and are set **once per site** by 
 | `vsan_failures_to_tolerate` | `1` | vSAN FTT for the management cluster (0–3). |
 | `deploy_without_license_keys` | `true` | Must stay `true` on VCF 9 — bring-up runs in evaluation mode and the API rejects the spec otherwise. |
 | `skip_gateway_ping_validation` / `validation_debug` | `false` / `false` | Troubleshooting aids for spec validation. |
+| `wld_nsx_manager_count` | `3` (1–3) | NSX Manager nodes deployed for the VI workload domain. 3 (high availability) is the VCF default; 1 is allowed for small deployments. |
 
 ### Asset URLs
 
@@ -158,12 +166,16 @@ The extension publishes these outputs on the instance (visible in the UI / API a
 | `installer_url` | VCF Installer UI (`https://installer.<instance>.<zone>/vcf-installer-ui`) |
 | `sddc_manager_url` | SDDC Manager UI |
 | `vcenter_url` | Management vCenter Server UI |
+| `vcenter_sso_username` | Login for the management vCenter (`administrator@vsphere.local`, or `administrator@<psc_sso_domain_name>` when overridden) — password is the `vcenter_sso_admin_password` custom variable set at bring-up |
 | `nsx_manager_url` | NSX Manager (VIP) UI |
 | `vcf_ops_url` | VCF Operations UI |
 | `ops_fleet_mgmt_url` | VCF Operations fleet management UI |
 | `ops_collector_url` | VCF Operations collector UI |
 | `vcf_automation_url` | VCF Automation UI — empty string when `deploy_vcf_automation` is false |
 | `sddc_id` / `datacenter_name` / `cluster_name` | SDDC identifiers (e.g. `212-m` / `212-m-dc1` / `212-m-cl1`) for follow-up automation against the vCenter / SDDC Manager APIs |
+| `wld_vcenter_url` / `wld_nsx_manager_url` | Workload domain vCenter / NSX Manager (VIP) UIs — empty strings while the workload array is at 0 instances |
+| `wld_vcenter_sso_username` | Login for the workload vCenter's isolated SSO domain (`administrator@wld-<wld_id>-w.sso.local`) — password is the `wld_sso_admin_password` input; empty string while the workload array is at 0 instances |
+| `wld_domain_name` | Workload domain name in SDDC Manager (e.g. `212-w`) — empty string while the workload array is at 0 instances |
 
 A playbook returns outputs by writing an `artifacts/<ident>/context.json` whose top-level keys match the declared output labels; the platform stores them on the instance. All values are derived from the `extensionInstanceRecordSet` allocations (the per-instance appliance FQDNs), so every run can recompute them.
 
@@ -182,8 +194,8 @@ Build it from inside the `ansible/` directory:
 
 ```bash
 cd ansible
-zip -r ../vmware-cloud-foundation9-v2.2.0.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../vmware-cloud-foundation9-v2.2.0.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
+zip -r ../vmware-cloud-foundation9-v2.3.2.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../vmware-cloud-foundation9-v2.3.2.zip   # deploy.yaml, scale.yaml, roles/ must be at top level
 ```
 
 Then upload the zip to an **HTTP(S) repository server reachable by the global MetalSoft controller** (the controller downloads it from there — there is no bundle-upload CLI command) and set that URL (max 128 characters) as the `url` of the `vcf-ansible-bundle` asset. The convention used here is:
@@ -267,7 +279,36 @@ Notes:
 
 - Scaling requires a successfully completed initial deployment — the operations run against the live SDDC Manager API.
 - The new hosts must satisfy the same requirements as the initial ones (identical hardware recommended, the exact ESX 9.0.1 build, vSAN-capable) and enough free addresses must remain in the vSAN/vMotion/NSX IP pools.
-- The `onEdit` tasks in `extension.json` do not reference the `ee-vcf9-9-0-1` asset, so scale runs execute in the **site controller's default EE** — either make sure that image carries the same dependencies, or add `"ee": "ee-vcf9-9-0-1"` to both `onEdit` tasks.
+- Both `onEdit` tasks reference the `ee-vcf9-9-0-1` asset (same EE as the initial deploy) and carry a 6-hour `executionTimeout` — a `0→N` edit runs a full workload domain creation (~2-3 h).
 - An edit that changes no instance counts runs both stages as no-ops.
+
+## VI Workload Domain
+
+A second instance array, **`workload`**, drives an optional **VI workload domain** created through the SDDC Manager API (`/v1/network-pools`, `/v1/hosts`, `/v1/domains`). It is controlled entirely by the **`wld_domain_instance_count`** input:
+
+- **`0` (default):** management domain only. No workload domain resources are created, and the `wld_*` outputs are empty strings. The `wld-*` DNS records and IP pools are still allocated by the platform (they are part of the extension definition), and the workload server type / OS template inputs must still be selected at create time.
+- **`3`–`16`:** a VI workload domain (vSAN principal storage, own vCenter + own NSX cluster, joined to the management SSO domain) is created after the management bring-up. `1` and `2` are rejected at the input (`deniedValues`) — VCF requires at least 3 hosts for a vSAN cluster.
+
+Naming mirrors the management domain with a `-w`/`w-` prefix: domain `<instance-id>-w`, cluster `<instance-id>-w-cl1`, datacenter `<instance-id>-w-dc1`, network pool `<instance-id>-w-np1`, vSphere distributed switch `w-cl1-vds1`, appliances `w-vcs1` / `w-nsx1(a|b|c)`.
+
+**Prerequisites** (in addition to the management ones):
+
+- A completed management domain bring-up (the workload flow talks to SDDC Manager).
+- A **vLCM cluster image (personality)** available on SDDC Manager — mandatory for new domains in VCF 9. The management domain image is reused automatically (first available personality; override with the `wld_cluster_image_name` variable).
+- Workload hosts on the same ESX 9.0.1 build/express patch level as the management hosts.
+- Free addresses in the `wld-vsan-pool` / `wld-vmotion-pool` / `wld-nsx-host-overlay-pool` ranges and resolvable `w-*` DNS records (forward + reverse, like the management ones).
+
+**Lifecycle** (all through editing `wld_domain_instance_count`):
+
+| Edit | What happens |
+| --- | --- |
+| `0 → N` (N ≥ 3) | Full domain creation at `onEdit`/`postDeploy`: ESXi prep, network pool creation, host commissioning, domain spec validation, `POST /v1/domains`, task wait (~2-3 h). |
+| `N → N+k` | New hosts are prepped, commissioned into the workload network pool, and added to the workload cluster (cluster expansion). |
+| `N → N-k` (result ≥ 3) | Outgoing hosts are removed from the workload cluster and decommissioned, one at a time (same flow as management scale-in). |
+| `N → 0` | **The entire workload domain is DELETED** — marked for deletion, `DELETE /v1/domains/{id}`, hosts decommissioned, network pool removed. |
+
+> **WARNING — `N → 0` is irreversible.** Deleting the workload domain destroys its vSAN datastore and everything on it. Migrate or remove user VMs and **delete any NSX Edge clusters in the domain first** (SDDC Manager refuses/fails the deletion otherwise) — the extension does not check for user workloads before deleting.
+
+Retry safety: every workload flow probes SDDC Manager state first (existing domain → resumed via task retry, commissioned hosts → skipped, existing pool → reused), so a failed lifecycle task can be retried from the platform without manual cleanup.
 
 Details about the input variables for the VCF deployment can be found in the [Ansible README](ansible/README.md), which also documents the playbook flow and the offline spec render test.

@@ -4,22 +4,26 @@ Ansible playbooks and roles for deploying and managing VMware Cloud Foundation (
 
 ## Playbook flow
 
-`deploy.yaml` (initial deployment) runs two plays:
+`deploy.yaml` (initial deployment) runs three plays (plus the trailing outputs play):
 
-1. **`esxi` role** (all hosts): set firewall → enable SSH → set DNS → set NTP → configure the 'VM Network' portgroup → verify the ESXi certificate CN matches the host FQDN → collect SSH/SSL thumbprints.
+1. **`esxi` role** (all hosts, workload hosts included): set firewall → enable SSH → set DNS → set NTP → configure the 'VM Network' portgroup → verify the ESXi certificate CN matches the host FQDN → collect SSH/SSL thumbprints.
 2. **`vcf` role** (first management host): `vmnics-to-uplinks` → `build-sddc-spec` → `validate-sddc-spec` (basic / infrastructure / networks / allocations / depot / installer) → `deploy-vcf-installer` (OVA pulled from the depot with basic auth) → `installer/configure-depot` (configure + sync the offline depot) → `installer/download-binaries` (release binaries for `vcf_version`) → `deploy-mgmt-workload-domain` (spec validation + bring-up via the installer API).
+3. **VI workload domain** (`roles/vcf/tasks/wld/deploy-vi-workload-domain.yaml`, no-op when the `workload` array is empty): SDDC Manager auth → existing-domain pre-check (ACTIVE → skip, failed/in-flight → resume via `PATCH /v1/tasks/{id}`) → workload vmnic discovery → network pool (`/v1/network-pools`) → host commissioning (`/v1/hosts`) → vLCM cluster image lookup (`/v1/personalities`) → domain spec validation (`/v1/domains/validations`) → `POST /v1/domains` → long task wait (re-auth each cycle).
 
-`scale.yaml` (lifecycle operations) targets the `management_scale_out` / `management_scale_in` host groups (the ESXi nodes being added or removed); all SDDC Manager API calls are made from the controller via `delegate_to: localhost`.
+`scale.yaml` (lifecycle operations) targets the `management_scale_out` / `management_scale_in` / `workload_scale_out` / `workload_scale_in` host groups (the ESXi nodes being added or removed); all SDDC Manager API calls are made from the controller via `delegate_to: localhost`.
 
-- **Scale-out**: prepare the new ESXi hosts (`esxi` role), build/validate the spec, commission the hosts, and expand the cluster.
-- **Scale-in**: build the spec, determine the host ID, compact the cluster, and decommission the host.
+- **Management scale-out**: prepare the new ESXi hosts (`esxi` role), build/validate the spec, commission the hosts, and expand the cluster.
+- **Management scale-in**: build the spec, determine the host ID, compact the cluster, and decommission the host.
+- **Workload scale-out** (`wld/scale-out.yaml`): when no workload domain exists yet (0→N edit), the full domain-creation flow from `deploy.yaml` play 3 runs; otherwise the new hosts are commissioned into the workload network pool and added to the workload cluster.
+- **Workload scale-in**: when the target count is 0, `wld/delete-domain.yaml` deletes the ENTIRE workload domain (markForDeletion → `DELETE /v1/domains/{id}` → decommission hosts → delete the network pool); otherwise each outgoing host is removed from the workload cluster and decommissioned (same `scale-in.yaml` as management).
 
 ### Offline spec render test
 
-The SDDC bring-up spec can be rendered offline against a fixture (no infrastructure required):
+The SDDC bring-up spec, the workload domain creation spec, and the outputs payload can be rendered offline against a fixture (no infrastructure required):
 
 ```sh
-cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+cd tests && ansible-playbook -i inventory.yaml render-spec.yaml            # mgmt + 3-host workload domain
+cd tests && ansible-playbook -i inventory-wld0.yaml render-spec-wld0.yaml  # mgmt only (workload count 0)
 ```
 
 ## Variables
@@ -185,6 +189,30 @@ ops_collector_root_password: The password for the Operations collector root user
 deploy_vcf_automation: Boolean to deploy VCF Automation. Defaults to false. Requires the 'vcf-automation' FQDN and the 2-IP 'automation-ip-pool' range on the vcf-mgmt network.
 vcf_automation_admin_password: The password for the VCF Automation admin user.
 vcf_automation_internal_cluster_cidr: Internal cluster CIDR for VCF Automation. Defaults to '198.18.0.0/15'.
+```
+
+```yaml
+# VI workload domain (optional, driven by the 'workload' instance array / wld_domain_instance_count input).
+# Naming mirrors the management domain with a -w / w- prefix; every name is overridable
+# via extensionInstanceVariables like the management ones.
+wld_id: Base identifier for workload domain resources. Defaults to '<extension_instance_id>-w'.
+wld_domain_name: The workload domain name in SDDC Manager. Defaults to '<wld_id>'.
+wld_pool_name: The workload host network pool name. Defaults to '<wld_id>-np1'.
+wld_cluster_name: The workload cluster name. Defaults to '<wld_id>-cl1'.
+wld_datacenter_name: The workload datacenter name. Defaults to '<wld_id>-dc1'.
+wld_vds_name: The workload vSphere distributed switch name. Defaults to 'w-cl1-vds1' (mirrors the literal 'm-cl1-vds1').
+wld_datastore_name: The workload vSAN datastore name. Defaults to '<wld_id>-cl1-ds1'.
+wld_tep_pool_name: The workload NSX host overlay TEP pool name. Defaults to '<wld_id>-cl1-tep1'.
+wld_cluster_image_name: vLCM cluster image (personality) name to use. Defaults to '' (first available personality on SDDC Manager).
+wld_nsx_manager_count: NSX Manager nodes for the workload domain (1-3, configVar). Defaults to 3.
+wld_vcenter_root_password: The password for the workload domain vCenter Server root user.
+wld_nsx_manager_admin_password: The password for the workload domain NSX Manager admin user.
+wld_nsx_manager_audit_password: The password for the workload domain NSX Manager audit user.
+wld_sso_admin_password: The administrator password for the workload domain's isolated SSO domain. VCF 9 requires every VI domain to be an isolated SSO domain.
+wld_sso_domain_name: The workload domain's isolated SSO domain name. Defaults to 'wld-<wld_domain_name>.sso.local' (must start with a letter, 3-63 chars of A-Za-z0-9-).
+wld_domain_wait_cycles: Wait cycles (one poll each, re-authenticating) for domain creation. Defaults to 180.
+wld_domain_delete_wait_cycles: Wait cycles for domain deletion. Defaults to 60.
+wld_domain_poll_interval: Seconds between domain task polls. Defaults to 60.
 ```
 
 ```yaml

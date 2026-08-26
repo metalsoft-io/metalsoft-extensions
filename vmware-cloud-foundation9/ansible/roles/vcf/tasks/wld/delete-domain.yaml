@@ -1,0 +1,159 @@
+---
+# N→0 edit: deletes the ENTIRE VI workload domain. IRREVERSIBLE — the vSAN datastore is
+# destroyed. Prerequisites the operator must handle first: migrate/remove user VMs and
+# delete NSX Edge clusters in the domain (the extension does not check for them).
+# Flow per VCF 9 docs: PATCH markForDeletion -> DELETE /v1/domains/{id} -> hosts return
+# to the free pool ("need cleanup") -> decommission hosts -> delete the network pool
+# (NOT auto-deleted). Every step probes state first, so whole-playbook retries are safe.
+
+- name: WLD delete | Build base SDDC facts when missing
+  ansible.builtin.include_tasks: build-sddc-spec.yaml
+  when: sddc_manager_spec is not defined
+
+- name: WLD delete | Delete workload domain and clean up
+  run_once: true
+  block:
+    - name: WLD delete | Authenticate to SDDC Manager
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: WLD delete | Check for the workload domain
+      ansible.builtin.include_tasks: wld/get-domains.yaml
+
+    - name: WLD delete | Delete the domain
+      when: wld_existing_domain.id is defined
+      block:
+        - name: SDDC Manager API | Mark domain for deletion
+          ansible.builtin.uri:
+            url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains/{{ wld_existing_domain.id }}"
+            method: PATCH
+            headers:
+              Content-Type: "application/json"
+              Accept: "application/json"
+              Authorization: "Bearer {{ sddc_manager_access_token }}"
+            body_format: json
+            body:
+              markForDeletion: true
+            status_code:
+              - 200
+              - 202
+              - 400   # tolerated: already marked for deletion on a retry
+            follow_redirects: all
+            return_content: yes
+            validate_certs: "{{ sddc_manager.validate_certs }}"
+          register: wld_domain_mark_response
+          delegate_to: localhost
+
+        - name: SDDC Manager API | Delete domain
+          ansible.builtin.uri:
+            url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/domains/{{ wld_existing_domain.id }}"
+            method: DELETE
+            headers:
+              Content-Type: "application/json"
+              Accept: "application/json"
+              Authorization: "Bearer {{ sddc_manager_access_token }}"
+            status_code:
+              - 200
+              - 202
+            follow_redirects: all
+            return_content: yes
+            validate_certs: "{{ sddc_manager.validate_certs }}"
+          register: wld_domain_delete_response
+          delegate_to: localhost
+
+        - name: WLD delete | Set deletion task id
+          ansible.builtin.set_fact:
+            wld_domain_task_id: "{{ wld_domain_delete_response.json.id }}"
+            wld_domain_task_complete: false
+          when: wld_domain_delete_response.json.id is defined
+
+        - name: WLD delete | Wait for domain deletion (re-auth each cycle)
+          ansible.builtin.include_tasks: wld/wait-domain-task.yaml
+          loop: "{{ range(0, wld_domain_delete_wait_cycles | default(60) | int) | list }}"
+          loop_control:
+            loop_var: wld_domain_wait_cycle
+          vars:
+            wld_domain_wait_cycles_total: "{{ wld_domain_delete_wait_cycles | default(60) }}"
+          when: wld_domain_task_id is defined
+
+        - name: WLD delete | Assert deletion completed
+          ansible.builtin.assert:
+            that: wld_domain_task_complete | default(false)
+            fail_msg: >-
+              Workload domain deletion did not complete within the wait budget
+              ({{ wld_domain_delete_wait_cycles | default(60) }} cycles). Check SDDC Manager tasks.
+          when: wld_domain_task_id is defined
+
+    # Hosts freed by the domain deletion must be decommissioned separately.
+    - name: WLD delete | Re-authenticate to SDDC Manager
+      ansible.builtin.include_tasks: sddc-manager/get-api-authorization.yaml
+
+    - name: WLD delete | Get hosts (post-deletion)
+      ansible.builtin.include_tasks: sddc-manager/hosts/get-hosts.yaml
+
+    - name: WLD delete | Determine leaving hosts still known to SDDC Manager
+      ansible.builtin.set_fact:
+        wld_hosts_to_decommission: >-
+          {{ groups['workload_scale_in'] | default([])
+             | select('in', sddc_manager_hosts_response.json.elements | default([])
+                            | map(attribute='fqdn') | list)
+             | list }}
+
+    - name: WLD delete | Decommission leaving hosts
+      ansible.builtin.include_tasks: sddc-manager/host-decommission.yaml
+      vars:
+        decommission_hosts: "{{ wld_hosts_to_decommission }}"
+      when: wld_hosts_to_decommission | length > 0
+
+    # The network pool is not auto-deleted with the domain.
+    - name: SDDC Manager API | Get Network Pools
+      ansible.builtin.uri:
+        url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/network-pools"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+          Accept: "application/json"
+          Authorization: "Bearer {{ sddc_manager_access_token }}"
+        status_code:
+          - 200
+        follow_redirects: all
+        return_content: yes
+        validate_certs: "{{ sddc_manager.validate_certs }}"
+      register: sddc_manager_network_pools_response
+      delegate_to: localhost
+
+    - name: WLD delete | Delete workload network pool
+      ansible.builtin.uri:
+        url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/network-pools/{{ _wld_pool_to_delete.id }}"
+        method: DELETE
+        headers:
+          Content-Type: "application/json"
+          Accept: "application/json"
+          Authorization: "Bearer {{ sddc_manager_access_token }}"
+        status_code:
+          - 200
+          - 202
+          - 204
+        follow_redirects: all
+        return_content: yes
+        validate_certs: "{{ sddc_manager.validate_certs }}"
+      vars:
+        _wld_pool_to_delete: >-
+          {{ sddc_manager_network_pools_response.json.elements | default([])
+             | selectattr('name', 'equalto', wld_pool_name)
+             | first | default({}) }}
+      when: _wld_pool_to_delete.id is defined
+      delegate_to: localhost
+  rescue:
+    - name: Debug response | Domain delete
+      ansible.builtin.debug:
+        var: wld_domain_delete_response
+      when: wld_domain_delete_response is defined
+
+    - name: Debug response | Domain task poll
+      ansible.builtin.debug:
+        var: wld_domain_task_status
+      when: wld_domain_task_status is defined
+
+    - name: Stop the playbook
+      ansible.builtin.fail:
+        msg: "VI workload domain deletion failed. Check the responses above and the SDDC Manager UI."

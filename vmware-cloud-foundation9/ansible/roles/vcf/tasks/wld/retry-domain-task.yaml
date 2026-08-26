@@ -1,0 +1,69 @@
+---
+# Resume path: locate the newest SDDC Manager workflow task for this workload domain and
+# either wait on it (still running) or retry it (failed) via PATCH /v1/tasks/{id} — the
+# documented recovery for failed workload domain deployments.
+# NOTE: /v1/tasks response/filter shape needs one live 9.x confirmation — parsing is kept
+# tolerant and the raw response is printed when nothing matches.
+- name: SDDC Manager API | Get Tasks
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/tasks"
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_tasks_response
+  delegate_to: localhost
+
+- name: Set fact | newest task for this domain
+  vars:
+    _domain_tasks: >-
+      {{ sddc_manager_tasks_response.json.elements | default([])
+         | selectattr('name', 'defined')
+         | selectattr('name', 'search', wld_domain_name)
+         | list }}
+  ansible.builtin.set_fact:
+    _wld_domain_task: >-
+      {{ (_domain_tasks | sort(attribute='creationTimestamp') | last)
+         if (_domain_tasks | length > 0 and (_domain_tasks | first).creationTimestamp is defined)
+         else (_domain_tasks | first | default({})) }}
+
+- name: Debug | No resumable task found (raw tasks response)
+  ansible.builtin.debug:
+    var: sddc_manager_tasks_response.json
+  when: _wld_domain_task.id is not defined and (sddc_manager.api_call_debug | bool)
+
+- name: Assert a resumable domain task was found
+  ansible.builtin.assert:
+    that: _wld_domain_task.id is defined
+    fail_msg: >-
+      Domain '{{ wld_domain_name }}' exists on SDDC Manager but no matching workflow task
+      was found to resume — inspect the domain in the SDDC Manager UI.
+
+- name: SDDC Manager API | Retry failed domain task
+  ansible.builtin.uri:
+    url: "https://{{ sddc_manager_spec.ipv4_address }}/v1/tasks/{{ _wld_domain_task.id }}"
+    method: PATCH
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ sddc_manager_access_token }}"
+    status_code:
+      - 200
+      - 202
+    follow_redirects: all
+    return_content: yes
+    validate_certs: "{{ sddc_manager.validate_certs }}"
+  register: sddc_manager_task_retry_response
+  when: (_wld_domain_task.status | default('') | upper) is search('FAILED|CANCELLED')
+  delegate_to: localhost
+
+- name: Set fact | task id to wait on
+  ansible.builtin.set_fact:
+    wld_domain_task_id: "{{ _wld_domain_task.id }}"
+    wld_domain_task_complete: false

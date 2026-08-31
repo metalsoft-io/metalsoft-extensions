@@ -1,13 +1,15 @@
 ---
-# Offline render test for the VCF 9.0 SDDC bring-up spec.
-# Run: cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
-# Red until the 9.0 template rewrite lands (PLAN.md Task B6).
+# Offline render test for the VCF 9.x SDDC bring-up spec.
+# Run (9.1, the default): cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+# Run (9.0.1 path):       cd tests && ansible-playbook -i inventory.yaml render-spec.yaml -e test_vcf_version=9.0.1.0
 - name: Render VCF 9 SDDC spec from fixture
   hosts: localhost
   gather_facts: false
   vars_files:
     - fixtures/sample-variables.json
   vars:
+    # which BOM path to render; the fixture's configVars.vcf_version is overridden with this
+    test_vcf_version: "9.1.0.0"
     # the harness fakes the facts that vmnics-to-uplinks normally discovers via vCenter APIs
     uplink1_vmnic_name: vmnic0
     uplink2_vmnic_name: vmnic1
@@ -20,6 +22,9 @@
       esx06.vcf.example.com: host-id-06
       esx07.vcf.example.com: host-id-07
   tasks:
+    - name: Pin vcf_version for this render
+      ansible.builtin.set_fact:
+        configVars: "{{ configVars | default({}) | combine({'vcf_version': test_vcf_version}) }}"
     - name: Load globals defaults
       ansible.builtin.include_vars: { dir: ../ansible/roles/globals/defaults }
     - name: Load vcf role defaults
@@ -32,18 +37,68 @@
     - name: Write rendered spec
       ansible.builtin.copy: { content: "{{ sddc_spec | to_nice_json }}", dest: /tmp/sddc-spec-9.json }
 
-    - name: Assert | 9.0 top-level shape
+    - name: Assert | top-level shape
       ansible.builtin.assert:
         that:
-          - sddc_spec.version == '9.0.1.0'
+          - sddc_spec.version == test_vcf_version
           - sddc_spec.workflowType == 'VCF'
+          - ova_name | length > 0
+          - depot_esx_iso_name | length > 0
 
-    - name: Assert | operations/fleet/collector specs
+    - name: Assert | operations/collector specs
       ansible.builtin.assert:
         that:
           - sddc_spec.vcfOperationsSpec.nodes | length >= 1
-          - sddc_spec.vcfOperationsFleetManagementSpec.hostname | length > 0
           - sddc_spec.vcfOperationsCollectorSpec.hostname | length > 0
+
+    - name: Assert | 9.0.x — fleet management appliance, no management services blocks
+      ansible.builtin.assert:
+        that:
+          - sddc_spec.vcfOperationsFleetManagementSpec.hostname == 'opsfm1'
+          - "'vspClusterSpec' not in sddc_spec"
+          - "'licenseServerSpec' not in sddc_spec"
+          - "'vidbSpec' not in sddc_spec"
+          - ova_name == 'VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova'
+          - depot_esx_iso_name == 'VMware-VMvisor-Installer-9.0.1.0.24957456.x86_64.iso'
+      when: not (vcf_is_91 | bool)
+
+    - name: Assert | 9.1 — VCF Management Services replace the fleet management appliance
+      ansible.builtin.assert:
+        that:
+          - "'vcfOperationsFleetManagementSpec' not in sddc_spec"
+          - sddc_spec.vspClusterSpec.platformFqdn == 'sr1'
+          - sddc_spec.vspClusterSpec.instanceFqdn == 'ic1'
+          - sddc_spec.vspClusterSpec.fleetFqdn == 'fc1'
+          - sddc_spec.vspClusterSpec.size == 'small'
+          - sddc_spec.vspClusterSpec.internalClusterCidrIpv4 == '198.18.0.0/15'
+          - sddc_spec.vspClusterSpec.systemUserPassword | length >= 15
+          - sddc_spec.vspClusterSpec.ipv4Pool.ipRange.startIpAddress == '10.0.10.210'
+          - sddc_spec.vspClusterSpec.ipv4Pool.ipRange.endIpAddress == '10.0.10.221'
+          - sddc_spec.licenseServerSpec.hostname == 'lic1'
+          - sddc_spec.vidbSpec.hostname == 'idb1'
+          - ova_name == 'VCF-SDDC-Manager-Appliance-9.1.0.0.25371088.ova'
+          - depot_esx_iso_name == 'VMware-VMvisor-Installer-9.1.0.0.25370933.x86_64.iso'
+      when: vcf_is_91 | bool
+
+    # Automation is off in the fixture, so render its block on its own and check the pool shape
+    - name: Render automation spec block
+      ansible.builtin.set_fact:
+        automation_spec: "{{ lookup('template', '../ansible/roles/vcf/templates/vcf-automation-spec.yaml.j2') | from_yaml }}"
+
+    - name: Assert | automation spec — 9.1 expands the pool to an address list + platformFqdn
+      ansible.builtin.assert:
+        that:
+          - automation_spec.vcfAutomationSpec.hostname == 'auto1'
+          - automation_spec.vcfAutomationSpec.platformFqdn == 'auto1p'
+          - automation_spec.vcfAutomationSpec.ipPool == ['10.0.10.200', '10.0.10.201', '10.0.10.202', '10.0.10.203', '10.0.10.204']
+      when: vcf_is_91 | bool
+
+    - name: Assert | automation spec — 9.0 keeps the [start, end] pool
+      ansible.builtin.assert:
+        that:
+          - "'platformFqdn' not in automation_spec.vcfAutomationSpec"
+          - automation_spec.vcfAutomationSpec.ipPool == ['10.0.10.200', '10.0.10.204']
+      when: not (vcf_is_91 | bool)
 
     - name: Assert | datastore spec
       ansible.builtin.assert:
@@ -86,7 +141,11 @@
           - outputs_payload.vcenter_sso_username == 'administrator@vsphere.local'
           - outputs_payload.nsx_manager_url == 'https://m-nsx1.vcf9test.vcf.example.com'
           - outputs_payload.vcf_ops_url == 'https://ops1.vcf9test.vcf.example.com'
-          - outputs_payload.ops_fleet_mgmt_url == 'https://opsfm1.vcf9test.vcf.example.com'
+          # 9.0 emits the fleet management URL; 9.1 emits the management services URLs instead
+          - outputs_payload.ops_fleet_mgmt_url == ('' if vcf_is_91 | bool else 'https://opsfm1.vcf9test.vcf.example.com')
+          - outputs_payload.vcfms_platform_url == ('https://sr1.vcf9test.vcf.example.com' if vcf_is_91 | bool else '')
+          - outputs_payload.license_server_url == ('https://lic1.vcf9test.vcf.example.com' if vcf_is_91 | bool else '')
+          - outputs_payload.identity_broker_url == ('https://idb1.vcf9test.vcf.example.com' if vcf_is_91 | bool else '')
           - outputs_payload.ops_collector_url == 'https://opscp1.vcf9test.vcf.example.com'
           # fixture has deploy_vcf_automation=false -> emitted empty on purpose
           - outputs_payload.vcf_automation_url == ''
@@ -99,7 +158,7 @@
           - outputs_payload.wld_domain_name == 'vcf9test-w'
           - outputs_payload.wld_vcenter_sso_username == 'administrator@wld-vcf9test-w.sso.local'
           # every write must carry ALL declared output labels (partial writes wipe keys)
-          - outputs_payload | length == 16
+          - outputs_payload | length == 19
           - outputs_payload.values() | select('search', '\.$') | list | length == 0
 
     - name: Assert | dvs + dns specs

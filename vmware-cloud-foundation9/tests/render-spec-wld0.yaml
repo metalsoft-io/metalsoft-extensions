@@ -37,7 +37,7 @@
     - name: Assert | outputs payload (mgmt keys populated, WLD keys empty)
       ansible.builtin.assert:
         that:
-          - outputs_payload | length == 16
+          - outputs_payload | length == 19
           - outputs_payload.vcenter_sso_username == 'administrator@vsphere.local'
           - outputs_payload.wld_vcenter_sso_username == ''
           - outputs_payload.sddc_manager_url == 'https://sddc.vcf9test.vcf.example.com'

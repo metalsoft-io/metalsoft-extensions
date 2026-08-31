@@ -5,12 +5,12 @@
   "label": "vcf9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "2.3.2",
+  "extensionVersion": "2.4.3",
   "description": "VMware Cloud Foundation (VCF)",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
     "controllerVersion": "release-v7.2",
-    "osTemplates": ["esxi-9-24957456-cluster-node"]
+    "osTemplates": ["esxi-9-25370933-cluster-node", "esxi-9-24957456-cluster-node"]
   },
   "inputs": [
     {
@@ -94,8 +94,8 @@
       }
     },
     {
-      "label": "wld_sso_admin_password",
-      "name": "wld_sso_admin_password",
+      "label": "wld_vcenter_sso_admin_password",
+      "name": "wld_vcenter_sso_admin_password",
       "inputType": "ExtensionInputString",
       "isPassword": true,
       "defaultValue": "Ss0Adm!n9#Vc2f",
@@ -230,6 +230,16 @@
       }
     },
     {
+      "label": "vcfms_system_password",
+      "name": "vcfms_system_password",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "defaultValue": "w#@UtV!Pa7N#6Y5xQ2",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*+]{15,20}$"
+      }
+    },
+    {
       "label": "ops_fleet_mgmt_root_password",
       "name": "ops_fleet_mgmt_root_password",
       "inputType": "ExtensionInputString",
@@ -274,17 +284,17 @@
     {
       "label": "installer_url",
       "name": "installer_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "sddc_manager_url",
       "name": "sddc_manager_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "vcenter_url",
       "name": "vcenter_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "vcenter_sso_username",
@@ -294,27 +304,42 @@
     {
       "label": "nsx_manager_url",
       "name": "nsx_manager_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "vcf_ops_url",
       "name": "vcf_ops_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "ops_fleet_mgmt_url",
       "name": "ops_fleet_mgmt_url",
-      "outputType": "string"
+      "outputType": "url"
+    },
+    {
+      "label": "vcfms_platform_url",
+      "name": "vcfms_platform_url",
+      "outputType": "url"
+    },
+    {
+      "label": "license_server_url",
+      "name": "license_server_url",
+      "outputType": "url"
+    },
+    {
+      "label": "identity_broker_url",
+      "name": "identity_broker_url",
+      "outputType": "url"
     },
     {
       "label": "ops_collector_url",
       "name": "ops_collector_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "vcf_automation_url",
       "name": "vcf_automation_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "sddc_id",
@@ -334,7 +359,7 @@
     {
       "label": "wld_vcenter_url",
       "name": "wld_vcenter_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "wld_vcenter_sso_username",
@@ -344,7 +369,7 @@
     {
       "label": "wld_nsx_manager_url",
       "name": "wld_nsx_manager_url",
-      "outputType": "string"
+      "outputType": "url"
     },
     {
       "label": "wld_domain_name",
@@ -676,6 +701,90 @@
           },
           {
             "tags": {
+              "role": "vcfms-platform"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "sr1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "vcfms-instance"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "ic1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "vcfms-fleet"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "fc1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "license-server"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "lic1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "identity-broker"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "idb1.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
+              "role": "vcfa-platform"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "auto1p.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          },
+          {
+            "tags": {
               "role": "wld-vcenter-server"
             },
             "ipVersion": "ipv4",
@@ -751,7 +860,14 @@
               "role": "automation-ip-pool"
             },
             "ipVersion": "ipv4",
-            "ipCount": 2
+            "ipCount": 5
+          },
+          {
+            "tags": {
+              "role": "vcfms-ip-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 12
           }
         ]
       },
@@ -822,7 +938,7 @@
       "label": "vcf-ansible-bundle",
       "name": "vcf-ansible-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.3.2.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vmware-cloud-foundation9/vmware-cloud-foundation9-v2.4.3.zip"
     },
     {
       "label": "ee-vcf9-9-0-1",
@@ -950,14 +1066,14 @@
       "label": "vcf_version",
       "name": "vcf_version",
       "inputType": "ExtensionInputString",
-      "defaultValue": "9.0.1.0",
+      "defaultValue": "9.1.0.0",
       "options": {}
     },
     {
       "label": "ova_name",
       "name": "ova_name",
       "inputType": "ExtensionInputString",
-      "defaultValue": "VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova",
+      "defaultValue": "VCF-SDDC-Manager-Appliance-9.1.0.0.25371088.ova",
       "options": {}
     },
     {

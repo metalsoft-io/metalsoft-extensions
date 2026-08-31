@@ -35,7 +35,7 @@
     "wld_vcenter_root_password": "WldVcs@Pass1!2X",
     "wld_nsx_manager_admin_password": "WldNsxAd@Pas1!X",
     "wld_nsx_manager_audit_password": "WldNsxAu@Pas1!X",
-    "wld_sso_admin_password": "WldSso@Pass1!2X"
+    "wld_vcenter_sso_admin_password": "WldSso@Pass1!2X"
   },
   "workload": {
     "wld_vcenter_root_username": "root",
@@ -168,6 +168,54 @@
                     "tags": {"role": "vcf-automation"}
                   },
                   {
+                    "ip": "10.0.10.54",
+                    "fqdn": "sr1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.54/24",
+                    "tags": {"role": "vcfms-platform"}
+                  },
+                  {
+                    "ip": "10.0.10.55",
+                    "fqdn": "ic1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.55/24",
+                    "tags": {"role": "vcfms-instance"}
+                  },
+                  {
+                    "ip": "10.0.10.56",
+                    "fqdn": "fc1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.56/24",
+                    "tags": {"role": "vcfms-fleet"}
+                  },
+                  {
+                    "ip": "10.0.10.57",
+                    "fqdn": "lic1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.57/24",
+                    "tags": {"role": "license-server"}
+                  },
+                  {
+                    "ip": "10.0.10.58",
+                    "fqdn": "idb1.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.58/24",
+                    "tags": {"role": "identity-broker"}
+                  },
+                  {
+                    "ip": "10.0.10.59",
+                    "fqdn": "auto1p.vcf9test.vcf.example.com.",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "cidr": "10.0.10.59/24",
+                    "tags": {"role": "vcfa-platform"}
+                  },
+                  {
                     "ip": "10.0.10.60",
                     "fqdn": "w-vcs1.vcf9test.vcf.example.com.",
                     "gateway": "10.0.10.1",
@@ -211,10 +259,17 @@
                 "ipRanges": [
                   {
                     "startIp": "10.0.10.200",
-                    "endIp": "10.0.10.201",
+                    "endIp": "10.0.10.204",
                     "gateway": "10.0.10.1",
                     "netmask": "255.255.255.0",
                     "tags": {"role": "automation-ip-pool"}
+                  },
+                  {
+                    "startIp": "10.0.10.210",
+                    "endIp": "10.0.10.221",
+                    "gateway": "10.0.10.1",
+                    "netmask": "255.255.255.0",
+                    "tags": {"role": "vcfms-ip-pool"}
                   }
                 ]
               }

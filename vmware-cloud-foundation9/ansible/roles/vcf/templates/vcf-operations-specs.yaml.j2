@@ -1,5 +1,5 @@
 {#
-# VCF Operations / fleet management / collector — new mandatory components in VCF 9.x bring-up
+# VCF Operations / fleet management (9.0 only) / collector — mandatory components in VCF 9.x bring-up
 #}
 vcfOperationsSpec:
   nodes:
@@ -10,12 +10,15 @@ vcfOperationsSpec:
   applianceSize: "{{ vcf_ops_spec.appliance_size }}"
   useExistingDeployment: false
 
+{% if not (vcf_is_91 | bool) %}
+{# removed in 9.1 — the fleet management appliance became VCF Management Services (vspClusterSpec) #}
 vcfOperationsFleetManagementSpec:
   hostname: "{{ ops_fleet_mgmt_spec.hostname }}"
   rootUserPassword: {{ ops_fleet_mgmt_spec.root_password | to_json }}
   adminUserPassword: {{ ops_fleet_mgmt_spec.admin_password | to_json }}
   useExistingDeployment: false
 
+{% endif %}
 vcfOperationsCollectorSpec:
   hostname: "{{ ops_collector_spec.hostname }}"
   rootUserPassword: {{ ops_collector_spec.root_password | to_json }}

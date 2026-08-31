@@ -6,6 +6,16 @@
     that: depot.password | length > 0
     fail_msg: "depot_password site config variable is required for VCF 9 (offline depot serves all product binaries)"
 
+- name: Validate | vcf_version has a known BOM (or explicit OVA/ISO overrides)
+  ansible.builtin.assert:
+    that:
+      - ova_name | length > 0
+      - depot_esx_iso_name | length > 0
+    fail_msg: >-
+      vcf_version '{{ vcf_version }}' is not in the supported BOM table ({{ vcf_bom.keys() | join(', ') }}).
+      Either pick a supported version or set the ova_name site config variable and the
+      depot_esx_iso_name instance variable explicitly.
+
 - name: Validate | Depot catalog reachable with credentials
   ansible.builtin.uri:
     url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/metadata/productVersionCatalog/v1/productVersionCatalog.json"
@@ -21,8 +31,8 @@
   until: depot_catalog_probe is succeeded
   delegate_to: localhost
 
-# Build pinned to the VCF 9.0.1 BOM (productVersionCatalog) — update if the BOM revs; override via depot_esx_iso_name.
-- name: Validate | ESX 9.0.1 ISO present in depot
+# ISO name comes from the vcf_bom table for the selected vcf_version — override via depot_esx_iso_name.
+- name: "Validate | ESX ISO for VCF {{ vcf_version }} present in depot ({{ depot_esx_iso_name }})"
   ansible.builtin.uri:
     url: "https://{{ depot.hostname }}:{{ depot.port }}/PROD/COMP/ESX_HOST/{{ depot_esx_iso_name }}"
     method: HEAD
@@ -32,4 +42,3 @@
     status_code: [200]
     validate_certs: "{{ depot.validate_certs }}"
   delegate_to: localhost
-  when: vcf_version is match('^9\.0\.1')

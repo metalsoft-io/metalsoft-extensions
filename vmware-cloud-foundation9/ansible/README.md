@@ -46,21 +46,22 @@ dns_searchpath: The DNS search path for the environment.
 # Offline depot configuration.
 # The VCF Installer embeds no product binaries: everything is pulled from this
 # HTTPS basic-auth mirror, which must serve /PROD (productVersionCatalog metadata
-# and COMP binaries, including the ESX 9.0.1 ISO).
+# and COMP binaries, including the ESX ISO of the selected BOM; 9.1 content must be mirrored
+# with VCF Download Tool 9.1 + an Activation Code).
 depot_hostname: Hostname of the offline depot mirror. Defaults to 'vmware-depot.metalsoft.dev'.
 depot_port: HTTPS port of the depot. Defaults to 443.
 depot_username: Basic-auth username for the depot. Defaults to 'vmware-depot'.
 depot_password: Basic-auth password for the depot. Required (validated before deployment).
 depot_validate_certs: Whether to validate the depot TLS certificate. Defaults to false (internal mirrors typically run self-signed certificates).
-depot_esx_iso_name: Name of the ESX ISO whose presence is verified in the depot. Defaults to 'VMware-VMvisor-Installer-9.0.1.0.24957456.x86_64.iso'.
+depot_esx_iso_name: Name of the ESX ISO whose presence is verified in the depot. Defaults to the vcf_bom entry for vcf_version ('VMware-VMvisor-Installer-9.1.0.0.25370933.x86_64.iso' for 9.1.0.0, '...-9.0.1.0.24957456...' for 9.0.1.0).
 ```
 
 ```yaml
 # VCF version and installer OVA.
-vcf_version: The version of VCF to deploy. Defaults to '9.0.1.0'.
+vcf_version: The version of VCF to deploy ('9.1.0.0' or '9.0.1.0'). Defaults to '9.1.0.0'. Versions >= 9.1 switch the bring-up spec to VCF Management Services (vspClusterSpec/licenseServerSpec/vidbSpec) instead of vcfOperationsFleetManagementSpec.
 # Per the Broadcom 9.0.1 BOM, the VCF Installer 9.0.2.0 build 25151285 appliance is
 # required to deploy 9.0.1 components — the version difference is intentional.
-ova_name: The name of the VCF Installer OVA file (same OVA as SDDC Manager). Defaults to 'VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova'.
+ova_name: The name of the VCF Installer OVA file (same OVA as SDDC Manager). Defaults to the vcf_bom entry for vcf_version ('VCF-SDDC-Manager-Appliance-9.1.0.0.25371088.ova' for 9.1.0.0, 'VCF-SDDC-Manager-Appliance-9.0.2.0.25151285.ova' for 9.0.1.0).
 # Optional override for the OVA download URL. When empty, the URL is derived from the depot:
 # https://<depot_hostname>:<depot_port>/PROD/COMP/SDDC_MANAGER_VCF/<ova_name>
 ova_url: Optional full URL from which to download the VCF Installer OVA.
@@ -179,14 +180,18 @@ vcf_ops_root_password: The password for the VCF Operations root user.
 vcf_ops_appliance_size: The size of the VCF Operations appliance. Defaults to 'small'.
 
 # VCF Operations fleet management configuration (new in 9.x).
-ops_fleet_mgmt_root_password: The password for the Operations fleet management root user.
-ops_fleet_mgmt_admin_password: The password for the Operations fleet management admin user.
+ops_fleet_mgmt_root_password: The password for the Operations fleet management root user (9.0.x only).
+ops_fleet_mgmt_admin_password: The password for the Operations fleet management admin user (9.0.x only).
+vcfms_system_password: SSH password for the VCF Management Services cluster nodes (9.1+, >= 15 chars).
+vcfms_size: VCF Management Services size (small|medium|large). Defaults to 'small' (9.1+).
+vcfms_internal_cluster_cidr: Internal cluster CIDR for VCF Management Services; must be unused anywhere on the network. Defaults to '198.18.0.0/15' (9.1+).
 
 # VCF Operations collector configuration (new in 9.x).
 ops_collector_root_password: The password for the Operations collector root user.
 
 # VCF Automation configuration (optional, new in 9.x).
-deploy_vcf_automation: Boolean to deploy VCF Automation. Defaults to false. Requires the 'vcf-automation' FQDN and the 2-IP 'automation-ip-pool' range on the vcf-mgmt network.
+relocate_installer_vm: Boolean. During bring-up, storage-migrate the installer VM to the vSAN datastore when its deployment datastore is smaller than the VM's provisioned size (prevents NoDiskSpace at "Relocate VMs to a Resource Pool"). Defaults to true; only acts when the space check fails.
+deploy_vcf_automation: Boolean to deploy VCF Automation. Defaults to false. Requires the 'vcf-automation' FQDN and the 'automation-ip-pool' range on the vcf-mgmt network (5 addresses on 9.1 — expanded to an explicit ipPool list — plus the 'vcfa-platform' FQDN; 2 addresses on 9.0).
 vcf_automation_admin_password: The password for the VCF Automation admin user.
 vcf_automation_internal_cluster_cidr: Internal cluster CIDR for VCF Automation. Defaults to '198.18.0.0/15'.
 ```
@@ -208,7 +213,7 @@ wld_nsx_manager_count: NSX Manager nodes for the workload domain (1-3, configVar
 wld_vcenter_root_password: The password for the workload domain vCenter Server root user.
 wld_nsx_manager_admin_password: The password for the workload domain NSX Manager admin user.
 wld_nsx_manager_audit_password: The password for the workload domain NSX Manager audit user.
-wld_sso_admin_password: The administrator password for the workload domain's isolated SSO domain. VCF 9 requires every VI domain to be an isolated SSO domain.
+wld_vcenter_sso_admin_password: The administrator password for the workload domain's isolated SSO domain. VCF 9 requires every VI domain to be an isolated SSO domain.
 wld_sso_domain_name: The workload domain's isolated SSO domain name. Defaults to 'wld-<wld_domain_name>.sso.local' (must start with a letter, 3-63 chars of A-Za-z0-9-).
 wld_domain_wait_cycles: Wait cycles (one poll each, re-authenticating) for domain creation. Defaults to 180.
 wld_domain_delete_wait_cycles: Wait cycles for domain deletion. Defaults to 60.

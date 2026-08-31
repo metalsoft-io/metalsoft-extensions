@@ -52,6 +52,10 @@ vcenterSpec:
 {% include 'host-specs.yaml.j2' %}
 
 {% include 'vcf-operations-specs.yaml.j2' %}
+{% if vcf_is_91 | bool %}
+
+{% include 'vcf-management-services-spec.yaml.j2' %}
+{% endif %}
 {% if vcf.deploy_automation | bool %}
 
 {% include 'vcf-automation-spec.yaml.j2' %}

@@ -1,8 +1,12 @@
 {#
-# VCF Automation (optional) — needs 2-4 IPs in ipPool and a reserved internalClusterCidr
+# VCF Automation (optional) — 9.0: 2-4 IPs in ipPool; 9.1: >= 5 IPs plus a platformFqdn.
+# Both need a reserved internalClusterCidr.
 #}
 vcfAutomationSpec:
   hostname: "{{ vcf_automation_spec.hostname }}"
+{% if vcf_is_91 | bool %}
+  platformFqdn: "{{ vcf_automation_spec.platform_fqdn }}"
+{% endif %}
   adminUserPassword: {{ vcf_automation_spec.admin_password | to_json }}
   internalClusterCidr: "{{ vcf_automation_spec.internal_cluster_cidr }}"
   nodePrefix: "{{ vcf_automation_spec.node_prefix }}"

@@ -13,7 +13,7 @@ domainName: "{{ wld_domain_name }}"
 deployWithoutLicenseKeys: {{ vcf.deploy_without_license_keys | bool | to_json }}
 ssoDomainSpec:
   ssoDomainName: "{{ wld_sso_domain_name }}"
-  ssoDomainPassword: {{ extensionInstanceVariables.wld_sso_admin_password | default('') | to_json }}
+  ssoDomainPassword: {{ extensionInstanceVariables.wld_vcenter_sso_admin_password | default('') | to_json }}
 vcenterSpec:
   name: "{{ wld_vcenter_config.fqdn | default('') | regex_replace('\\.$', '') | split('.') | first }}"
   networkDetailsSpec:

@@ -1,0 +1,23 @@
+{#
+# VCF Management Services (VCFMS), license server and identity broker — mandatory on VCF 9.1+
+# (replaces the 9.0 Operations fleet management appliance). Hostnames are short: the installer
+# appends dnsSpec.subdomain. ipv4Pool needs >= 12 contiguous addresses (the vcfms-ip-pool range).
+#}
+vspClusterSpec:
+  platformFqdn: "{{ vcfms_spec.platform_hostname }}"
+  instanceFqdn: "{{ vcfms_spec.instance_hostname }}"
+  fleetFqdn: "{{ vcfms_spec.fleet_hostname }}"
+  size: "{{ vcfms_spec.size }}"
+  internalClusterCidrIpv4: "{{ vcfms_spec.internal_cluster_cidr }}"
+  systemUserPassword: {{ vcfms_spec.system_password | to_json }}
+  useExistingDeployment: false
+  ipv4Pool:
+    ipRange:
+      startIpAddress: "{{ vcfms_spec.pool_start }}"
+      endIpAddress: "{{ vcfms_spec.pool_end }}"
+
+licenseServerSpec:
+  hostname: "{{ license_server_spec.hostname }}"
+
+vidbSpec:
+  hostname: "{{ vidb_spec.hostname }}"

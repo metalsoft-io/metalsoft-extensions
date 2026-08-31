@@ -148,6 +148,23 @@
         bringup_task_id: "{{ existing_bringup.id }}"
       when: existing_bringup.id is defined
 
+    # Resume path: if the previous run died on the installer-VM relocate (NoDiskSpace on its
+    # boot datastore), move the VM to vSAN BEFORE issuing the PATCH, or the retry fails the same way.
+    - name: Relocate installer VM before resuming a failed bring-up (if its datastore is too small)
+      ansible.builtin.include_tasks: installer/relocate-installer-vm.yaml
+      vars:
+        bringup_state: "{{ existing_bringup }}"
+        # the previous run died on NoDiskSpace at that exact step -> move unconditionally
+        reloc_force: >-
+          {{ (existing_bringup.sddcSubTasks | default([])
+              | selectattr('name', 'equalto', 'Relocate VMs to a Resource Pool')
+              | selectattr('status', 'search', 'FAILURE')
+              | map(attribute='errors') | flatten | to_json) is search('NoDiskSpace') }}
+      when:
+        - existing_bringup.id is defined
+        - (existing_bringup.status | default('')) == 'COMPLETED_WITH_FAILURE'
+        - vcf.relocate_installer_vm | default(true) | bool
+
     - name: Set bring-up task id (fresh deployment)
       ansible.builtin.set_fact:
         bringup_task_id: "{{ installer_api_post_deploy_result.json.id }}"

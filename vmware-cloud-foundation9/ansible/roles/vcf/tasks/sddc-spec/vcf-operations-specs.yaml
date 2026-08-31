@@ -7,6 +7,13 @@
     ops_fleet_mgmt_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'ops-fleet-management') | first | default({}) }}"
     ops_collector_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'ops-collector') | first | default({}) }}"
     vcf_automation_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcf-automation') | first | default({}) }}"
+    # VCF 9.1+ only (VCF Management Services, license server, identity broker, Automation platform)
+    vcfa_platform_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcfa-platform') | first | default({}) }}"
+    vcfms_platform_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcfms-platform') | first | default({}) }}"
+    vcfms_instance_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcfms-instance') | first | default({}) }}"
+    vcfms_fleet_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'vcfms-fleet') | first | default({}) }}"
+    license_server_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'license-server') | first | default({}) }}"
+    identity_broker_config: "{{ management_ip_allocations | selectattr('tags.role', 'equalto', 'identity-broker') | first | default({}) }}"
 
 - name: Build | Extract automation IP pool range
   ansible.builtin.set_fact:
@@ -17,6 +24,28 @@
          | selectattr('tags.role', 'defined')
          | selectattr('tags.role', 'equalto', 'automation-ip-pool')
          | list | first | default({}) }}
+    vcfms_ip_pool_range: >-
+      {{ vm_management_selected_network
+         | json_query('subnets[].ipRanges[]')
+         | default([], true)
+         | selectattr('tags.role', 'defined')
+         | selectattr('tags.role', 'equalto', 'vcfms-ip-pool')
+         | list | first | default({}) }}
+
+# 9.0 accepted a 2-address [start, end] ipPool; 9.1 wants the explicit address list (>= 5).
+# The platform hands us a contiguous range — expand it in plain Jinja (the EE has no netaddr).
+- name: Build | Expand automation IP pool range to an address list
+  ansible.builtin.set_fact:
+    automation_ip_pool_list: >-
+      {{ range(_a_start.split('.')[3] | int, (_a_end.split('.')[3] | int) + 1)
+         | map('string')
+         | map('regex_replace', '^', (_a_start.split('.')[:3] | join('.')) ~ '.')
+         | list
+         if (_a_start and _a_end and (_a_start.split('.')[:3] == _a_end.split('.')[:3]))
+         else [] }}
+  vars:
+    _a_start: "{{ automation_ip_pool_range.startIp | default('') }}"
+    _a_end: "{{ automation_ip_pool_range.endIp | default('') }}"
 
 - name: Build | VCF Operations specs
   ansible.builtin.set_fact:
@@ -37,6 +66,27 @@
       admin_password: "{{ extensionInstanceVariables.vcf_automation_admin_password | default('VMw@re1!VMw@re1!') }}"
       internal_cluster_cidr: "{{ configVars.vcf_automation_internal_cluster_cidr | default('198.18.0.0/15') }}"
       node_prefix: "{{ sddc_id }}-auto"
+      # 9.1 platform FQDN is a separate allocation (sent as a short hostname like every appliance)
+      platform_fqdn: "{{ vcfa_platform_config.fqdn | default('') | split('.') | first }}"
       ip_pool: >-
-        {{ (automation_ip_pool_range.startIp is defined and automation_ip_pool_range.endIp is defined)
-           | ternary([automation_ip_pool_range.startIp | default(''), automation_ip_pool_range.endIp | default('')], []) }}
+        {{ (vcf_is_91 | bool)
+           | ternary(automation_ip_pool_list,
+                     (automation_ip_pool_range.startIp is defined and automation_ip_pool_range.endIp is defined)
+                     | ternary([automation_ip_pool_range.startIp | default(''), automation_ip_pool_range.endIp | default('')], [])) }}
+
+# VCF Management Services / license server / identity broker (VCF 9.1+; ignored by the 9.0 template path)
+- name: Build | VCF Management Services specs (9.1+)
+  ansible.builtin.set_fact:
+    vcfms_spec:
+      platform_hostname: "{{ vcfms_platform_config.fqdn | default('') | split('.') | first }}"
+      instance_hostname: "{{ vcfms_instance_config.fqdn | default('') | split('.') | first }}"
+      fleet_hostname: "{{ vcfms_fleet_config.fqdn | default('') | split('.') | first }}"
+      pool_start: "{{ vcfms_ip_pool_range.startIp | default('') }}"
+      pool_end: "{{ vcfms_ip_pool_range.endIp | default('') }}"
+      size: "{{ vcf.vcfms_size }}"
+      internal_cluster_cidr: "{{ vcf.vcfms_internal_cluster_cidr }}"
+      system_password: "{{ extensionInstanceVariables.vcfms_system_password | default('VMw@re1!VMw@re1!') }}"
+    license_server_spec:
+      hostname: "{{ license_server_config.fqdn | default('') | split('.') | first }}"
+    vidb_spec:
+      hostname: "{{ identity_broker_config.fqdn | default('') | split('.') | first }}"

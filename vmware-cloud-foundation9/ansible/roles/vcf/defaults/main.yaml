@@ -58,6 +58,9 @@ _output_nsx_vip_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto
 _output_vcf_ops_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-operations') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_ops_fleet_mgmt_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-fleet-management') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_ops_collector_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'ops-collector') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_vcfms_platform_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcfms-platform') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_license_server_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'license-server') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
+_output_identity_broker_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'identity-broker') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_vcf_automation_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'vcf-automation') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_wld_vcenter_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'wld-vcenter-server') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
 _output_wld_nsx_vip_fqdn: "{{ _output_allocations | selectattr('tags.role', 'equalto', 'wld-nsx-manager-vip') | map(attribute='fqdn') | first | default('') | regex_replace('\\.$', '') }}"
@@ -71,7 +74,12 @@ vcf_outputs_payload:
   vcenter_sso_username: "administrator@{{ extensionInstanceVariables.psc_sso_domain_name | default('vsphere.local') }}"
   nsx_manager_url: "{{ ('https://' ~ _output_nsx_vip_fqdn) if _output_nsx_vip_fqdn else '' }}"
   vcf_ops_url: "{{ ('https://' ~ _output_vcf_ops_fqdn) if _output_vcf_ops_fqdn else '' }}"
-  ops_fleet_mgmt_url: "{{ ('https://' ~ _output_ops_fleet_mgmt_fqdn) if _output_ops_fleet_mgmt_fqdn else '' }}"
+  # 9.0 only — the fleet management appliance does not exist on 9.1 (VCF Management Services instead)
+  ops_fleet_mgmt_url: "{{ ('https://' ~ _output_ops_fleet_mgmt_fqdn) if (_output_ops_fleet_mgmt_fqdn and not (vcf_is_91 | bool)) else '' }}"
+  # 9.1+ only — '' on 9.0.x
+  vcfms_platform_url: "{{ ('https://' ~ _output_vcfms_platform_fqdn) if (_output_vcfms_platform_fqdn and vcf_is_91 | bool) else '' }}"
+  license_server_url: "{{ ('https://' ~ _output_license_server_fqdn) if (_output_license_server_fqdn and vcf_is_91 | bool) else '' }}"
+  identity_broker_url: "{{ ('https://' ~ _output_identity_broker_fqdn) if (_output_identity_broker_fqdn and vcf_is_91 | bool) else '' }}"
   ops_collector_url: "{{ ('https://' ~ _output_ops_collector_fqdn) if _output_ops_collector_fqdn else '' }}"
   vcf_automation_url: "{{ ('https://' ~ _output_vcf_automation_fqdn) if (vcf.deploy_automation | bool and _output_vcf_automation_fqdn) else '' }}"
   sddc_id: "{{ sddc_id }}"

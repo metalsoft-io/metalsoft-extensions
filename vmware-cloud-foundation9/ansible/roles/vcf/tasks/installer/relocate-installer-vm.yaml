@@ -1,0 +1,149 @@
+---
+# Storage-migrate the VCF Installer VM off its deployment datastore onto the vSAN datastore
+# when that datastore is too small for the VM's PROVISIONED size.
+#
+# Why: the Installer appliance is thin-provisioned (~900 GB provisioned) onto the first host's
+# local datastore. Bring-up later runs "Relocate VMs to a Resource Pool" against the installer
+# VM itself, and vSphere's RelocateVM validates the CURRENT datastore against the full
+# provisioned size — on a small boot datastore this fails with
+# vim.fault.NoDiskSpace ("Insufficient disk space on datastore 'datastore1'").
+#
+# Only acts when ALL of these hold (otherwise it is a no-op and re-evaluated next cycle):
+#   - vcf.relocate_installer_vm is enabled (default true)
+#   - the "Deploy vCenter" milestone completed (vCenter is up)
+#   - the installer VM is visible in vCenter (hosts already added to the cluster)
+#   - the vSAN datastore exists in vCenter
+#   - free space on the installer's current datastore < the VM's provisioned size
+#     (or reloc_force is true — bring-up already failed with NoDiskSpace on that relocate)
+#   - the VM has not already been moved
+#
+# Inputs: bringup_state — the /v1/sddcs/{id} JSON (from the poll loop or the resume pre-check);
+#         reloc_force (optional, default false) — skip the free-space arithmetic and move the VM
+#         whenever it is visible and not yet on the vSAN datastore.
+# Output fact: installer_vm_relocation_done (true once moved OR once judged unnecessary).
+
+- name: Relocate | Evaluate bring-up milestones
+  ansible.builtin.set_fact:
+    _reloc_vcenter_done: >-
+      {{ (bringup_state.milestones | default([]))
+         | selectattr('name', 'equalto', 'Deploy vCenter')
+         | map(attribute='status') | first | default('') == 'COMPLETED_WITH_SUCCESS' }}
+    _reloc_vcenter_host: "{{ vcenter_spec.vcenter_fqdn | regex_replace('\\.$', '') }}"
+    _reloc_vcenter_user: "administrator@{{ psc_specs.sso_domain_name }}"
+
+- name: Relocate | Skip until vCenter is deployed
+  ansible.builtin.debug:
+    msg: "Installer VM relocation check deferred — 'Deploy vCenter' milestone not complete yet."
+  when: not (_reloc_vcenter_done | bool)
+
+- name: Relocate | Inspect installer VM and datastores in vCenter
+  when: _reloc_vcenter_done | bool
+  block:
+    # The installer VM only appears in vCenter after "Add ESX Host(s) to vSphere Cluster";
+    # before that this lookup fails and we simply try again next cycle.
+    # NOTE: `datacenter` is a REQUIRED module argument — without it the module fails on
+    # argument validation before even talking to vCenter (silently, given failed_when: false).
+    - name: Relocate | Installer VM disks (provisioned size)
+      community.vmware.vmware_guest_disk_info:
+        hostname: "{{ _reloc_vcenter_host }}"
+        username: "{{ _reloc_vcenter_user }}"
+        password: "{{ psc_specs.sso_admin_password }}"
+        validate_certs: false
+        datacenter: "{{ cluster_spec.datacenter_name }}"
+        name: "{{ installer.hostname }}"
+      register: _reloc_vm_disks
+      failed_when: false
+      delegate_to: localhost
+
+    # Never hide the reason the lookup did not return disks — a "VM not found yet" is expected
+    # early on, but an argument/auth error would otherwise make the whole feature a silent no-op.
+    - name: Relocate | Installer VM lookup did not return disks
+      ansible.builtin.debug:
+        msg: >-
+          vmware_guest_disk_info for VM '{{ installer.hostname }}' in datacenter
+          '{{ cluster_spec.datacenter_name }}' on {{ _reloc_vcenter_host }} returned no disks:
+          {{ _reloc_vm_disks.msg | default(_reloc_vm_disks) }}
+      when: _reloc_vm_disks.guest_disk_info is not defined
+
+    - name: Relocate | Datastores known to vCenter
+      community.vmware.vmware_datastore_info:
+        hostname: "{{ _reloc_vcenter_host }}"
+        username: "{{ _reloc_vcenter_user }}"
+        password: "{{ psc_specs.sso_admin_password }}"
+        validate_certs: false
+      register: _reloc_datastores
+      failed_when: false
+      delegate_to: localhost
+      when: _reloc_vm_disks.guest_disk_info is defined
+
+    - name: Relocate | Compute space facts
+      ansible.builtin.set_fact:
+        _reloc_vm_visible: "{{ _reloc_vm_disks.guest_disk_info is defined }}"
+        _reloc_provisioned_bytes: >-
+          {{ (_reloc_vm_disks.guest_disk_info | default({})).values()
+             | map(attribute='capacity_in_bytes') | map('int') | sum }}
+        # the datastore the VM currently sits on (first disk's backing datastore)
+        _reloc_current_ds_name: >-
+          {{ ((_reloc_vm_disks.guest_disk_info | default({})).values() | list | first | default({})).backing_datastore
+             | default(installer.datastore) }}
+        _reloc_all_ds: "{{ _reloc_datastores.datastores | default([]) }}"
+
+    - name: Relocate | Resolve current and target datastores
+      ansible.builtin.set_fact:
+        _reloc_current_ds: "{{ _reloc_all_ds | selectattr('name', 'equalto', _reloc_current_ds_name) | first | default({}) }}"
+        _reloc_target_ds: "{{ _reloc_all_ds | selectattr('name', 'equalto', vsan_spec.datastore_name) | first | default({}) }}"
+
+    - name: Relocate | Decide
+      ansible.builtin.set_fact:
+        _reloc_already_on_target: "{{ _reloc_current_ds_name == vsan_spec.datastore_name }}"
+        _reloc_needed: >-
+          {{ _reloc_vm_visible | bool
+             and _reloc_current_ds_name != vsan_spec.datastore_name
+             and (
+               (reloc_force | default(false) | bool)
+               or (_reloc_current_ds.freeSpace is defined
+                   and (_reloc_current_ds.freeSpace | int) < (_reloc_provisioned_bytes | int))
+             ) }}
+
+    - name: Relocate | Report evaluation
+      ansible.builtin.debug:
+        msg: >-
+          Installer VM '{{ installer.hostname }}' visible={{ _reloc_vm_visible }},
+          on datastore '{{ _reloc_current_ds_name }}'
+          (free {{ (_reloc_current_ds.freeSpace | default(0) | int / 1073741824) | round(1) }} GiB),
+          provisioned {{ (_reloc_provisioned_bytes | int / 1073741824) | round(1) }} GiB,
+          vSAN datastore '{{ vsan_spec.datastore_name }}' present={{ _reloc_target_ds.name is defined }},
+          forced={{ reloc_force | default(false) | bool }}
+          -> relocation needed={{ _reloc_needed }}
+      when: _reloc_vm_visible | bool
+
+    - name: Relocate | Storage-migrate installer VM to the vSAN datastore
+      community.vmware.vmware_vmotion:
+        hostname: "{{ _reloc_vcenter_host }}"
+        username: "{{ _reloc_vcenter_user }}"
+        password: "{{ psc_specs.sso_admin_password }}"
+        validate_certs: false
+        vm_name: "{{ installer.hostname }}"
+        destination_datastore: "{{ vsan_spec.datastore_name }}"
+      register: _reloc_move
+      retries: 3
+      delay: 30
+      until: _reloc_move is succeeded
+      delegate_to: localhost
+      when:
+        - _reloc_needed | bool
+        - _reloc_target_ds.name is defined
+
+    - name: Relocate | Installer VM moved
+      ansible.builtin.debug:
+        msg: "Installer VM '{{ installer.hostname }}' storage-migrated to '{{ vsan_spec.datastore_name }}' (bring-up's RelocateVM would have failed with NoDiskSpace on '{{ _reloc_current_ds_name }}')."
+      when: _reloc_move is not skipped and _reloc_move is succeeded
+
+    # Done when: moved, or already on vSAN, or the current datastore is big enough.
+    # Stays false (re-evaluated next cycle) while the VM/vSAN datastore are not yet in vCenter.
+    - name: Relocate | Record outcome
+      ansible.builtin.set_fact:
+        installer_vm_relocation_done: >-
+          {{ (_reloc_move is not skipped and _reloc_move is succeeded)
+             or (_reloc_vm_visible | bool and _reloc_already_on_target | bool)
+             or (_reloc_vm_visible | bool and _reloc_current_ds.freeSpace is defined and not (_reloc_needed | bool)) }}

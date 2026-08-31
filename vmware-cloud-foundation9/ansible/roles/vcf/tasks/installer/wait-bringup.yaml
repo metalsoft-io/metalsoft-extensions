@@ -25,6 +25,59 @@
   when: not (vcf_bringup_complete | default(false))
   delegate_to: localhost
 
+# Did bring-up already fail on exactly that NoDiskSpace relocate? Evaluated BEFORE the
+# relocation so the move can be forced regardless of the free-space arithmetic.
+- name: Detect NoDiskSpace failure of "Relocate VMs to a Resource Pool"
+  ansible.builtin.set_fact:
+    _bringup_nodiskspace_failure: >-
+      {{ (bringup_status_result.json.status | default('')) == 'COMPLETED_WITH_FAILURE'
+         and (bringup_status_result.json.sddcSubTasks | default([])
+              | selectattr('name', 'equalto', 'Relocate VMs to a Resource Pool')
+              | selectattr('status', 'search', 'FAILURE')
+              | map(attribute='errors') | flatten | to_json) is search('NoDiskSpace') }}
+  when: not (vcf_bringup_complete | default(false))
+
+# Proactive: once vCenter is up, move the installer VM to vSAN if its datastore is too small
+# for the VM's provisioned size — before bring-up reaches "Relocate VMs to a Resource Pool".
+# Reactive: if bring-up already died on that step, force the move so the PATCH below can resume.
+- name: Relocate installer VM if its datastore is too small (once)
+  ansible.builtin.include_tasks: relocate-installer-vm.yaml
+  vars:
+    bringup_state: "{{ bringup_status_result.json | default({}) }}"
+    reloc_force: "{{ _bringup_nodiskspace_failure | default(false) | bool }}"
+  when:
+    - not (vcf_bringup_complete | default(false))
+    - vcf.relocate_installer_vm | default(true) | bool
+    - not (installer_vm_relocation_done | default(false) | bool)
+    - bringup_status_result.json.milestones is defined
+
+# If the VM was just moved, resume the bring-up (PATCH) instead of failing the task, and keep polling.
+- name: Resume bring-up after relocating the installer VM (PATCH /v1/sddcs/{id})
+  ansible.builtin.uri:
+    url: "https://{{ installer.ipv4_address }}/v1/sddcs/{{ bringup_task_id }}"
+    method: PATCH
+    headers: "{{ installer_auth_headers }}"
+    status_code: [200, 202]
+    validate_certs: "{{ installer.validate_certs }}"
+    body_format: json
+    body: "{{ lookup('template', '../../templates/management-workload-domain.yaml.j2') | from_yaml | to_json }}"
+  register: _bringup_resume_after_relocate
+  retries: "{{ installer.api_retries }}"
+  delay: "{{ installer.api_retries_delay }}"
+  until: _bringup_resume_after_relocate is succeeded
+  no_log: "{{ not (vcf.validation_debug | default(false) | bool) }}"
+  delegate_to: localhost
+  when:
+    - not (vcf_bringup_complete | default(false))
+    - _bringup_nodiskspace_failure | default(false) | bool
+    - _reloc_move is defined and _reloc_move is not skipped and _reloc_move is succeeded
+    - not (bringup_resumed_after_relocate | default(false) | bool)
+
+- name: Mark bring-up resumed after relocation
+  ansible.builtin.set_fact:
+    bringup_resumed_after_relocate: true
+  when: _bringup_resume_after_relocate is defined and _bringup_resume_after_relocate is not skipped
+
 - name: Fail fast on bring-up failure
   ansible.builtin.fail:
     msg: >-
@@ -35,6 +88,8 @@
   when:
     - not (vcf_bringup_complete | default(false))
     - bringup_status_result.json.status | default('') in ['COMPLETED_WITH_FAILURE', 'ROLLBACK_SUCCESS']
+    # a PATCH resume was just issued this cycle — give the next cycle a chance to poll it
+    - not (_bringup_resume_after_relocate is defined and _bringup_resume_after_relocate is not skipped)
 
 - name: Mark bring-up complete on success
   ansible.builtin.set_fact:

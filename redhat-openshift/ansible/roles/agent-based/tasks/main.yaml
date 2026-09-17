@@ -162,6 +162,71 @@
     - not (_mirror_release_check.skipped | default(false))
     - _mirror_release_check.rc != 0
 
+# Since OCP 4.22 the default 'openshift' cluster image policy enforces sigstore
+# signature verification for the release image repositories: nodes reject any
+# release image whose sha256-<digest>.sig manifest is not served by the mirror
+# ("A signature was required, but no signature exists"). 'oc adm release mirror'
+# does NOT copy those signatures — verify them up front instead of failing on
+# the node consoles 90 minutes into the install.
+- name: Determine machine-config-operator digest (sigstore preflight)
+  ansible.builtin.shell:
+    cmd: >-
+      oc adm release info --registry-config '{{ ocp_install_dir }}/.pull-secret.json'
+      --image-for=machine-config-operator '{{ _mirror_registry }}:{{ _ocp_version }}'
+      | sed 's/.*@//'
+  register: _sigstore_mco_digest
+  when:
+    - not iso_exists.stat.exists
+    - _use_private_registry | bool
+    - _ocp_version is version('4.22', '>=')
+
+- name: Verify sigstore signatures are present in mirror (OCP >= 4.22)
+  ansible.builtin.shell:
+    cmd: |
+      AUTH=$(jq -r '.auths["{{ _mirror_registry_host }}"].auth // empty' \
+             '{{ ocp_install_dir }}/.pull-secret.json' 2>/dev/null || true)
+      RELEASE_DIGEST=$(echo '{{ _ocp_release_image.stdout | trim }}' | sed 's/.*@//')
+      MISSING=""
+      for DIGEST in "${RELEASE_DIGEST}" "{{ _sigstore_mco_digest.stdout | trim }}"; do
+        SIG_TAG="sha256-${DIGEST#sha256:}.sig"
+        HTTP_CODE=$(curl -sSk --max-time 15 \
+          -H "Authorization: Basic ${AUTH:-}" \
+          -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+          -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+          -o /dev/null -w "%{http_code}" \
+          "https://{{ _mirror_registry_host }}/v2/{{ _mirror_registry_path }}/manifests/${SIG_TAG}")
+        [ "$HTTP_CODE" = "200" ] || MISSING="${MISSING} ${SIG_TAG} (HTTP ${HTTP_CODE})"
+      done
+      if [ -n "${MISSING}" ]; then
+        echo "Missing sigstore signature manifests in mirror:${MISSING}" >&2
+        exit 1
+      fi
+  register: _mirror_sigstore_check
+  ignore_errors: true
+  when:
+    - not iso_exists.stat.exists
+    - _use_private_registry | bool
+    - _ocp_version is version('4.22', '>=')
+    - (_ocp_release_image.stdout | trim) != ''
+
+- name: Fail if mirror is missing sigstore signatures (OCP >= 4.22)
+  ansible.builtin.fail:
+    msg: >-
+      Mirror {{ _mirror_registry }} is missing sigstore signatures required by
+      OpenShift {{ _ocp_version }}:
+      {{ _mirror_sigstore_check.stderr | default('') }}.
+      Since 4.22, cluster nodes enforce sigstore verification of release images
+      and reject unsigned pulls ("A signature was required, but no signature
+      exists"). Copy the signature tags into the mirror with skopeo as documented
+      in the extension README (section "Mirroring the release images"), or mirror
+      with oc-mirror v2, which copies signatures by default.
+  when:
+    - not iso_exists.stat.exists
+    - _use_private_registry | bool
+    - _mirror_sigstore_check is defined
+    - not (_mirror_sigstore_check.skipped | default(false))
+    - (_mirror_sigstore_check.rc | default(0)) != 0
+
 - name: Include ISO creation tasks
   ansible.builtin.import_tasks:
     file: create-iso.yaml

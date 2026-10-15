@@ -1,0 +1,13 @@
+---
+# NVIDIA datacenter driver from the Ubuntu archive: "-server-open" flavour with the
+# Canonical-signed prebuilt kernel modules (works with Secure Boot, no DKMS/compiler).
+# Only NEW nodes are installed; existing nodes are verified only (verify.yaml).
+- name: NVIDIA | detect GPUs and NVSwitch hardware
+  ansible.builtin.import_tasks: detect.yaml
+
+- name: NVIDIA | install the driver on new GPU nodes
+  ansible.builtin.include_tasks: install.yaml
+  when:
+    - sl_install_nvidia | bool
+    - (sl_gpu_detect.gpu_count | int) > 0
+    - sl_host_is_new | bool

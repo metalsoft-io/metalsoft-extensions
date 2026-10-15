@@ -1,0 +1,143 @@
+---
+# Render slurm.conf / cgroup.conf / gres.conf from the node registry (sl_registry_state)
+# and apply: first start of slurmctld, or `scontrol reconfigure` (Slurm >= 24.11 adds and
+# removes nodes without restarting daemons; configless slurmd get the new files pushed).
+- name: Config | at least one compute node
+  ansible.builtin.assert:
+    that:
+      - sl_nodes_sorted | length > 0
+    fail_msg: "No compute node in the registry — slurmctld refuses to start without nodes."
+    quiet: true
+
+- name: Config | unique node names
+  ansible.builtin.assert:
+    that:
+      - sl_node_names | length == sl_node_names | unique | length
+    fail_msg: "Duplicate Slurm node names in the registry: {{ sl_node_names | join(', ') }}"
+    quiet: true
+
+- name: Config | Slurm configuration files
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ sl_conf_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - slurm.conf
+    - cgroup.conf
+    - gres.conf
+  register: _sl_conf_files
+
+# Files written by a run that failed before slurmctld took them would look "unchanged" to
+# the next run: compare with the digest recorded after the last verified apply instead.
+- name: Config | digest of the managed files and of the last applied configuration
+  ansible.builtin.shell: |
+    set -o pipefail
+    cd {{ sl_conf_dir }} && cat slurm.conf cgroup.conf gres.conf | sha256sum | cut -d' ' -f1
+    cat {{ sl_applied_conf_file }} 2>/dev/null || echo none
+  args:
+    executable: /bin/bash
+  register: _sl_conf_digest
+  changed_when: false
+
+- name: Config | configuration not yet applied
+  ansible.builtin.set_fact:
+    _sl_conf_pending: >-
+      {{ (_sl_conf_files is changed)
+         or (_sl_conf_digest.stdout_lines[0] | trim) != (_sl_conf_digest.stdout_lines[1] | default('none') | trim) }}
+
+- name: Config | site overrides file (created once, never overwritten)
+  ansible.builtin.template:
+    src: local.conf.j2
+    dest: "{{ sl_conf_dir }}/local.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+
+- name: Config | slurmctld drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/slurmctld.service.d
+    state: directory
+    mode: "0755"
+
+# slurmctld must find slurmdbd up at its first start (it registers the cluster), and the
+# packaged unit is not ordered after it (LP #2052431).
+- name: Config | slurmctld ordering after slurmdbd
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/slurmctld.service.d/50-slurm-ext.conf
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension
+      [Unit]
+      After=slurmdbd.service mysql.service
+      Wants=slurmdbd.service
+  register: _sl_ctld_dropin
+
+- name: Config | slurmctld state
+  ansible.builtin.systemd_service:
+    name: slurmctld
+  register: _sl_ctld_unit
+
+- name: Config | start slurmctld (first time)
+  ansible.builtin.systemd_service:
+    name: slurmctld
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: (_sl_ctld_unit.status.ActiveState | default('')) != 'active'
+
+- name: Config | reload unit files
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - (_sl_ctld_unit.status.ActiveState | default('')) == 'active'
+    - _sl_ctld_dropin is changed
+
+- name: Config | apply configuration changes (scontrol reconfigure)
+  ansible.builtin.command: scontrol reconfigure
+  when:
+    - (_sl_ctld_unit.status.ActiveState | default('')) == 'active'
+    - _sl_conf_pending | bool
+  changed_when: true
+
+- name: Config | slurmctld answering
+  block:
+    - name: Config | scontrol ping
+      ansible.builtin.command: scontrol ping
+      register: _sl_ping
+      changed_when: false
+      until: "'is UP' in _sl_ping.stdout"
+      retries: 36
+      delay: 5
+  rescue:
+    - name: Config | slurmctld log
+      ansible.builtin.command: journalctl -u slurmctld -n 80 --no-pager
+      register: _sl_ctld_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Config | slurmctld not answering
+      ansible.builtin.fail:
+        msg: "slurmctld is not answering:\n{{ _sl_ctld_journal.stdout | default('') }}"
+
+- name: Config | slurmctld runs the expected node set
+  ansible.builtin.shell: |
+    set -o pipefail
+    scontrol -o show node | sed -n 's/^NodeName=\([^ ]*\).*/\1/p' | sort -u
+  args:
+    executable: /bin/bash
+  register: _sl_ctld_nodes
+  changed_when: false
+  until: _sl_ctld_nodes.stdout_lines == (sl_node_names | sort)
+  retries: 24
+  delay: 5
+
+- name: Config | record the applied configuration
+  ansible.builtin.copy:
+    dest: "{{ sl_applied_conf_file }}"
+    content: "{{ _sl_conf_digest.stdout_lines[0] | trim }}\n"
+    owner: root
+    group: root
+    mode: "0600"

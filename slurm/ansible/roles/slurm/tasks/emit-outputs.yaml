@@ -1,0 +1,47 @@
+---
+# Emit the extension outputs via the artifacts context.json. The platform REPLACES the
+# stored outputs with every successful run's context.json (a run writing none wipes
+# them), so every playbook ends here. Fail-closed: a payload with empty credentials would
+# wipe good stored values — fail the run instead (a failed run keeps the stored outputs).
+# Keys are exactly the extension.json output labels; NEVER add platform action keys
+# (mount-and-boot, eject-mounted-iso).
+- name: Outputs | complete payload (fail closed)
+  ansible.builtin.assert:
+    that:
+      - sl_outputs_payload.admin_password | length > 0
+      - sl_outputs_payload.admin_ssh_private_key | length > 0
+      - sl_outputs_payload.slurm_installed_version | length > 0
+      - sl_outputs_payload.head_node_ip | length > 0
+      - sl_outputs_payload.compute_node_count | int > 0
+    fail_msg: "Output values could not be collected from the head node — not overwriting the stored outputs."
+    quiet: true
+
+- name: Check if this run already wrote a context JSON
+  ansible.builtin.stat:
+    path: "{{ sl_context_json_path }}"
+  register: _sl_context_artifact
+
+- name: Outputs | write context JSON
+  when: not _sl_context_artifact.stat.exists
+  no_log: true
+  block:
+    - name: Outputs | context JSON artifact
+      ansible.builtin.copy:
+        content: "{{ sl_outputs_payload | to_nice_json }}"
+        dest: "{{ sl_context_json_path }}"
+        mode: "0644"
+
+    # The artifacts copy is consumed and reaped by the platform right after the task
+    # completes — keep a debug copy for the lifetime of the container.
+    - name: Outputs | context JSON debug copy
+      ansible.builtin.copy:
+        content: "{{ sl_outputs_payload | to_nice_json }}"
+        dest: /tmp/context.json
+        mode: "0600"
+
+- name: Outputs | summary
+  ansible.builtin.debug:
+    msg: >-
+      head={{ sl_outputs_payload.head_node_hostname }} ({{ sl_outputs_payload.head_node_ip }})
+      admin={{ sl_outputs_payload.admin_user }} slurm={{ sl_outputs_payload.slurm_installed_version }}
+      nodes={{ sl_outputs_payload.compute_node_count }} gpus={{ sl_outputs_payload.gpu_total }}

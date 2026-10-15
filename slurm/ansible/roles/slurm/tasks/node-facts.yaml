@@ -1,0 +1,30 @@
+---
+# Raw facts only — registry-entries.json.j2 (run on the head) parses them. `slurmd -C`
+# does not read slurm.conf, so it works before the node is configured.
+- name: Facts | slurmd -C hardware line
+  ansible.builtin.command: slurmd -C
+  register: _sl_slurmd_c
+  changed_when: false
+
+- name: Facts | NVIDIA GPU models (as Slurm AutoDetect=nvidia names them)
+  ansible.builtin.shell: |
+    set -o pipefail
+    for f in /proc/driver/nvidia/gpus/*/information; do
+      [ -r "$f" ] && sed -n 's/^Model:[[:space:]]*//p' "$f"
+    done
+    true
+  args:
+    executable: /bin/bash
+  register: _sl_gpu_models
+  changed_when: false
+
+- name: Facts | publish raw facts for the controller
+  ansible.builtin.set_fact:
+    sl_raw_slurmd_c: "{{ _sl_slurmd_c.stdout }}"
+    # PCI count when the extension manages the driver (a GPU the driver loses then drains
+    # the node); otherwise only the GPUs a pre-installed driver exposes (0 without one)
+    sl_raw_gpu_count: >-
+      {{ (sl_gpu_detect.gpu_count | default(0) | int) if (sl_install_nvidia | bool)
+         else (_sl_gpu_models.stdout_lines | map('trim') | reject('equalto', '') | list | length) }}
+    sl_raw_gpu_models: "{{ _sl_gpu_models.stdout_lines | map('trim') | reject('equalto', '') | list }}"
+    sl_raw_hostname: "{{ ansible_facts['hostname'] }}"

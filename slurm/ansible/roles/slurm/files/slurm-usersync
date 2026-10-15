@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Cluster user synchronisation for the MetalSoft Slurm extension.
+
+Slurm runs every job as the submitting user on the compute nodes, so each user must
+exist there with the SAME uid/gid. The head node is the source of truth (users are
+created with slurm-useradd); compute nodes PULL the list from the shared filesystem —
+no SSH fan-out, and a node that was offline catches up on its next run.
+
+  slurm-usersync --export   (head)     write /shared/.slurm-ext/{passwd,group,users.meta}
+  slurm-usersync --import   (compute)  create/update/remove local accounts to match
+
+Only accounts with uid/gid in [UID_MIN, UID_MAX] and the "slurm-users" group are ever
+touched. Password hashes are never exported (compute-node accounts stay locked; users
+log in to the head node). Homes live on the shared filesystem and are never removed here.
+"""
+import fcntl
+import grp
+import json
+import os
+import pwd
+import subprocess
+import sys
+import tempfile
+
+UID_MIN = 2000
+UID_MAX = 59999
+USERS_GROUP = "slurm-users"
+SHARED = "/shared/.slurm-ext"
+CLUSTER_FILE = "/etc/slurm-ext/cluster.json"
+UUID_FILE = "/etc/slurm-ext/secrets/cluster_uuid"
+NODE_ID_FILE = "/etc/slurm-ext-node/cluster-id"
+LOCK = "/run/slurm-usersync.lock"
+
+
+def managed(i):
+    return UID_MIN <= i <= UID_MAX
+
+
+def log(msg):
+    print("slurm-usersync: " + msg, flush=True)
+
+
+def write_atomic(path, text):
+    d = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def cluster_uuid():
+    """uuid stamped into the snapshot; compute nodes refuse a snapshot of another cluster."""
+    uuid = ""
+    if os.path.exists(CLUSTER_FILE):
+        with open(CLUSTER_FILE, encoding="utf-8") as fh:
+            uuid = json.load(fh).get("uuid", "")
+    elif os.path.exists(UUID_FILE):
+        with open(UUID_FILE, encoding="utf-8") as fh:
+            uuid = fh.read().strip()
+    if not uuid:
+        raise SystemExit("slurm-usersync: no cluster id in %s or %s — refusing to export" % (CLUSTER_FILE, UUID_FILE))
+    return uuid
+
+
+def export():
+    uuid = cluster_uuid()
+    users = sorted((p for p in pwd.getpwall() if managed(p.pw_uid)), key=lambda p: p.pw_uid)
+    names = {p.pw_name for p in users}
+    groups = []
+    for g in sorted(grp.getgrall(), key=lambda g: g.gr_gid):
+        if managed(g.gr_gid) or g.gr_name == USERS_GROUP:
+            groups.append((g.gr_name, g.gr_gid, sorted(m for m in g.gr_mem if m in names)))
+    os.makedirs(SHARED, mode=0o755, exist_ok=True)
+    write_atomic(os.path.join(SHARED, "passwd"), "".join(
+        "%s:x:%d:%d:%s:%s:%s\n" % (p.pw_name, p.pw_uid, p.pw_gid, p.pw_gecos, p.pw_dir, p.pw_shell)
+        for p in users))
+    write_atomic(os.path.join(SHARED, "group"), "".join(
+        "%s:x:%d:%s\n" % (n, gid, ",".join(mem)) for n, gid, mem in groups))
+    write_atomic(os.path.join(SHARED, "users.meta"), json.dumps(
+        {"cluster": uuid, "users": len(users)}) + "\n")
+    log("exported %d user(s), %d group(s)" % (len(users), len(groups)))
+
+
+def run(cmd):
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        log("FAILED %s: %s" % (" ".join(cmd), res.stderr.strip()))
+    return res.returncode == 0
+
+
+def load_snapshot():
+    meta_path = os.path.join(SHARED, "users.meta")
+    if not os.path.exists(meta_path):
+        log("no snapshot at %s yet — nothing to do" % SHARED)
+        return None
+    with open(meta_path, encoding="utf-8") as fh:
+        meta = json.load(fh)
+    if os.path.exists(NODE_ID_FILE):
+        with open(NODE_ID_FILE, encoding="utf-8") as fh:
+            node_cluster = fh.read().strip()
+        if node_cluster and meta.get("cluster") != node_cluster:
+            log("snapshot belongs to cluster %r, this node to %r — refusing" % (meta.get("cluster"), node_cluster))
+            return None
+    users, groups = {}, {}
+    with open(os.path.join(SHARED, "passwd"), encoding="utf-8") as fh:
+        for line in fh:
+            f = line.rstrip("\n").split(":")
+            if len(f) == 7 and managed(int(f[2])):
+                users[f[0]] = {"uid": int(f[2]), "gid": int(f[3]), "gecos": f[4], "home": f[5], "shell": f[6]}
+    with open(os.path.join(SHARED, "group"), encoding="utf-8") as fh:
+        for line in fh:
+            f = line.rstrip("\n").split(":")
+            if len(f) == 4 and (managed(int(f[2])) or f[0] == USERS_GROUP):
+                groups[f[0]] = {"gid": int(f[2]), "members": [m for m in f[3].split(",") if m]}
+    if not users:
+        # the cluster admin always exists: an empty list means a broken/partial snapshot
+        log("snapshot lists no users — refusing to apply")
+        return None
+    return users, groups
+
+
+def do_import():
+    snap = load_snapshot()
+    if snap is None:
+        return 0
+    users, groups = snap
+    ok = True
+    local_groups = {g.gr_name: g for g in grp.getgrall()}
+    local_users = {p.pw_name: p for p in pwd.getpwall()}
+
+    for name, g in sorted(groups.items(), key=lambda kv: kv[1]["gid"]):
+        cur = local_groups.get(name)
+        if cur is None:
+            ok &= run(["groupadd", "-g", str(g["gid"]), name])
+        elif cur.gr_gid != g["gid"]:
+            log("group %s has gid %d locally, %d in the cluster — not touched" % (name, cur.gr_gid, g["gid"]))
+            ok = False
+
+    for name, u in sorted(users.items(), key=lambda kv: kv[1]["uid"]):
+        cur = local_users.get(name)
+        if cur is None:
+            ok &= run(["useradd", "-u", str(u["uid"]), "-g", str(u["gid"]), "-M", "-d", u["home"],
+                       "-s", u["shell"], "-c", u["gecos"], name])
+        elif cur.pw_uid != u["uid"] or cur.pw_gid != u["gid"]:
+            log("user %s has uid/gid %d/%d locally, %d/%d in the cluster — not touched"
+                % (name, cur.pw_uid, cur.pw_gid, u["uid"], u["gid"]))
+            ok = False
+
+    if USERS_GROUP in groups:
+        want = sorted(m for m in groups[USERS_GROUP]["members"] if m in users)
+        try:
+            have = sorted(grp.getgrnam(USERS_GROUP).gr_mem)
+        except KeyError:
+            have = None
+        if have is not None and have != want:
+            ok &= run(["gpasswd", "-M", ",".join(want), USERS_GROUP])
+
+    for p in pwd.getpwall():
+        if managed(p.pw_uid) and p.pw_name not in users:
+            ok &= run(["userdel", p.pw_name])
+    remaining_primary = {p.pw_gid for p in pwd.getpwall()}
+    for g in grp.getgrall():
+        if managed(g.gr_gid) and g.gr_name not in groups and g.gr_gid not in remaining_primary:
+            ok &= run(["groupdel", g.gr_name])
+
+    log("in sync: %d user(s)" % len(users) if ok else "completed with errors")
+    return 0 if ok else 1
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1] not in ("--export", "--import"):
+        raise SystemExit(__doc__)
+    if os.geteuid() != 0:
+        raise SystemExit("must run as root")
+    with open(LOCK, "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if argv[1] == "--export":
+            export()
+            return 0
+        return do_import()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

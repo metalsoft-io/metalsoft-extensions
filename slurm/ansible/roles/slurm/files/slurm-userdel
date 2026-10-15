@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Remove a Slurm cluster user (MetalSoft Slurm extension). Run as root on the head node:
+
+  sudo slurm-userdel [--cancel-jobs] [--remove-home] USER
+
+Removes the Slurm accounting association and the account (compute nodes follow within a
+minute). Refuses while the user has jobs unless --cancel-jobs. The home directory on
+/shared is kept unless --remove-home (its uid is never given to another user; a later
+slurm-useradd of the same name gets it back).
+"""
+import argparse
+import grp
+import json
+import os
+import pwd
+import shutil
+import subprocess
+import sys
+import time
+
+CLUSTER_FILE = "/etc/slurm-ext/cluster.json"
+HOME_BASE = "/shared/home"
+UID_MIN = 2001
+UID_MAX = 59999
+
+
+def sh(cmd, check=True):
+    res = subprocess.run(cmd, check=False, text=True, capture_output=True)
+    if check and res.returncode != 0:
+        die("%s failed: %s" % (" ".join(cmd), (res.stderr or res.stdout).strip()))
+    return res
+
+
+def die(msg):
+    sys.stderr.write("slurm-userdel: %s\n" % msg)
+    sys.exit(1)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Remove a Slurm cluster user")
+    ap.add_argument("user")
+    ap.add_argument("--cancel-jobs", action="store_true", help="cancel the user's jobs first")
+    ap.add_argument("--remove-home", action="store_true", help="delete /shared/home/USER")
+    args = ap.parse_args()
+
+    if os.geteuid() != 0:
+        die("must run as root (sudo)")
+    if not os.path.exists(CLUSTER_FILE):
+        die("run this on the Slurm head node")
+    with open(CLUSTER_FILE, encoding="utf-8") as fh:
+        cluster = json.load(fh)
+    try:
+        pw = pwd.getpwnam(args.user)
+    except KeyError:
+        die("no such user: %s" % args.user)
+    if not UID_MIN <= pw.pw_uid <= UID_MAX:
+        die("%s is not a cluster user created by slurm-useradd" % args.user)
+    if args.user == cluster.get("admin_user"):
+        die("refusing to remove the cluster admin user")
+
+    # a failing squeue (slurmctld down) must not read as "no jobs"
+    jobs = sh(["squeue", "-h", "-u", args.user, "-o", "%A"]).stdout.split()
+    if jobs and not args.cancel_jobs:
+        die("%s has %d job(s); re-run with --cancel-jobs" % (args.user, len(jobs)))
+    if jobs:
+        sh(["scancel", "-u", args.user], check=False)
+
+    # the association goes first (no new jobs); slurmdbd refuses while cancelled jobs are
+    # still completing, so retry for a while. The local account is removed only after.
+    deadline = time.time() + 300
+    while True:
+        res = sh(["sacctmgr", "-i", "delete", "user", args.user], check=False)
+        out = res.stdout + res.stderr
+        if res.returncode == 0 or "Nothing deleted" in out:
+            break
+        if "job(s) active" not in out.lower() or time.time() > deadline:
+            die("could not remove the accounting association of %s: %s" % (args.user, out.strip()))
+        time.sleep(10)
+    sh(["userdel", args.user])
+    try:
+        grp.getgrnam(args.user)
+        sh(["groupdel", args.user], check=False)
+    except KeyError:
+        pass
+    sh(["/usr/local/sbin/slurm-usersync", "--export"])
+
+    home = os.path.join(HOME_BASE, args.user)
+    if args.remove_home and os.path.realpath(home).startswith(HOME_BASE + "/") and os.path.isdir(home):
+        shutil.rmtree(home)
+        print("removed %s" % home)
+    print("removed Slurm user %s (compute nodes follow within a minute)" % args.user)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync Slurm cluster users from /shared (MetalSoft Slurm extension)
+After=network-online.target remote-fs.target
+Wants=network-online.target
+RequiresMountsFor=/shared
+Before=slurmd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/slurm-usersync --import

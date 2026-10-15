@@ -1,0 +1,66 @@
+---
+# Head node = source of truth across lifecycle runs (each task gets a fresh /runner and
+# the platform `context` does not survive between deployments). Read it into facts:
+#   sl_cluster_state_fact  cluster.json + bootstrapped flag
+#   sl_registry_state      node registry {inventory host: entry}
+- name: State | state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ sl_state_dir }}"
+    - "{{ sl_registry_dir }}"
+    - "{{ sl_secrets_dir }}"
+
+- name: State | registry helper
+  ansible.builtin.copy:
+    src: slurm-ext-registry
+    dest: "{{ sl_sbin }}/slurm-ext-registry"
+    mode: "0755"
+
+- name: State | read node registry
+  ansible.builtin.command: "{{ sl_sbin }}/slurm-ext-registry dump"
+  register: _sl_registry_dump
+  changed_when: false
+
+- name: State | read cluster.json
+  ansible.builtin.slurp:
+    src: "{{ sl_cluster_file }}"
+  register: _sl_cluster_json
+  failed_when: false
+
+- name: State | bootstrapped marker
+  ansible.builtin.stat:
+    path: "{{ sl_bootstrapped_file }}"
+  register: _sl_bootstrapped_stat
+
+# scale-out nodes registered by an earlier (failed) run that still need validation
+- name: State | read pending-validation list
+  ansible.builtin.slurp:
+    src: "{{ sl_pending_file }}"
+  register: _sl_pending_json
+  failed_when: false
+
+- name: State | publish head state as facts
+  ansible.builtin.set_fact:
+    sl_pending_state: "{{ (_sl_pending_json.content | b64decode | from_json) if (_sl_pending_json.content is defined) else [] }}"
+    sl_registry_state: "{{ _sl_registry_dump.stdout | from_json }}"
+    sl_cluster_state_fact: >-
+      {{ ((_sl_cluster_json.content | b64decode | from_json) if (_sl_cluster_json.content is defined) else {})
+         | combine({'bootstrapped': _sl_bootstrapped_stat.stat.exists}) }}
+
+- name: State | freeze the set of new compute nodes for this run
+  ansible.builtin.set_fact:
+    sl_new_hosts_snapshot: "{{ _sl_new_compute_hosts_live }}"
+
+- name: State | summary
+  ansible.builtin.debug:
+    msg: >-
+      cluster={{ sl_cluster_state_fact.uuid | default('(new)') }}
+      bootstrapped={{ sl_cluster_state_fact.bootstrapped }}
+      registered nodes={{ sl_registry_state.keys() | list | length }}
+      new compute={{ sl_new_compute_hosts | join(',') or '-' }}
+      pending validation={{ sl_pending_hosts | join(',') or '-' }}

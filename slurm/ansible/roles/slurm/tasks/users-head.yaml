@@ -1,0 +1,88 @@
+---
+# Cluster admin + tooling on the head node. Users are replicated to compute nodes by
+# slurm-usersync (compute nodes pull /shared/.slurm-ext/{passwd,group}).
+- name: Users | user tools
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ sl_sbin }}/{{ item }}"
+    mode: "0755"
+  loop:
+    - slurm-useradd
+    - slurm-userdel
+    - slurm-usersync
+    - slurm-ext-drain
+
+- name: Users | admin group
+  ansible.builtin.group:
+    name: "{{ sl_admin_user }}"
+    gid: "{{ sl_admin_uid }}"
+
+# NOT a member of slurm-users: compute nodes deny SSH to that group, the admin keeps it.
+- name: Users | admin user
+  ansible.builtin.user:
+    name: "{{ sl_admin_user }}"
+    uid: "{{ sl_admin_uid }}"
+    group: "{{ sl_admin_user }}"
+    home: "{{ sl_home_base }}/{{ sl_admin_user }}"
+    create_home: true
+    shell: /bin/bash
+    comment: Slurm cluster admin
+
+# Set ONCE (marker) so a later converge never reverts a password the admin changed.
+- name: Users | initial admin password
+  ansible.builtin.shell: |
+    set -o pipefail
+    printf '%s:%s\n' '{{ sl_admin_user }}' "$(cat {{ sl_secrets_dir }}/admin_password)" | chpasswd
+    touch {{ sl_secrets_dir }}/.admin_password_set
+  args:
+    executable: /bin/bash
+    creates: "{{ sl_secrets_dir }}/.admin_password_set"
+  no_log: true
+
+- name: Users | admin SSH directory
+  ansible.builtin.file:
+    path: "{{ sl_home_base }}/{{ sl_admin_user }}/.ssh"
+    state: directory
+    owner: "{{ sl_admin_user }}"
+    group: "{{ sl_admin_user }}"
+    mode: "0700"
+
+# The generated key pair is also the admin's own key, so `ssh <compute node>` from the
+# head works (homes are shared, compute nodes accept the admin).
+- name: Users | admin key pair in the admin home
+  ansible.builtin.copy:
+    src: "{{ sl_secrets_dir }}/{{ item.src }}"
+    remote_src: true
+    dest: "{{ sl_home_base }}/{{ sl_admin_user }}/.ssh/{{ item.dest }}"
+    owner: "{{ sl_admin_user }}"
+    group: "{{ sl_admin_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: admin_ssh_key, dest: id_ed25519, mode: "0600" }
+    - { src: admin_ssh_key.pub, dest: id_ed25519.pub, mode: "0644" }
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Users | authorized keys of the admin (generated + optional tenant key)
+  ansible.builtin.blockinfile:
+    path: "{{ sl_home_base }}/{{ sl_admin_user }}/.ssh/authorized_keys"
+    create: true
+    owner: "{{ sl_admin_user }}"
+    group: "{{ sl_admin_user }}"
+    mode: "0600"
+    marker: "# {mark} MetalSoft Slurm extension"
+    block: |
+      {{ sl_admin_pubkey }}
+      {% if sl_admin_extra_pubkey | length > 0 %}
+      {{ sl_admin_extra_pubkey }}
+      {% endif %}
+
+- name: Users | publish the user list for the compute nodes
+  ansible.builtin.command: "{{ sl_sbin }}/slurm-usersync --export"
+  changed_when: false
+
+- name: Users | login message with a quick start
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/update-motd.d/60-slurm-ext
+    mode: "0755"

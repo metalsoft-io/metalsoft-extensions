@@ -1,0 +1,407 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "Slurm HPC Cluster",
+  "label": "slurm",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.0.0",
+  "description": "Deploys and manages a Slurm HPC/AI cluster (1 head node + scalable compute nodes, optional NVIDIA GPUs) on Ubuntu 26.04 bare metal.",
+  "icon": "https://slurm.schedmd.com/slurm_logo.png",
+  "dependencies": {
+    "controllerVersion": "release-v7.5",
+    "osTemplates": [
+      "ubuntu-26-04-lts-waitforssh"
+    ]
+  },
+  "inputs": [
+    {
+      "label": "head_server_type",
+      "name": "head_server_type",
+      "helpText": "Head node: Slurm controller, accounting DB, NFS /shared, user login. 16+ GB RAM, disk sized for /shared. Fixed after create.",
+      "inputType": "ExtensionInputServerType",
+      "setOnly": true,
+      "options": {
+        "minRamGb": 8
+      }
+    },
+    {
+      "label": "compute_server_type",
+      "name": "compute_server_type",
+      "helpText": "Server type of every compute node (CPU-only or NVIDIA GPU). Fixed after create.",
+      "inputType": "ExtensionInputServerType",
+      "setOnly": true,
+      "options": {}
+    },
+    {
+      "label": "compute_count",
+      "name": "compute_count",
+      "helpText": "Number of compute nodes (1-128). Edit to scale out/in; scale-in drains running jobs first.",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 2,
+      "options": {
+        "minValue": 1,
+        "maxValue": 128
+      }
+    },
+    {
+      "label": "os_template",
+      "name": "os_template",
+      "helpText": "Ubuntu 26.04 LTS is REQUIRED (e.g. ubuntu-26-04-lts-waitforssh) on all nodes; any other OS fails the preflight.",
+      "inputType": "ExtensionInputOsTemplate",
+      "setOnly": true,
+      "options": {
+        "osFamily": "Ubuntu"
+      }
+    },
+    {
+      "label": "slurm_source",
+      "name": "slurm_source",
+      "helpText": "upstream: build slurm_version from SchedMD source (patched). ubuntu: Ubuntu 25.11.2 package (unpatched CVEs, admin opt-in).",
+      "inputType": "ExtensionInputEnum",
+      "setOnly": true,
+      "defaultValue": "upstream",
+      "options": {
+        "values": [
+          "upstream",
+          "ubuntu"
+        ]
+      }
+    },
+    {
+      "label": "slurm_version",
+      "name": "slurm_version",
+      "helpText": "SchedMD Slurm release built when slurm_source=upstream (checksum-pinned). Ignored for slurm_source=ubuntu.",
+      "inputType": "ExtensionInputEnum",
+      "setOnly": true,
+      "defaultValue": "26.05.4",
+      "options": {
+        "values": [
+          "26.05.4",
+          "25.11.8"
+        ]
+      }
+    },
+    {
+      "label": "cluster_name",
+      "name": "cluster_name",
+      "helpText": "Slurm ClusterName (accounting key): lowercase letter first, then lowercase letters, digits, underscore.",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "slurm",
+      "options": {
+        "validationRegEx": "^[a-z][a-z0-9_]{0,39}$"
+      }
+    },
+    {
+      "label": "partition_name",
+      "name": "partition_name",
+      "helpText": "Default partition (job queue) holding all compute nodes. Must not be \"default\".",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "compute",
+      "options": {
+        "validationRegEx": "^[a-z][a-z0-9_]{0,31}$"
+      }
+    },
+    {
+      "label": "admin_username",
+      "name": "admin_username",
+      "helpText": "Cluster admin login (sudo + Slurm administrator). Must not be a system/OS-template user (e.g. ubuntu, root).",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "slurmadmin",
+      "options": {
+        "validationRegEx": "^[a-z_][a-z0-9_-]{0,30}$"
+      }
+    },
+    {
+      "label": "admin_ssh_public_key",
+      "name": "admin_ssh_public_key",
+      "helpText": "Optional extra OpenSSH public key (one line) for the admin user. A key pair is also generated (see outputs).",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^$|^(ssh|ecdsa|sk)-[a-z0-9@.-]+ [A-Za-z0-9+/=]+( [^{}%]*)?$"
+      }
+    },
+    {
+      "label": "install_nvidia_driver",
+      "name": "install_nvidia_driver",
+      "helpText": "Install the NVIDIA driver on GPU nodes. Off: GPUs are used only if the OS image already ships a working driver.",
+      "inputType": "ExtensionInputBoolean",
+      "setOnly": true,
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "install_apptainer",
+      "name": "install_apptainer",
+      "helpText": "Install Apptainer (HPC container runtime, from the official Apptainer PPA) on all nodes.",
+      "inputType": "ExtensionInputBoolean",
+      "setOnly": true,
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "external_nfs_export",
+      "name": "external_nfs_export",
+      "helpText": "Optional NFS export (host:/path) mounted at /data on all nodes for datasets/results. Leave empty for none.",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^$|^[A-Za-z0-9][A-Za-z0-9.-]{0,252}:/[A-Za-z0-9._/-]*$"
+      }
+    },
+    {
+      "label": "scale_in_drain_timeout_minutes",
+      "name": "scale_in_drain_timeout_minutes",
+      "helpText": "Scale-in: minutes to wait for jobs on removed nodes before requeue/cancel (0-720).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 60,
+      "options": {
+        "minValue": 0,
+        "maxValue": 720
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "label": "head_node_ip",
+      "name": "head_node_ip",
+      "helpText": "IP address of the head (login) node.",
+      "outputType": "string"
+    },
+    {
+      "label": "head_node_hostname",
+      "name": "head_node_hostname",
+      "helpText": "Host name of the head (login) node.",
+      "outputType": "string"
+    },
+    {
+      "label": "ssh_command",
+      "name": "ssh_command",
+      "helpText": "SSH command to log in to the cluster as the admin user.",
+      "outputType": "string"
+    },
+    {
+      "label": "admin_user",
+      "name": "admin_user",
+      "helpText": "Cluster admin user name.",
+      "outputType": "string"
+    },
+    {
+      "label": "admin_password",
+      "name": "admin_password",
+      "helpText": "Initial password of the admin user (changing it later is not reflected here).",
+      "outputType": "password",
+      "isPassword": true
+    },
+    {
+      "label": "admin_ssh_private_key",
+      "name": "admin_ssh_private_key",
+      "helpText": "Generated OpenSSH ed25519 private key of the admin user.",
+      "outputType": "secret",
+      "isPassword": true
+    },
+    {
+      "label": "slurm_cluster_name",
+      "name": "slurm_cluster_name",
+      "helpText": "Slurm ClusterName.",
+      "outputType": "string"
+    },
+    {
+      "label": "slurm_installed_version",
+      "name": "slurm_installed_version",
+      "helpText": "Slurm version running on the cluster.",
+      "outputType": "string"
+    },
+    {
+      "label": "default_partition",
+      "name": "default_partition",
+      "helpText": "Default Slurm partition.",
+      "outputType": "string"
+    },
+    {
+      "label": "compute_node_count",
+      "name": "compute_node_count",
+      "helpText": "Number of compute nodes registered in Slurm.",
+      "outputType": "string"
+    },
+    {
+      "label": "compute_nodes",
+      "name": "compute_nodes",
+      "helpText": "Comma-separated Slurm node names.",
+      "outputType": "string"
+    },
+    {
+      "label": "gpu_total",
+      "name": "gpu_total",
+      "helpText": "Total NVIDIA GPUs schedulable in the cluster.",
+      "outputType": "string"
+    },
+    {
+      "label": "data_mount",
+      "name": "data_mount",
+      "helpText": "External NFS export mounted at /data, or empty.",
+      "outputType": "string"
+    }
+  ],
+  "infrastructure": {
+    "instanceArrays": [
+      {
+        "label": "slurmhead",
+        "instanceCount": "1",
+        "serverType": "#/input/head_server_type",
+        "osTemplate": "#/input/os_template",
+        "logicalNetworks": [
+          {
+            "label": "slurm-net",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          }
+        ],
+        "tags": [
+          "slurm-head"
+        ]
+      },
+      {
+        "label": "slurmcompute",
+        "instanceCount": "#/input/compute_count",
+        "serverType": "#/input/compute_server_type",
+        "osTemplate": "#/input/os_template",
+        "logicalNetworks": [
+          {
+            "label": "slurm-net",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          }
+        ],
+        "tags": [
+          "slurm-compute"
+        ]
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "label": "slurm-net",
+        "profileLabel": "slurm-net"
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "slurm-ansible-bundle",
+      "name": "slurm-ansible-bundle",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/slurm/slurm-v1.0.0.zip"
+    },
+    {
+      "label": "ee-slurm-1-0-0",
+      "name": "ee-slurm-1-0-0",
+      "assetType": "OciImage",
+      "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-slurm-1.0.0.tar.gz",
+      "repositoryRegistry": "registry.metalsoft.dev",
+      "namespaceRegistry": "ee-slurm",
+      "tagRegistry": "1.0.0"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "preDeploy",
+      "tasks": []
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "slurm-deploy",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "slurm-ansible-bundle",
+            "playbook": "deploy.yaml",
+            "ee": "ee-slurm-1-0-0",
+            "executionTimeout": 18000,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onEdit": [
+    {
+      "stage": "preDeploy",
+      "tasks": [
+        {
+          "label": "slurm-scale-in",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "slurm-ansible-bundle",
+            "playbook": "scale-in.yaml",
+            "ee": "ee-slurm-1-0-0",
+            "executionTimeout": 46800,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "slurm-converge",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "slurm-ansible-bundle",
+            "playbook": "deploy.yaml",
+            "ee": "ee-slurm-1-0-0",
+            "executionTimeout": 18000,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onDelete": [],
+  "configVars": [
+    {
+      "label": "nvidia_driver_branch",
+      "name": "nvidia_driver_branch",
+      "helpText": "NVIDIA driver branch for GPU nodes: 580 (long-term support, default) or 595.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "580",
+      "options": {
+        "validationRegEx": "^(580|595)$"
+      }
+    },
+    {
+      "label": "nvidia_blackwell_hgx_enabled",
+      "name": "nvidia_blackwell_hgx_enabled",
+      "helpText": "Allow HGX B200/B300 nodes (adds NVIDIA CUDA repo for nvlsm + IB tools). Experimental. Off: such nodes fail.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "allow_ubuntu_slurm_source",
+      "name": "allow_ubuntu_slurm_source",
+      "helpText": "Allow tenants to choose slurm_source=ubuntu (Ubuntu 25.11.2 package with known unpatched CVEs).",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    }
+  ]
+}

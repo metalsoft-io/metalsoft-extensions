@@ -1,0 +1,118 @@
+---
+# upstream: build SchedMD's slurm-smd packages once (checksum-verified tarball), publish
+#           them under /shared/.slurm-ext/debs/<version> for the compute nodes, install.
+# ubuntu:   install the Ubuntu archive packages; the installed version is recorded and
+#           compute nodes install exactly that version.
+# Package installs run under a policy-rc.d that blocks service start: the packages enable
+# and start their units on install, before configuration exists.
+
+- name: Packages | build helper
+  ansible.builtin.copy:
+    src: slurm-ext-build
+    dest: "{{ sl_sbin }}/slurm-ext-build"
+    mode: "0755"
+  when: sl_source == 'upstream'
+
+- name: Packages | build Slurm {{ sl_version_input }} from source (first deploy only, ~10-30 min)
+  when: sl_source == 'upstream'
+  block:
+    - name: Packages | build slurm-smd packages
+      ansible.builtin.command:
+        cmd: >-
+          {{ sl_sbin }}/slurm-ext-build {{ sl_version_input }}
+          {{ sl_bom[sl_version_input].sha256 }} {{ sl_debs_dir }}
+        creates: "{{ sl_debs_dir }}/.complete"
+      async: 7200
+      poll: 30
+  rescue:
+    - name: Packages | build log tail
+      ansible.builtin.command: "tail -n 80 {{ sl_build_dir }}/build-{{ sl_version_input }}.log"
+      register: _sl_build_log
+      changed_when: false
+      failed_when: false
+
+    - name: Packages | build failed
+      ansible.builtin.fail:
+        msg: "Slurm {{ sl_version_input }} package build failed:\n{{ _sl_build_log.stdout | default('') }}"
+
+- name: Packages | installed Slurm package versions
+  ansible.builtin.shell: |
+    dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\n' \
+      'slurm-smd*' 'slurmctld' 'slurmdbd' 'slurm-client' 'slurm-wlm-basic-plugins' 2>/dev/null || true
+  register: _sl_installed_pkgs
+  changed_when: false
+
+- name: Packages | install on the head node
+  vars:
+    _sl_have: >-
+      {{ _sl_installed_pkgs.stdout_lines | select('search', ' ii *$') | map('split', ' ') | map('first') | list }}
+    _sl_want: "{{ sl_upstream_head_pkgs if sl_source == 'upstream' else sl_distro_head_pkgs }}"
+  when: (_sl_want | reject('in', _sl_have) | list | length) > 0
+  block:
+    - name: Packages | block service start during install
+      ansible.builtin.copy:
+        dest: /usr/sbin/policy-rc.d
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # MetalSoft Slurm extension: services are started once configured
+          exit 101
+
+    # one apt transaction for the interdependent local .debs (the apt module's deb=
+    # takes a single file); dependencies resolve from the Ubuntu archive
+    - name: Packages | install upstream slurm-smd packages  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: >-
+          apt-get install -y --no-install-recommends
+          {% for p in sl_upstream_head_pkgs %}{{ sl_debs_dir }}/{{ p }}_{{ sl_version_input }}-1_amd64.deb {% endfor %}
+          {{ sl_runtime_pkgs | join(' ') }}
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: sl_source == 'upstream'
+      changed_when: true
+
+    - name: Packages | install Ubuntu archive Slurm packages
+      ansible.builtin.apt:
+        name: "{{ sl_distro_head_pkgs + sl_runtime_pkgs }}"
+        state: present
+        install_recommends: false
+        lock_timeout: 900
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: sl_source == 'ubuntu'
+  always:
+    - name: Packages | allow service start again
+      ansible.builtin.file:
+        path: /usr/sbin/policy-rc.d
+        state: absent
+
+- name: Packages | Slurm version on the head node
+  ansible.builtin.command: "dpkg-query -W -f=${Version} {{ 'slurm-smd' if sl_source == 'upstream' else sl_distro_version_pkg }}"
+  register: _sl_head_pkg_version
+  changed_when: false
+
+- name: Packages | record the installed package version
+  ansible.builtin.set_fact:
+    sl_pkg_version: "{{ _sl_head_pkg_version.stdout | trim }}"
+
+- name: Packages | upstream version matches the requested release
+  ansible.builtin.assert:
+    that:
+      - sl_pkg_version is match('^' ~ (sl_version_input | regex_escape) ~ '-')
+    fail_msg: >-
+      The head node runs slurm-smd {{ sl_pkg_version }} but slurm_version is
+      {{ sl_version_input }}; changing the Slurm version of an existing cluster is not
+      supported by this extension version.
+    quiet: true
+  when: sl_source == 'upstream'
+
+- name: Packages | runtime directories owned by SlurmUser
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: slurm
+    group: slurm
+    mode: "0755"
+  loop:
+    - "{{ sl_log_dir }}"
+    - "{{ sl_state_save_dir }}"

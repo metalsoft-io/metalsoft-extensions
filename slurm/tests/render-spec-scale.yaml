@@ -1,0 +1,135 @@
+---
+# Offline render/contract test — edit scenario (bootstrapped cluster; node-c leaving,
+# node-d joining).
+# Run: cd tests && ansible-playbook -i inventory-scale.yaml render-spec-scale.yaml
+- name: Render the Slurm bundle from fixtures (edit)
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  vars:
+    ext: "{{ lookup('ansible.builtin.file', '../extension.json') | from_json }}"
+    t: ../ansible/roles/slurm/templates
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Assert | edit-time node sets
+      ansible.builtin.assert:
+        that:
+          - sl_bootstrapped | bool
+          - sl_compute_hosts == ['node-a', 'node-b.slurm.example.com', 'node-d']
+          - sl_scale_in_hosts == ['node-c']
+          - sl_scale_out_hosts == ['node-d']
+          # new/existing come from the registry, not from scale-group membership
+          - sl_new_compute_hosts == ['node-d']
+          - sl_existing_compute_hosts == ['node-a', 'node-b.slurm.example.com']
+          # preDeploy: the leaving host maps to its Slurm name through the registry
+          - sl_leaving_hosts == ['node-c']
+          - sl_leaving_names == ['gpu-node-x']
+          # postDeploy: a registered host no longer in the main group is "stale"
+          - sl_stale_registry_hosts == ['node-c']
+          - sl_setonly_changed == []
+          - not (sl_head_scale_requested | bool)
+        quiet: true
+
+    - name: Assert | pending-validation set (node-b from an earlier failed scale-out)
+      ansible.builtin.assert:
+        that:
+          - sl_pending_hosts == ['node-b.slurm.example.com', 'node-gone']
+          # registered-but-pending nodes are re-validated, hosts that left are ignored
+          - sl_validate_hosts == ['node-b.slurm.example.com', 'node-d']
+          - sl_up_validate_hosts == ['node-b.slurm.example.com', 'node-d']
+          - sl_unreachable_new_hosts == []
+          # node baseline (upgrade, driver, reboot) stays registry-based: node-b is existing
+          - sl_up_new_compute_hosts == ['node-d']
+          # controller.yaml: written before the registry put
+          - ((sl_pending_hosts + sl_up_new_compute_hosts) | select('in', sl_compute_hosts) | unique | list)
+            == ['node-b.slurm.example.com', 'node-d']
+          # validate.yaml: after the validated set passed, nothing stays pending
+          - ((sl_pending_hosts + sl_new_compute_hosts) | reject('in', sl_up_validate_hosts)
+             | select('in', sl_compute_hosts) | unique | list) == []
+        quiet: true
+
+    - name: Keep the fixture inputs
+      ansible.builtin.set_fact:
+        _orig_iv: "{{ extensionInstanceVariables }}"
+
+    - name: Inputs with two create-only values changed
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ _orig_iv | combine({'cluster_name': 'other', 'install_apptainer': false}) }}"
+
+    - name: Assert | a changed create-only input is detected
+      ansible.builtin.assert:
+        that:
+          - sl_setonly_changed == ['cluster_name', 'install_apptainer']
+        quiet: true
+
+    - name: Fixture inputs again
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ _orig_iv }}"
+
+    # ---- onEdit preDeploy: registry without the leaving node -------------------------
+    - name: Registry after scale-in
+      ansible.builtin.set_fact:
+        sl_registry: "{{ sl_registry | dict2items | rejectattr('key', 'in', sl_leaving_hosts) | items2dict }}"
+
+    - name: Render slurm.conf after scale-in
+      ansible.builtin.set_fact:
+        conf_after_in: "{{ lookup('ansible.builtin.template', t ~ '/slurm.conf.j2') }}"
+
+    - name: Assert | leaving node removed, memory default recomputed
+      ansible.builtin.assert:
+        that:
+          - conf_after_in.splitlines() | select('match', '^NodeName=') | list | length == 2
+          - conf_after_in is not search('gpu-node-x')
+          # node-c (3808 MiB/CPU) gone -> node-b is now the smallest
+          - conf_after_in is search('(?m)^DefMemPerCPU=3816$')
+          - sl_outputs_payload.compute_node_count == '2'
+          - sl_outputs_payload.compute_nodes == 'instance-101,instance-102'
+          - sl_outputs_payload.gpu_total == '8'
+        quiet: true
+
+    # ---- onEdit postDeploy: merge the new node's facts --------------------------------
+    - name: Registry entries for this run's hosts (new node-d)
+      ansible.builtin.set_fact:
+        new_entries: >-
+          {{ lookup('ansible.builtin.template', t ~ '/registry-entries.json.j2',
+                    template_vars={'sl_collect_hosts': sl_compute_hosts}) | from_json }}
+
+    - name: Merged registry (as controller.yaml computes it)
+      ansible.builtin.set_fact:
+        sl_registry: >-
+          {{ (sl_registry | combine(new_entries)) | dict2items
+             | rejectattr('key', 'in', sl_stale_registry_hosts) | items2dict }}
+
+    - name: Render slurm.conf after scale-out
+      ansible.builtin.set_fact:
+        conf_after_out: "{{ lookup('ansible.builtin.template', t ~ '/slurm.conf.j2') }}"
+
+    - name: Assert | merged configuration
+      ansible.builtin.assert:
+        that:
+          # only node-d had raw facts this run; node-a/b keep their registry entries
+          - new_entries.keys() | list == ['node-d']
+          - sl_registry.keys() | list | sort == ['node-a', 'node-b.slurm.example.com', 'node-d']
+          - conf_after_out.splitlines() | select('match', '^NodeName=') | map('regex_replace', ' .*$', '') | list
+            == ['NodeName=instance-101', 'NodeName=instance-102', 'NodeName=instance-104']
+          - sl_outputs_payload.compute_node_count == '3'
+          - sl_outputs_payload.keys() | list | sort == ext.outputs | map(attribute='label') | list | sort
+        quiet: true
+
+- name: Head-scale guard
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Assert | no head scale requested in this inventory
+      ansible.builtin.assert:
+        that:
+          - not (sl_head_scale_requested | bool)
+        quiet: true

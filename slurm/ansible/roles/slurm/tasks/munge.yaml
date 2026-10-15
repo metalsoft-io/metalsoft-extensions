@@ -1,0 +1,51 @@
+---
+# Same MUNGE key on every node (the Debian/Ubuntu munge postinst generates a random
+# per-node key — it is replaced). Binary-safe transport: head file -> EE via fetch ->
+# compute nodes via copy src (never through a string/content round trip).
+- name: MUNGE | package
+  ansible.builtin.apt:
+    name: munge
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+
+- name: MUNGE | cluster key on the head node
+  ansible.builtin.copy:
+    src: "{{ sl_state_dir }}/munge.key"
+    remote_src: true
+    dest: /etc/munge/munge.key
+    owner: munge
+    group: munge
+    mode: "0400"
+  register: _sl_munge_key_head
+  when: inventory_hostname == sl_head_host
+
+- name: MUNGE | fetch the cluster key into the execution environment
+  ansible.builtin.fetch:
+    src: "{{ sl_state_dir }}/munge.key"
+    dest: "{{ sl_ee_tmp }}/munge.key"
+    flat: true
+  when: inventory_hostname == sl_head_host
+
+- name: MUNGE | cluster key on compute nodes
+  ansible.builtin.copy:
+    src: "{{ sl_ee_tmp }}/munge.key"
+    dest: /etc/munge/munge.key
+    owner: munge
+    group: munge
+    mode: "0400"
+  register: _sl_munge_key_compute
+  when: inventory_hostname != sl_head_host
+
+- name: MUNGE | restart after a key change
+  ansible.builtin.systemd_service:
+    name: munge
+    state: restarted
+    enabled: true
+  when: (_sl_munge_key_head is changed) or (_sl_munge_key_compute is changed)
+
+- name: MUNGE | running
+  ansible.builtin.systemd_service:
+    name: munge
+    state: started
+    enabled: true

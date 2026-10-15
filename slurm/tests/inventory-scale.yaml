@@ -1,0 +1,78 @@
+---
+# Edit scenario on a bootstrapped cluster: node-c (Slurm name "gpu-node-x", deliberately
+# different from its inventory name) is leaving (slurmcompute_scale_in, NOT in the main
+# group), node-d is new (in slurmcompute AND slurmcompute_scale_out). node-b joined in an
+# earlier scale-out that failed before validation: it is registered but still pending
+# (node-gone, pending too, has left the cluster since).
+all:
+  children:
+    slurmhead:
+      hosts:
+        head-1:
+          ansible_host: 10.0.10.10
+          ansible_user: ubuntu
+          sl_host_short: instance-100
+          sl_host_fqdn: instance-100.slurm.example.com
+          sl_cluster_state_fact:
+            uuid: 0123456789abcdef0123456789abcdef
+            bootstrapped: true
+            head_short: instance-100
+            head_fqdn: instance-100.slurm.example.com
+            setonly:
+              slurm_source: upstream
+              slurm_version: "26.05.4"
+              cluster_name: slurm
+              partition_name: compute
+              admin_username: slurmadmin
+              external_nfs_export: ""
+              install_nvidia_driver: "true"
+              install_apptainer: "true"
+          sl_pending_state: [node-b.slurm.example.com, node-gone]
+          sl_outputs_fact:
+            admin_password: FixturePassw0rd
+            admin_ssh_private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\nFIXTUREKEY\n-----END OPENSSH PRIVATE KEY-----\n"
+            slurm_version: "26.05.4"
+          sl_registry_state:
+            node-a:
+              {inventory_host: node-a, node_name: instance-101, node_addr: 10.0.10.21, cpus: 224, boards: 1, sockets_per_board: 2,
+               cores_per_socket: 56, threads_per_core: 2, memory_mb: 2063900, real_memory: 1959936, def_mem_per_cpu: 8749,
+               gpu_count: 8, gpu_models: [], gres: "gpu:h100:8"}
+            node-b.slurm.example.com:
+              {inventory_host: node-b.slurm.example.com, node_name: instance-102, node_addr: 10.0.10.22, cpus: 128, boards: 1,
+               sockets_per_board: 2, cores_per_socket: 32, threads_per_core: 2, memory_mb: 515000, real_memory: 488448,
+               def_mem_per_cpu: 3816, gpu_count: 0, gpu_models: [], gres: ""}
+            node-c:
+              {inventory_host: node-c, node_name: gpu-node-x, node_addr: 10.0.10.23, cpus: 64, boards: 1, sockets_per_board: 1,
+               cores_per_socket: 32, threads_per_core: 2, memory_mb: 257000, real_memory: 243712, def_mem_per_cpu: 3808,
+               gpu_count: 2, gpu_models: [], gres: "gpu:rtx_pro_6000:2"}
+    slurmcompute:
+      hosts:
+        node-a:
+          ansible_host: 10.0.10.21
+          ansible_user: ubuntu
+        node-b.slurm.example.com:
+          ansible_host: 10.0.10.22
+          ansible_user: ubuntu
+        node-d:
+          ansible_host: 10.0.10.24
+          ansible_user: ubuntu
+          sl_raw_hostname: instance-104
+          sl_raw_slurmd_c: "NodeName=instance-104 CPUs=128 Boards=1 SocketsPerBoard=2 CoresPerSocket=32 ThreadsPerCore=2 RealMemory=1031000"
+          sl_raw_gpu_count: 0
+          sl_raw_gpu_models: []
+    slurmcompute_scale_out:
+      hosts:
+        node-d:
+    slurmcompute_scale_in:
+      hosts:
+        node-c:
+          ansible_host: 10.0.10.23
+          ansible_user: ubuntu
+    slurmhead_scale_out:
+    slurmhead_scale_in:
+    slurm_up:
+      hosts:
+        head-1:
+        node-a:
+        node-b.slurm.example.com:
+        node-d:

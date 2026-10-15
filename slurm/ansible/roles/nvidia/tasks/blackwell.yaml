@@ -1,0 +1,83 @@
+---
+# HGX B200/B300 (NVLink5): Ubuntu's Fabric Manager start script needs ib_umad, ibstat
+# (infiniband-diags) and NVIDIA's nvlsm, which only exists in NVIDIA's CUDA repository.
+# The repo is added WITHOUT cuda-keyring (its Pin-Priority 600 would let NVIDIA packages
+# replace Ubuntu's) and pinned to an allowlist: only nvlsm may come from it.
+# EXPERIMENTAL — gated by the nvidia_blackwell_hgx_enabled site config.
+
+- name: Blackwell | APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Blackwell | NVIDIA CUDA repository signing key
+  ansible.builtin.copy:
+    src: nvidia-cuda-ubuntu2604.asc
+    dest: /etc/apt/keyrings/nvidia-cuda-ubuntu2604.asc
+    mode: "0644"
+
+- name: Blackwell | NVIDIA CUDA repository (allowlisted)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/nvidia-cuda.sources
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension — only nvlsm is installed from here
+      Types: deb
+      URIs: {{ sl_cuda_repo_url }}
+      Suites: /
+      Signed-By: /etc/apt/keyrings/nvidia-cuda-ubuntu2604.asc
+  register: _sl_cuda_source
+
+- name: Blackwell | allowlist pin for the NVIDIA CUDA repository
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/10-slurm-ext-nvidia-cuda
+    mode: "0644"
+    content: |
+      Explanation: MetalSoft Slurm extension: only nvlsm from the NVIDIA CUDA repo
+      Package: nvlsm
+      Pin: release l=NVIDIA CUDA
+      Pin-Priority: 500
+
+      Package: *
+      Pin: release l=NVIDIA CUDA
+      Pin-Priority: -1
+  register: _sl_cuda_pin
+
+- name: Blackwell | refresh package index
+  ansible.builtin.apt:
+    update_cache: true
+    lock_timeout: 900
+  when: (_sl_cuda_source is changed) or (_sl_cuda_pin is changed)
+
+- name: Blackwell | InfiniBand management tools and nvlsm
+  ansible.builtin.apt:
+    name: "{{ sl_nvidia_blackwell_pkgs + ['nvlsm'] }}"
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+
+- name: Blackwell | nvlsm version
+  ansible.builtin.command: dpkg-query -W -f='${Version}' nvlsm
+  register: _sl_nvlsm_version
+  changed_when: false
+
+- name: Blackwell | nvlsm is recent enough for Fabric Manager
+  ansible.builtin.assert:
+    that:
+      - (_sl_nvlsm_version.stdout | regex_replace('-.*$', '')) is version(sl_nvlsm_min_version, '>=')
+    fail_msg: "nvlsm {{ _sl_nvlsm_version.stdout }} is older than {{ sl_nvlsm_min_version }}."
+    quiet: true
+
+- name: Blackwell | load ib_umad at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/slurm-ext-ib_umad.conf
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension (Fabric Manager / nvlsm on NVLink5)
+      ib_umad
+
+- name: Blackwell | load ib_umad now
+  ansible.builtin.command: modprobe ib_umad
+  args:
+    creates: /sys/module/ib_umad

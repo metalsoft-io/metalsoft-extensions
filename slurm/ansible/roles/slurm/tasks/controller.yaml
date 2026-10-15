@@ -1,0 +1,144 @@
+---
+# Merge this run's node facts into the registry, render + apply the configuration, set up
+# accounting, and (on scale-out) reserve the new nodes for validation.
+- name: Controller | helpers
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ sl_sbin }}/{{ item }}"
+    mode: "0755"
+  loop:
+    - slurm-ext-registry
+    - slurm-ext-wait-nodes
+    - slurm-ext-drain
+
+- name: Controller | registry entries from this run's facts
+  ansible.builtin.set_fact:
+    _sl_new_entries: "{{ lookup('ansible.builtin.template', 'registry-entries.json.j2') | from_json }}"
+  vars:
+    sl_collect_hosts: "{{ sl_up_compute_hosts }}"
+
+- name: Controller | every reachable new node reported its hardware
+  ansible.builtin.assert:
+    that:
+      - sl_up_new_compute_hosts | reject('in', _sl_new_entries.keys() | list) | list | length == 0
+      - _sl_new_entries.values() | selectattr('cpus', 'le', 0) | list | length == 0
+      - _sl_new_entries.values() | selectattr('real_memory', 'le', 0) | list | length == 0
+    fail_msg: "Missing or invalid hardware facts (slurmd -C) for: {{ _sl_new_entries | to_json }}"
+    quiet: true
+
+# A registry entry whose host left the compute group outside the scale-in flow (e.g. the
+# server was removed in the infrastructure editor): drop it only when Slurm shows no jobs.
+- name: Controller | jobs on nodes that left the compute group
+  ansible.builtin.command: "squeue -h -w {{ _sl_stale_names | join(',') }} -o %A"
+  register: _sl_stale_jobs
+  changed_when: false
+  failed_when: false
+  vars:
+    _sl_stale_names: "{{ sl_stale_registry_hosts | map('extract', sl_registry) | map(attribute='node_name') | list }}"
+  when: sl_stale_registry_hosts | length > 0
+
+- name: Controller | stale nodes must be idle before removal
+  ansible.builtin.assert:
+    that:
+      - (_sl_stale_jobs.stdout | default('') | trim) | length == 0
+    fail_msg: >-
+      Compute host(s) {{ sl_stale_registry_hosts | join(', ') }} left the {{ sl_compute_label }} group
+      outside a scale-in but still run jobs ({{ _sl_stale_jobs.stdout | default('') | trim }}).
+      Drain them first: sudo slurm-ext-drain --timeout 3600 <nodes>
+    quiet: true
+  when: sl_stale_registry_hosts | length > 0
+
+# Recorded BEFORE the registry write: from here on a failed run leaves these nodes
+# registered but pending, and the next run re-validates them (sl_validate_hosts).
+- name: Controller | new nodes stay pending until joined and validated
+  ansible.builtin.copy:
+    dest: "{{ sl_pending_file }}"
+    content: "{{ (sl_pending_hosts + sl_up_new_compute_hosts) | select('in', sl_compute_hosts) | unique | list | to_json }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  when: sl_bootstrapped | bool
+
+- name: Controller | write registry entries
+  ansible.builtin.command:
+    cmd: "{{ sl_sbin }}/slurm-ext-registry put"
+    stdin: "{{ _sl_new_entries | to_json }}"
+  register: _sl_registry_put
+  changed_when: (_sl_registry_put.stdout | from_json).changed | length > 0
+
+- name: Controller | remove stale registry entries
+  ansible.builtin.command: "{{ sl_sbin }}/slurm-ext-registry delete {{ sl_stale_registry_hosts | join(' ') }}"
+  register: _sl_registry_del
+  changed_when: (_sl_registry_del.stdout | from_json).changed | length > 0
+  when: sl_stale_registry_hosts | length > 0
+
+- name: Controller | merged registry
+  ansible.builtin.set_fact:
+    sl_registry_state: >-
+      {{ (sl_registry | combine(_sl_new_entries)) | dict2items
+         | rejectattr('key', 'in', sl_stale_registry_hosts) | items2dict }}
+
+- name: Controller | render and apply the Slurm configuration
+  ansible.builtin.import_tasks: render-config.yaml
+
+- name: Controller | accounting entities (cluster, default account, admin)
+  ansible.builtin.shell: |
+    set -o pipefail
+    for _ in $(seq 1 30); do sacctmgr -n -P list cluster format=cluster >/dev/null 2>&1 && break; sleep 2; done
+    changed=""
+    if ! sacctmgr -n -P list cluster format=cluster | grep -qx '{{ sl_cluster_name }}'; then
+      sacctmgr -i add cluster '{{ sl_cluster_name }}' >/dev/null && changed="${changed} cluster"
+    fi
+    if ! sacctmgr -n -P list account '{{ sl_default_account }}' format=account | grep -qx '{{ sl_default_account }}'; then
+      sacctmgr -i add account '{{ sl_default_account }}' Cluster='{{ sl_cluster_name }}' \
+        Description='Cluster users' Organization='{{ sl_cluster_name }}' >/dev/null && changed="${changed} account"
+    fi
+    if ! sacctmgr -n -P list user '{{ sl_admin_user }}' format=user | grep -qx '{{ sl_admin_user }}'; then
+      sacctmgr -i add user '{{ sl_admin_user }}' Account='{{ sl_default_account }}' \
+        DefaultAccount='{{ sl_default_account }}' AdminLevel=Administrator >/dev/null && changed="${changed} admin"
+    fi
+    echo "added:${changed:- nothing}"
+  args:
+    executable: /bin/bash
+  register: _sl_sacctmgr
+  changed_when: "'added: nothing' not in _sl_sacctmgr.stdout"
+
+# A failed earlier run may have left its validation hold behind: always release it.
+- name: Controller | release a leftover validation reservation
+  ansible.builtin.command: scontrol delete ReservationName={{ sl_validation_resv_name }}
+  register: _sl_resv_del
+  changed_when: _sl_resv_del.rc == 0
+  failed_when: false
+  when: sl_bootstrapped | bool
+
+# Scale-out on a busy cluster: pending jobs would grab the new nodes the moment they
+# register and the validation job could not run. A short MAINT reservation keeps them
+# free for the validation (deleted by validate.yaml).
+- name: Controller | validation reservation on new / pending nodes
+  ansible.builtin.command: >-
+    scontrol create reservation ReservationName={{ sl_validation_resv_name }} StartTime=now Duration=180
+    Nodes={{ _sl_new_names | join(',') }} Users=root,{{ sl_admin_user }} Flags=MAINT,IGNORE_JOBS
+  register: _sl_resv
+  changed_when: _sl_resv.rc == 0
+  failed_when: false
+  vars:
+    _sl_new_names: "{{ sl_up_validate_hosts | map('extract', sl_registry_state) | map(attribute='node_name') | list }}"
+  when:
+    - sl_bootstrapped | bool
+    - sl_up_validate_hosts | length > 0
+
+- name: Controller | validation reservation in place
+  ansible.builtin.set_fact:
+    sl_validation_reservation: "{{ sl_validation_resv_name if (_sl_resv.rc | default(1)) == 0 else '' }}"
+
+# MUNGE cross-check credential (decoded on every compute node in join.yaml)
+- name: Controller | MUNGE test credential
+  ansible.builtin.command: munge -n -t 900
+  register: _sl_munge_cred
+  changed_when: false
+  no_log: true
+
+- name: Controller | publish the test credential
+  ansible.builtin.set_fact:
+    sl_munge_cred: "{{ _sl_munge_cred.stdout }}"
+  no_log: true

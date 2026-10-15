@@ -1,0 +1,88 @@
+{
+    "configVars": {
+        "nvidia_driver_branch": "580",
+        "nvidia_blackwell_hgx_enabled": false,
+        "allow_ubuntu_slurm_source": false
+    },
+    "extensionInstanceVariables": {
+        "head_server_type": "M.32.128.2",
+        "compute_server_type": "G.224.2048.8H100",
+        "compute_count": 4,
+        "os_template": "ubuntu-26-04-lts-waitforssh",
+        "slurm_source": "upstream",
+        "slurm_version": "26.05.4",
+        "cluster_name": "slurm",
+        "partition_name": "compute",
+        "admin_username": "slurmadmin",
+        "admin_ssh_public_key": "",
+        "install_nvidia_driver": true,
+        "install_apptainer": true,
+        "external_nfs_export": "",
+        "scale_in_drain_timeout_minutes": 60
+    },
+    "extensionInstanceRecordSet": {
+        "deploymentId": 7,
+        "extensionInstanceId": 42,
+        "extensionInstanceName": "slurmtest",
+        "siteLabel": "test-site",
+        "baseDomain": "slurm.example.com.",
+        "dnsResolverIp": "8.8.8.8",
+        "dnsResolvers": ["8.8.8.8"],
+        "ntpServers": ["10.0.0.5", " "],
+        "serverInstanceGroups": [
+            {
+                "serverInstanceGroupId": 100,
+                "serverInstanceGroupLabel": "slurmhead",
+                "tags": ["slurmhead"],
+                "logicalNetworks": [
+                    {
+                        "id": 1,
+                        "name": "slurm-net-42",
+                        "label": "slurm-net",
+                        "vlan_id": 100,
+                        "subnets": [
+                            {
+                                "subnet": "10.0.10.0/24",
+                                "netmask": "255.255.255.0",
+                                "gateway": "10.0.10.1",
+                                "ipType": "ipv4",
+                                "ipAllocations": [],
+                                "ipRanges": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "serverInstanceGroupId": 101,
+                "serverInstanceGroupLabel": "slurmcompute",
+                "tags": ["slurmcompute"],
+                "logicalNetworks": [
+                    {
+                        "id": 1,
+                        "name": "slurm-net-42",
+                        "label": "slurm-net",
+                        "vlan_id": 100,
+                        "subnets": [
+                            {
+                                "subnet": "10.0.10.0/24",
+                                "netmask": "255.255.255.0",
+                                "gateway": "10.0.10.1",
+                                "ipType": "ipv4",
+                                "ipAllocations": [],
+                                "ipRanges": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "serverInstances": [
+            {"serverInstanceId": 1, "serverInstanceGroupId": 100, "host": "head-1", "ipv4Ips": ["10.0.10.10"]},
+            {"serverInstanceId": 2, "serverInstanceGroupId": 101, "host": "node-a", "ipv4Ips": ["10.0.10.21"]},
+            {"serverInstanceId": 3, "serverInstanceGroupId": 101, "host": "node-b.slurm.example.com", "ipv4Ips": ["10.0.10.22"]},
+            {"serverInstanceId": 4, "serverInstanceGroupId": 101, "host": "node-c", "ipv4Ips": ["10.0.10.23"]},
+            {"serverInstanceId": 5, "serverInstanceGroupId": 101, "host": "node-d", "ipv4Ips": ["10.0.10.24"]}
+        ]
+    }
+}

@@ -1,0 +1,71 @@
+---
+- name: APT | wait for cloud-init to finish first-boot configuration
+  ansible.builtin.command: cloud-init status --wait
+  register: _sl_cloud_init
+  changed_when: false
+  # done (0), error (1) and degraded (2) all mean cloud-init is no longer running
+  failed_when: false
+
+- name: APT | check deb822 Ubuntu sources
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/ubuntu.sources
+  register: _sl_ubuntu_sources
+
+# universe: munge, Open MPI, distro Slurm; restricted: NVIDIA drivers + signed modules;
+# multiverse: Fabric Manager / NSCQ. Stock Ubuntu server images enable all four.
+- name: APT | enable main, restricted, universe and multiverse
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list.d/ubuntu.sources
+    regexp: '^Components:.*$'
+    replace: 'Components: main restricted universe multiverse'
+  when: _sl_ubuntu_sources.stat.exists
+
+- name: APT | refresh package index
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 600
+    lock_timeout: 900
+
+- name: APT | base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - openssl
+      - python3-debian
+      - pciutils
+      - chrony
+      - nfs-common
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+
+# Automatic updates keep running for everything else. Kernel, NVIDIA, PMIx and Slurm
+# move together and only under an admin's control (README: rolling update runbook) —
+# an unattended driver upgrade leaves user space and the loaded kernel module mismatched.
+- name: APT | unattended-upgrades must not touch kernel, NVIDIA, PMIx or Slurm
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/51slurm-ext-unattended
+    mode: "0644"
+    content: |
+      // Managed by the MetalSoft Slurm extension
+      Unattended-Upgrade::Package-Blacklist {
+          "linux-";
+          "nvidia-";
+          "libnvidia-";
+          "nvlsm";
+          "libpmix";
+          "slurm";
+          "libslurm";
+      };
+
+- name: APT | never install Ubuntu's Slurm packages next to the upstream build
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/90-slurm-ext-no-distro-slurm
+    mode: "0644"
+    content: |
+      Explanation: MetalSoft Slurm extension (upstream mode): slurm-smd packages only
+      Package: slurm-wlm* slurm-client* slurmd slurmctld slurmdbd slurmrestd sackd sview libslurm* libpmi0* libpmi2-0* libpam-slurm*
+      Pin: version *
+      Pin-Priority: -1
+  when: sl_source == 'upstream'

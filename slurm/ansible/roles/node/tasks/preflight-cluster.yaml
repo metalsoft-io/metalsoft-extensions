@@ -1,0 +1,76 @@
+---
+# Cluster-level preflight (localhost, before any node is touched). Fails fast on inputs
+# and site config that would break the deployment — never rewrites a value.
+
+- name: Preflight | ansible-core supports Ubuntu 26.04 targets (Python 3.14)
+  ansible.builtin.assert:
+    that:
+      - ansible_version.full is version('2.20', '>=')
+    fail_msg: >-
+      ansible-core {{ ansible_version.full }} cannot manage Ubuntu 26.04 nodes (Python 3.14).
+      The task must run in the ee-slurm execution environment (ansible-core >= 2.20) —
+      check that every task in extension.json sets "ee".
+    quiet: true
+
+- name: Preflight | inventory shape
+  ansible.builtin.assert:
+    that:
+      - sl_head_hosts | length == 1
+      - sl_compute_hosts | length >= 1
+    fail_msg: >-
+      Expected exactly 1 host in the {{ sl_head_label }} group and at least 1 in
+      {{ sl_compute_label }}; got {{ sl_head_label }}={{ sl_head_hosts | join(',') or '-' }},
+      {{ sl_compute_label }}={{ sl_compute_hosts | length }} host(s), inventory groups:
+      {{ groups.keys() | list | join(', ') }}.
+    quiet: true
+
+# (the Ubuntu-source opt-in is checked after the head state is read: source-gate.yaml)
+
+- name: Preflight | Slurm source and version
+  ansible.builtin.assert:
+    that:
+      - sl_source in ['upstream', 'ubuntu']
+      - sl_source != 'upstream' or sl_version_input in sl_bom
+    fail_msg: >-
+      Unsupported slurm_source/slurm_version '{{ sl_source }}'/'{{ sl_version_input }}'
+      (upstream versions: {{ sl_bom.keys() | list | join(', ') }}).
+    quiet: true
+
+- name: Preflight | cluster, partition and admin names
+  ansible.builtin.assert:
+    that:
+      - sl_cluster_name is match('^[a-z][a-z0-9_]{0,39}$')
+      - sl_partition is match('^[a-z][a-z0-9_]{0,31}$')
+      - sl_partition | lower != 'default'
+      - sl_admin_user is match('^[a-z_][a-z0-9_-]{0,30}$')
+      - sl_admin_user not in sl_reserved_users
+      - sl_admin_user not in _sl_login_users
+    fail_msg: >-
+      Invalid names: cluster_name='{{ sl_cluster_name }}', partition_name='{{ sl_partition }}'
+      (must not be 'default'), admin_username='{{ sl_admin_user }}' (must not be a system or
+      OS-template login user: {{ (sl_reserved_users + _sl_login_users) | unique | join(', ') }}).
+    quiet: true
+  vars:
+    _sl_login_users: >-
+      {{ (sl_head_hosts + sl_compute_hosts) | map('extract', hostvars, 'ansible_user')
+         | select('defined') | select('string') | unique | list }}
+
+- name: Preflight | NVIDIA driver branch (site config)
+  ansible.builtin.assert:
+    that:
+      - sl_nvidia_branch in sl_nvidia_supported_branches
+    fail_msg: >-
+      Site config nvidia_driver_branch='{{ sl_nvidia_branch }}' is not supported
+      (use one of {{ sl_nvidia_supported_branches | join(', ') }}).
+    quiet: true
+
+- name: Preflight | optional external NFS export and drain timeout
+  ansible.builtin.assert:
+    that:
+      - sl_external_nfs == '' or sl_external_nfs is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}:/[A-Za-z0-9._/-]*$')
+      - sl_drain_timeout_min | int >= 0
+      - sl_drain_timeout_min | int <= 720
+    fail_msg: >-
+      external_nfs_export must be empty or host:/path (got '{{ sl_external_nfs }}');
+      scale_in_drain_timeout_minutes must be 0-720 (got {{ sl_drain_timeout_min }}).
+    quiet: true

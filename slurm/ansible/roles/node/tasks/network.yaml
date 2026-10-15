@@ -1,0 +1,90 @@
+---
+# Slurm addresses nodes by IP (NodeAddr / SlurmctldHost=name(ip)), so DNS is not required;
+# the hosts block only gives users and admins friendly names. A "127.0.1.1 <hostname>"
+# line makes Slurm/srun resolve the node to loopback — remove it. The MetalSoft 26.04
+# template regenerates /etc/hosts at every boot (cloud-init manage_etc_hosts in user-data),
+# so the cloud-init hosts template gets the same treatment.
+
+- name: Hosts | cluster nodes block in /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} MetalSoft Slurm extension"
+    block: "{{ lookup('ansible.builtin.template', 'hosts-block.j2') }}"
+    mode: "0644"
+
+- name: Hosts | drop the 127.0.1.1 host name alias
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    state: absent
+
+- name: Hosts | check the cloud-init hosts template
+  ansible.builtin.stat:
+    path: /etc/cloud/templates/hosts.debian.tmpl
+  register: _sl_ci_hosts_tmpl
+
+- name: Hosts | keep the block when cloud-init regenerates /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/cloud/templates/hosts.debian.tmpl
+    marker: "# {mark} MetalSoft Slurm extension"
+    block: "{{ lookup('ansible.builtin.template', 'hosts-block.j2') }}"
+  when: _sl_ci_hosts_tmpl.stat.exists
+
+- name: Hosts | drop the 127.0.1.1 line from the cloud-init hosts template
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/templates/hosts.debian.tmpl
+    regexp: '^127\.0\.1\.1\s'
+    state: absent
+  when: _sl_ci_hosts_tmpl.stat.exists
+
+# MUNGE rejects credentials when clocks drift more than its 5 minute TTL.
+- name: Time | site NTP servers for chrony
+  ansible.builtin.copy:
+    dest: /etc/chrony/sources.d/slurm-ext.sources
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension (recordSet ntpServers)
+      {% for s in sl_ntp_servers %}
+      server {{ s }} iburst
+      {% endfor %}
+  register: _sl_chrony_sources
+  when: sl_ntp_servers | length > 0
+
+- name: Time | chrony running
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Time | reload chrony sources
+  ansible.builtin.command: chronyc reload sources
+  when: _sl_chrony_sources is changed
+  changed_when: true
+
+- name: Time | wait for clock synchronisation (bounded, ~1 min)
+  ansible.builtin.command: chronyc waitsync 30 0.5 0 2
+  register: _sl_waitsync
+  changed_when: false
+  failed_when: false
+
+- name: Time | clock not yet synchronised
+  ansible.builtin.debug:
+    msg: "WARNING: chrony did not report synchronisation on {{ inventory_hostname }} — MUNGE needs clocks within 5 minutes."
+  when: _sl_waitsync.rc != 0
+
+- name: Firewall | is ufw active
+  ansible.builtin.command: ufw status
+  register: _sl_ufw
+  changed_when: false
+  failed_when: false
+
+# Slurm needs two-way connectivity between all nodes (6817/6818/6819, srun ephemeral
+# ports, NFS): trust the cluster subnet when the image enables ufw.
+- name: Firewall | allow the cluster subnet
+  ansible.builtin.command: "ufw allow from {{ sl_cluster_cidr }} comment 'MetalSoft Slurm extension'"
+  register: _sl_ufw_allow
+  changed_when: "'Skipping' not in _sl_ufw_allow.stdout"
+  when:
+    - _sl_ufw.rc == 0
+    - "'Status: active' in _sl_ufw.stdout"
+    - sl_cluster_cidr | length > 0

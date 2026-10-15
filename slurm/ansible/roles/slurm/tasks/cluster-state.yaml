@@ -1,0 +1,33 @@
+---
+# cluster.json: identity and the create-time values of setOnly inputs (checked at every
+# onEdit preDeploy). Fields from an earlier run (uuid, setonly) are preserved.
+- name: Cluster state | compose
+  ansible.builtin.set_fact:
+    _sl_cluster_doc: >-
+      {{ {
+           'uuid': sl_cluster_state_fact.uuid,
+           'created_with': sl_cluster_state_fact.created_with | default(sl_ext_version),
+           'bundle_version': sl_ext_version,
+           'cluster_name': sl_cluster_name,
+           'admin_user': sl_admin_user,
+           'default_account': sl_default_account,
+           'head_short': ansible_facts['hostname'],
+           'head_fqdn': ansible_facts['fqdn'] | default('') | regex_replace('\.$', ''),
+           'head_ip': sl_head_ip,
+           'cidr': sl_cluster_cidr,
+           'slurm_source': sl_source,
+           'pkg_version': sl_pkg_version,
+           'setonly': sl_cluster_state_fact.setonly | default(sl_setonly_snapshot)
+         } }}
+
+- name: Cluster state | write cluster.json
+  ansible.builtin.copy:
+    content: "{{ _sl_cluster_doc | to_nice_json }}\n"
+    dest: "{{ sl_cluster_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Cluster state | refresh facts
+  ansible.builtin.set_fact:
+    sl_cluster_state_fact: "{{ _sl_cluster_doc | combine({'bootstrapped': sl_cluster_state_fact.bootstrapped | default(false)}) }}"

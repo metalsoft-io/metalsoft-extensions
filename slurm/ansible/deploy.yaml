@@ -1,0 +1,192 @@
+---
+# Slurm extension — converge playbook.
+#
+# Registered at onCreate postDeploy (fresh cluster) AND onEdit postDeploy (scale-out and
+# reconcile). Fully idempotent: a retried lifecycle task re-runs the whole playbook.
+#
+# Rules this playbook follows (see .claude/skills/building-metalsoft-extensions):
+#   * plays only target slurmhead / slurmcompute (never `all`); groups are the
+#     instance-array labels verbatim;
+#   * nodes not reachable are excluded via the `slurm_up` probe group — an unreachable NEW
+#     node fails the run, an unreachable EXISTING node only warns (it stays DOWN in Slurm);
+#   * existing nodes are never rebooted, upgraded or driver-changed by a converge;
+#   * the last play always re-emits the full outputs payload (the platform REPLACES the
+#     stored outputs on every successful run); no `meta: end_playbook` anywhere.
+
+- name: Slurm | banner and cluster preflight
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    # Stale-bundle detection: proves which bundle version actually ran.
+    - name: Banner | slurm extension bundle version
+      ansible.builtin.debug:
+        msg: >-
+          slurm extension bundle v{{ sl_ext_version }} — source={{ sl_source }}
+          version={{ sl_version_input if sl_source == 'upstream' else 'ubuntu-archive' }}
+          head={{ sl_head_hosts | join(',') }} compute={{ sl_compute_hosts | length }}
+          scale_out={{ sl_scale_out_hosts | length }} scale_in={{ sl_scale_in_hosts | length }}
+
+    - name: Preflight | cluster-level checks
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: preflight-cluster.yaml
+
+- name: Slurm | probe reachability and privilege escalation
+  hosts: slurmhead:slurmcompute
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Probe | wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+      register: _sl_conn
+      ignore_errors: true
+      ignore_unreachable: true
+
+    - name: Probe | group reachable hosts
+      ansible.builtin.group_by:
+        key: slurm_up
+      changed_when: false
+      when:
+        - not (_sl_conn.failed | default(false))
+        - not (_sl_conn.unreachable | default(false))
+
+    - name: Probe | privilege escalation (sudo-rs aware)
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: become-probe.yaml
+      when: inventory_hostname in (groups['slurm_up'] | default([]))
+
+    - name: Probe | head node must be reachable
+      ansible.builtin.assert:
+        that:
+          - sl_head_host in (groups['slurm_up'] | default([]))
+        fail_msg: "Head node {{ sl_head_host }} is not reachable over SSH — nothing can be configured."
+        quiet: true
+      run_once: true
+      delegate_to: localhost
+
+- name: Slurm | read head-node state
+  hosts: slurmhead:&slurm_up
+  gather_facts: true
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: State | read cluster state and node registry
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: state-read.yaml
+
+    - name: State | Ubuntu Slurm source opt-in (new clusters only)
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: source-gate.yaml
+
+    - name: State | new compute nodes must be reachable
+      ansible.builtin.assert:
+        that:
+          - sl_unreachable_new_hosts | length == 0
+        fail_msg: >-
+          New (or not yet validated) compute node(s) {{ sl_unreachable_new_hosts | join(', ') }}
+          are not reachable over SSH; they cannot be added to the cluster. Retry once they are up.
+        quiet: true
+
+    - name: State | existing compute nodes not reachable (kept, will show DOWN in Slurm)
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: existing compute node(s) not reachable, skipped this run:
+          {{ sl_unreachable_compute_hosts | reject('in', sl_validate_hosts) | join(', ') }}
+      when: sl_unreachable_compute_hosts | reject('in', sl_validate_hosts) | list | length > 0
+
+- name: Slurm | node baseline (OS, network, accounts, GPU driver, software)
+  hosts: slurmhead:slurmcompute:&slurm_up
+  gather_facts: true
+  become: true
+  roles:
+    - role: globals
+    - role: node
+
+- name: Slurm | head-node services
+  hosts: slurmhead:&slurm_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Head | munge, storage, Slurm packages, accounting DB, users
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: head.yaml
+
+- name: Slurm | compute nodes
+  hosts: slurmcompute:&slurm_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Compute | munge, storage, Slurm packages, slurmd, user sync, facts
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: compute.yaml
+
+- name: Slurm | controller configuration
+  hosts: slurmhead:&slurm_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Controller | registry, slurm.conf, slurmdbd/slurmctld, accounting
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: controller.yaml
+
+- name: Slurm | start compute daemons
+  hosts: slurmcompute:&slurm_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Join | start slurmd and wait for registration
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: join.yaml
+
+- name: Slurm | validate cluster
+  hosts: slurmhead:&slurm_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Validate | health and functional checks
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: validate.yaml
+
+    - name: Outputs | collect values on the head node
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: collect-outputs.yaml
+
+# Stored outputs are REPLACED by every successful run's context.json — this play always
+# re-emits the full payload (values collected on the head this run; fail-closed).
+- name: Slurm | publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | emit context JSON
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: emit-outputs.yaml

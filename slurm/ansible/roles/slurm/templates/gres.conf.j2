@@ -1,0 +1,7 @@
+# Managed by the MetalSoft Slurm extension (v{{ sl_ext_version }}) — regenerated on every run.
+# GPUs are auto-detected by the gpu/nvidia plugin (reads /proc/driver/nvidia, no NVML);
+# the per-node counts/types are declared on the NodeName lines in slurm.conf.
+{% set gpu_nodes = sl_nodes_sorted | selectattr('gpu_count', 'gt', 0) | map(attribute='node_name') | list %}
+{% if gpu_nodes %}
+NodeName={{ gpu_nodes | join(',') }} AutoDetect=nvidia
+{% endif %}

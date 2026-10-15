@@ -1,0 +1,21 @@
+{#- /etc/hosts block: reachable cluster hosts (identity facts published this run by
+    preflight-node.yaml) first, then registry entries of nodes not reachable this run.
+    One line per IP. -#}
+{%- set ns = namespace(seen=[], lines=[]) -%}
+{%- for h in (sl_head_hosts + sl_compute_hosts) -%}
+{%-   set short = hostvars[h]['sl_host_short'] | default('') -%}
+{%-   set fqdn = hostvars[h]['sl_host_fqdn'] | default('') -%}
+{%-   set ip = hostvars[h]['ansible_host'] | default('') -%}
+{%-   if (h in sl_up_hosts) and short and ip and (ip not in ns.seen) -%}
+{%-     set names = ([fqdn] if ('.' in fqdn and fqdn != short) else []) + [short] -%}
+{%-     set ns.lines = ns.lines + [ip ~ ' ' ~ (names | join(' '))] -%}
+{%-     set ns.seen = ns.seen + [ip] -%}
+{%-   endif -%}
+{%- endfor -%}
+{%- for e in (sl_registry.values() | list | sort(attribute='node_name')) -%}
+{%-   if e.node_addr not in ns.seen -%}
+{%-     set ns.lines = ns.lines + [e.node_addr ~ ' ' ~ e.node_name] -%}
+{%-     set ns.seen = ns.seen + [e.node_addr] -%}
+{%-   endif -%}
+{%- endfor -%}
+{{ ns.lines | join('\n') }}

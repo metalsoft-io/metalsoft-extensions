@@ -1,0 +1,52 @@
+---
+# /shared lives on the head node's local disk and is exported to the cluster subnet:
+#   /shared/home/<user>   home directories (NOT /home: the OS-template login user lives
+#                         there and Ansible needs it on every node)
+#   /shared/.slurm-ext    cluster internals (built Slurm packages, user snapshot)
+- name: Storage | NFS server
+  ansible.builtin.apt:
+    name: nfs-kernel-server
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+
+- name: Storage | cluster subnet known
+  ansible.builtin.assert:
+    that:
+      - sl_cluster_cidr | length > 0
+    fail_msg: "Could not determine the slurm-net subnet (recordSet or head default route)."
+    quiet: true
+
+- name: Storage | shared directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ sl_shared_dir }}"
+    - "{{ sl_home_base }}"
+    - "{{ sl_shared_internal }}"
+    - "{{ sl_shared_internal }}/debs"
+    - /etc/exports.d
+
+- name: Storage | export /shared to the cluster subnet
+  ansible.builtin.copy:
+    dest: /etc/exports.d/slurm-ext.exports
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension
+      {{ sl_shared_dir }} {{ sl_cluster_cidr }}(rw,sync,no_subtree_check,root_squash)
+  register: _sl_exports
+
+- name: Storage | NFS server running
+  ansible.builtin.systemd_service:
+    name: nfs-server
+    state: started
+    enabled: true
+
+- name: Storage | apply exports
+  ansible.builtin.command: exportfs -ra
+  when: _sl_exports is changed
+  changed_when: true

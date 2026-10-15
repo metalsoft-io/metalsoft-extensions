@@ -1,0 +1,15 @@
+---
+# Ansible Lint configuration (mirrors incus/ansible/.ansible-lint.yaml)
+profile: basic
+
+exclude_paths:
+  - .git/
+  - .venv/
+  - tmp/
+
+# Offline mode disables installation of requirements.yml and schema refreshing
+offline: true
+
+skip_list:
+  - yaml[truthy]
+  - var-naming[no-role-prefix]

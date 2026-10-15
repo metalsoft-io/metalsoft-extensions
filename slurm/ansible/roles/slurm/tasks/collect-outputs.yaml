@@ -1,0 +1,24 @@
+---
+# Output values that live on the head node (secrets, running version). Collected on every
+# run so the emit play never depends on the platform re-injecting earlier outputs.
+- name: Outputs | admin secrets
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop:
+    - "{{ sl_secrets_dir }}/admin_password"
+    - "{{ sl_secrets_dir }}/admin_ssh_key"
+  register: _sl_out_secrets
+  no_log: true
+
+- name: Outputs | Slurm version
+  ansible.builtin.command: sinfo -V
+  register: _sl_out_version
+  changed_when: false
+
+- name: Outputs | publish
+  ansible.builtin.set_fact:
+    sl_outputs_fact:
+      admin_password: "{{ _sl_out_secrets.results[0].content | b64decode | trim }}"
+      admin_ssh_private_key: "{{ _sl_out_secrets.results[1].content | b64decode }}"
+      slurm_version: "{{ (_sl_out_version.stdout | trim).split(' ') | last }}"
+  no_log: true

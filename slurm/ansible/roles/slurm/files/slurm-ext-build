@@ -1,0 +1,69 @@
+#!/bin/bash
+# Build SchedMD Slurm Debian packages (slurm-smd*) from the release tarball — the
+# packaging flow SchedMD documents (quickstart_admin.html#debuild). Runs once per
+# version on the head node; compute nodes install the result from /shared.
+#
+#   slurm-ext-build VERSION SHA256 OUTDIR
+#
+# Safe to re-run: a lock serialises concurrent runs (a retried deploy while the previous
+# build is still running waits), and OUTDIR/.complete marks a finished build.
+set -euo pipefail
+
+VERSION=${1:?version}
+SHA256=${2:?sha256}
+OUTDIR=${3:?output directory}
+WORK=/var/lib/slurm-ext/build
+LOG="${WORK}/build-${VERSION}.log"
+URL="https://download.schedmd.com/slurm/slurm-${VERSION}.tar.bz2"
+
+mkdir -p "${WORK}"
+exec 9>"${WORK}/build.lock"
+flock 9
+
+if [ -f "${OUTDIR}/.complete" ]; then
+  echo "slurm ${VERSION} packages already built in ${OUTDIR}"
+  exit 0
+fi
+
+exec > >(tee -a "${LOG}") 2>&1
+echo "=== $(date -Is) building Slurm ${VERSION} ==="
+export DEBIAN_FRONTEND=noninteractive
+cd "${WORK}"
+
+tarball="slurm-${VERSION}.tar.bz2"
+if ! echo "${SHA256}  ${tarball}" | sha256sum -c --status - 2>/dev/null; then
+  rm -f "${tarball}"
+  curl -fsSL --retry 5 --retry-delay 10 -o "${tarball}" "${URL}"
+  echo "${SHA256}  ${tarball}" | sha256sum -c -
+fi
+
+# Build tooling; libmysqlclient-dev first so the "libmariadb-dev | libmysqlclient-dev"
+# build-dependency links the accounting plugin against the MySQL 8.4 client (the server
+# on the head is MySQL 8.4, reached over its unix socket).
+apt-get update
+apt-get install -y --no-install-recommends \
+  build-essential fakeroot devscripts equivs libmysqlclient-dev
+
+rm -rf "slurm-${VERSION}"
+tar -xaf "${tarball}"
+cd "slurm-${VERSION}"
+# mk-build-deps runs apt-get without -y by default: pass a non-interactive tool.
+mk-build-deps -i -r -t 'apt-get -y -o Debug::pkgProblemResolver=yes --no-install-recommends' debian/control
+debuild --no-lintian -b -uc -us -j"$(nproc)"
+cd "${WORK}"
+
+main_deb=$(ls -1 "slurm-smd_${VERSION}-1_"*.deb)
+if ! dpkg-deb -f "${main_deb}" Depends | grep -q libmysqlclient; then
+  echo "ERROR: ${main_deb} is not linked against libmysqlclient (accounting plugin)" >&2
+  exit 1
+fi
+
+mkdir -p "${OUTDIR}"
+cp -f slurm-smd*_"${VERSION}"-1_*.deb "${OUTDIR}/"
+chmod 0755 "${OUTDIR}"
+chmod 0644 "${OUTDIR}"/*.deb
+# PMIx is dlopen()ed by the mpi/pmix plugin and munge is only a Recommends: keep both
+# even if build dependencies are ever autoremoved.
+apt-mark manual libpmix2t64 munge >/dev/null 2>&1 || true
+touch "${OUTDIR}/.complete"
+echo "=== $(date -Is) built: $(find "${OUTDIR}" -maxdepth 1 -type f -printf '%f ') ==="

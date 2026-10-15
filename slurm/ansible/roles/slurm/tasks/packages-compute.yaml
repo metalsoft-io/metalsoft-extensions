@@ -1,0 +1,78 @@
+---
+# Compute nodes always install EXACTLY the head node's Slurm version: the slurm-smd debs
+# built on the head (from /shared) or the Ubuntu archive packages pinned to the version
+# recorded on the head. Daemon start is blocked during install (policy-rc.d).
+- name: Packages | head node package version known
+  ansible.builtin.assert:
+    that:
+      - (hostvars[sl_head_host]['sl_pkg_version'] | default('')) | length > 0
+    fail_msg: "The head node did not report its Slurm package version."
+    quiet: true
+
+- name: Packages | installed Slurm package versions
+  ansible.builtin.shell: |
+    dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\n' \
+      'slurm-smd*' 'slurmd' 'slurm-client' 'slurm-wlm-basic-plugins' 2>/dev/null || true
+  register: _sl_installed_pkgs
+  changed_when: false
+
+- name: Packages | install on this compute node
+  vars:
+    _sl_head_version: "{{ hostvars[sl_head_host]['sl_pkg_version'] }}"
+    _sl_want: "{{ sl_upstream_compute_pkgs if sl_source == 'upstream' else sl_distro_compute_pkgs }}"
+    _sl_have: >-
+      {{ _sl_installed_pkgs.stdout_lines | select('search', ' ii *$')
+         | select('search', ' ' ~ (_sl_head_version | regex_escape) ~ ' ')
+         | map('split', ' ') | map('first') | list }}
+  when: (_sl_want | reject('in', _sl_have) | list | length) > 0
+  block:
+    - name: Packages | block service start during install
+      ansible.builtin.copy:
+        dest: /usr/sbin/policy-rc.d
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # MetalSoft Slurm extension: services are started once configured
+          exit 101
+
+    # one apt transaction for the interdependent local .debs (the apt module's deb=
+    # takes a single file); dependencies resolve from the Ubuntu archive
+    - name: Packages | install upstream slurm-smd packages from /shared  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: >-
+          apt-get install -y --no-install-recommends
+          {% for p in sl_upstream_compute_pkgs %}{{ sl_debs_dir }}/{{ p }}_{{ _sl_head_version }}_amd64.deb {% endfor %}
+          {{ sl_runtime_pkgs | join(' ') }}
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: sl_source == 'upstream'
+      changed_when: true
+
+    - name: Packages | install Ubuntu archive Slurm packages (head node version)
+      ansible.builtin.apt:
+        name: "{{ (sl_distro_compute_pkgs | map('regex_replace', '$', '=' ~ _sl_head_version) | list) + sl_runtime_pkgs }}"
+        state: present
+        install_recommends: false
+        lock_timeout: 900
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: sl_source == 'ubuntu'
+  always:
+    - name: Packages | allow service start again
+      ansible.builtin.file:
+        path: /usr/sbin/policy-rc.d
+        state: absent
+
+- name: Packages | slurmd matches the controller version
+  ansible.builtin.command: slurmd -V
+  register: _sl_slurmd_version
+  changed_when: false
+
+- name: Packages | same Slurm release as the head node
+  ansible.builtin.assert:
+    that:
+      - (_sl_slurmd_version.stdout | trim).split(' ') | last == (hostvars[sl_head_host]['sl_pkg_version'] | regex_replace('-[^-]*$', ''))
+    fail_msg: >-
+      {{ inventory_hostname }} runs '{{ _sl_slurmd_version.stdout | trim }}', the head node
+      package is {{ hostvars[sl_head_host]['sl_pkg_version'] }}.
+    quiet: true

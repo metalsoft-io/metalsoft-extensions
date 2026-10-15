@@ -1,0 +1,130 @@
+---
+- name: NVIDIA | HGX B200/B300 support must be enabled by the site admin
+  ansible.builtin.assert:
+    that:
+      - (sl_gpu_detect.sw_mng | int) == 0 or (sl_blackwell_enabled | bool)
+    fail_msg: >-
+      {{ inventory_hostname }} is an HGX B200/B300 (NVLink5) system. Its Fabric Manager
+      needs NVIDIA's nvlsm from the NVIDIA CUDA repository; a site admin must enable the
+      'nvidia_blackwell_hgx_enabled' extension site config first (experimental).
+    quiet: true
+
+# The open kernel modules (the only flavour for Blackwell, recommended Turing+) do not
+# support Maxwell/Pascal/Volta. The driver's Modaliases list the supported PCI ids.
+- name: NVIDIA | pre-Turing GPUs are not supported
+  ansible.builtin.shell: |
+    set -o pipefail
+    mods=$(apt-cache show "nvidia-driver-{{ sl_nvidia_branch }}-server-open" 2>/dev/null | grep -m1 '^Modaliases:' || true)
+    [ -n "$mods" ] || { echo "NO_MODALIASES"; exit 0; }
+    missing=""
+    for id in {{ sl_gpu_detect.gpu_device_ids | join(' ') }}; do
+      echo "$mods" | grep -qi "v000010DEd0000${id}" || missing="${missing} ${id}"
+    done
+    echo "${missing:-OK}"
+  args:
+    executable: /bin/bash
+  register: _sl_nv_modalias
+  changed_when: false
+
+- name: NVIDIA | unsupported GPU model
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} has NVIDIA GPU device id(s) {{ _sl_nv_modalias.stdout | trim }}
+      that the {{ sl_nvidia_branch }}-server-open driver does not support (pre-Turing GPUs
+      such as V100/P100 are not supported by this extension).
+  when: (_sl_nv_modalias.stdout | trim) not in ['OK', 'NO_MODALIASES']
+
+- name: NVIDIA | kernel flavour and newest installed kernel
+  ansible.builtin.shell: |
+    set -o pipefail
+    if dpkg-query -W -f='${Status}' linux-image-generic-hwe-26.04 2>/dev/null | grep -q 'install ok installed'; then
+      flavour=generic-hwe-26.04
+    else
+      flavour=generic
+    fi
+    abi=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's#.*/vmlinuz-##' | sort -V | tail -n1)
+    echo "${flavour} ${abi}"
+  args:
+    executable: /bin/bash
+  register: _sl_nv_kernel
+  changed_when: false
+
+- name: NVIDIA | kernel facts
+  ansible.builtin.set_fact:
+    _sl_nv_flavour: "{{ (_sl_nv_kernel.stdout | trim).split(' ')[0] }}"
+    _sl_nv_abi: "{{ (_sl_nv_kernel.stdout | trim).split(' ')[1] | default('') }}"
+
+# Canonical publishes the signed module package per kernel ABI shortly after each kernel.
+- name: NVIDIA | signed modules exist for the newest kernel
+  ansible.builtin.command: "apt-cache show linux-modules-nvidia-{{ sl_nvidia_branch }}-server-open-{{ _sl_nv_abi }}"
+  register: _sl_nv_lrm
+  changed_when: false
+  failed_when: false
+
+- name: NVIDIA | signed modules not yet published for this kernel
+  ansible.builtin.fail:
+    msg: >-
+      No Canonical-signed NVIDIA {{ sl_nvidia_branch }} modules are published yet for kernel
+      {{ _sl_nv_abi }} (linux-modules-nvidia-{{ sl_nvidia_branch }}-server-open-{{ _sl_nv_abi }}).
+      This happens for a few days after a new kernel release — retry the deployment later.
+  when: _sl_nv_lrm.rc != 0
+
+- name: NVIDIA | NVLink5 prerequisites (HGX B200/B300)
+  ansible.builtin.import_tasks: blackwell.yaml
+  when: (sl_gpu_detect.sw_mng | int) > 0
+
+- name: NVIDIA | driver packages (prebuilt signed modules, no DKMS)
+  ansible.builtin.apt:
+    name: >-
+      {{ ['linux-modules-nvidia-' ~ sl_nvidia_branch ~ '-server-open-' ~ _sl_nv_flavour] + sl_nvidia_pkgs
+         + (sl_nvidia_fabric_pkgs if ((sl_gpu_detect.nvswitch_count | int) > 0 or (sl_gpu_detect.sw_mng | int) > 0) else []) }}
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: _sl_nv_install
+
+- name: NVIDIA | DKMS must not be installed (unsigned modules break Secure Boot)
+  ansible.builtin.shell: |
+    set -o pipefail
+    dpkg-query -W -f='${Package} ${Status}\n' 'dkms' 'nvidia-dkms-*' 2>/dev/null | grep 'install ok installed' || true
+  args:
+    executable: /bin/bash
+  register: _sl_nv_dkms
+  changed_when: false
+  failed_when: (_sl_nv_dkms.stdout | trim) | length > 0
+
+# Ubuntu's unit runs with --no-persistence-mode; datacenter GPUs should keep the driver
+# initialised. The unit has no [Install] section (udev starts it) — override ExecStart only.
+- name: NVIDIA | persistenced drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/nvidia-persistenced.service.d
+    state: directory
+    mode: "0755"
+
+- name: NVIDIA | persistence mode on
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nvidia-persistenced.service.d/50-slurm-ext.conf
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --verbose
+  register: _sl_nv_persistenced
+
+- name: NVIDIA | reload systemd units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _sl_nv_persistenced is changed
+
+- name: NVIDIA | Fabric Manager enabled on NVSwitch systems
+  ansible.builtin.systemd_service:
+    name: nvidia-fabricmanager
+    enabled: true
+  when: (sl_gpu_detect.nvswitch_count | int) > 0 or (sl_gpu_detect.sw_mng | int) > 0
+
+- name: NVIDIA | a reboot activates the new driver
+  ansible.builtin.set_fact:
+    sl_nvidia_reboot_needed: "{{ (_sl_nv_install is changed) or (_sl_nv_persistenced is changed) }}"

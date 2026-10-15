@@ -1,0 +1,18 @@
+#!/bin/sh
+# Managed by the MetalSoft Slurm extension
+cat <<'EOF'
+
+  Slurm cluster "{{ sl_cluster_name }}" — head/login node (MetalSoft Slurm extension)
+
+  sinfo                        nodes and partitions      squeue -u $USER   your jobs
+  sbatch job.sh                submit a batch script     sacct             job history
+  srun -N2 hostname            run on 2 nodes            srun --pty bash   interactive shell
+  srun --gpus=1 nvidia-smi     GPU job                   srun --mpi=pmix -N2 ./mpi_app
+  apptainer exec docker://ubuntu:24.04 cat /etc/os-release
+
+  Storage: /shared/home/$USER (all nodes), /data (external NFS, if configured),
+           /tmp is node-local. Default partition: {{ sl_partition }}
+  Admins:  sudo slurm-useradd <user>    sudo slurm-userdel <user>
+           site settings go in /etc/slurm/local.conf, then: sudo scontrol reconfigure
+
+EOF

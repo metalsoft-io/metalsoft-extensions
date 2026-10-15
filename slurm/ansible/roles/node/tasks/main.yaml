@@ -1,0 +1,34 @@
+---
+# Node baseline for every reachable head/compute host. New hosts get the full treatment
+# (full upgrade, NVIDIA driver, one reboot); existing hosts only get reconcile-safe tasks
+# — a converge never reboots or upgrades a node that may be running jobs.
+
+- name: Node | preflight
+  ansible.builtin.import_tasks: preflight-node.yaml
+
+- name: Node | APT sources, base packages, update policy
+  ansible.builtin.import_tasks: apt.yaml
+
+- name: Node | full upgrade (new nodes only)
+  ansible.builtin.import_tasks: upgrade.yaml
+
+- name: Node | name resolution, time sync, firewall
+  ansible.builtin.import_tasks: network.yaml
+
+- name: Node | service accounts and directories
+  ansible.builtin.import_tasks: accounts.yaml
+
+- name: Node | NVIDIA driver
+  ansible.builtin.include_role:
+    name: nvidia
+
+- name: Node | activate kernel / driver (new nodes only)
+  ansible.builtin.import_tasks: reboot.yaml
+
+- name: Node | NVIDIA verification
+  ansible.builtin.include_role:
+    name: nvidia
+    tasks_from: verify.yaml
+
+- name: Node | user software (Open MPI, Apptainer)
+  ansible.builtin.import_tasks: software.yaml

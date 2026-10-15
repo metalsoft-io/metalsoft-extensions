@@ -1,0 +1,46 @@
+---
+# Compute nodes: cluster identity, MUNGE, /shared, Slurm packages, configless slurmd,
+# user sync, SSH policy and the raw facts the controller turns into NodeName lines.
+# The head may have failed earlier in this run (Ansible keeps running the other hosts):
+# never record an empty cluster id — it would trip the re-imaged-head guard on retries.
+- name: Compute | head node published the cluster id
+  ansible.builtin.assert:
+    that:
+      - sl_cluster_uuid | length > 0
+    fail_msg: >-
+      The head node {{ sl_head_host }} did not complete its setup in this run (no cluster id);
+      fix the head-node error reported above and retry.
+    quiet: true
+
+- name: Compute | node state directory
+  ansible.builtin.file:
+    path: "{{ sl_node_state_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Compute | cluster identity
+  ansible.builtin.copy:
+    dest: "{{ sl_node_state_dir }}/cluster-id"
+    content: "{{ sl_cluster_uuid }}\n"
+    mode: "0644"
+
+- name: Compute | MUNGE
+  ansible.builtin.import_tasks: munge.yaml
+
+- name: Compute | shared filesystem (NFS client)
+  ansible.builtin.import_tasks: storage-client.yaml
+
+- name: Compute | optional external NFS at /data
+  ansible.builtin.import_tasks: data-mount.yaml
+
+- name: Compute | Slurm packages
+  ansible.builtin.import_tasks: packages-compute.yaml
+
+- name: Compute | slurmd configuration
+  ansible.builtin.import_tasks: slurmd-config.yaml
+
+- name: Compute | cluster user sync and SSH policy
+  ansible.builtin.import_tasks: users-compute.yaml
+
+- name: Compute | hardware facts for slurm.conf
+  ansible.builtin.import_tasks: node-facts.yaml

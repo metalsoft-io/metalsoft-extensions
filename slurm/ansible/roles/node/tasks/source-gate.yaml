@@ -1,0 +1,14 @@
+---
+# Create-time gate (runs after the head state is read): a cluster whose cluster.json
+# already records slurm_source=ubuntu was created under the site opt-in — revoking the
+# opt-in later must not break its edits (the input is create-only).
+- name: Preflight | Ubuntu Slurm source requires the site admin opt-in
+  ansible.builtin.assert:
+    that:
+      - sl_source != 'ubuntu' or (sl_allow_ubuntu_source | bool)
+    fail_msg: >-
+      slurm_source=ubuntu installs Ubuntu's Slurm 25.11.2, which has known unpatched
+      security issues. A site admin must enable the 'allow_ubuntu_slurm_source' extension
+      site config first — or choose slurm_source=upstream.
+    quiet: true
+  when: ((sl_cluster_state.setonly | default({})).slurm_source | default('')) != 'ubuntu'

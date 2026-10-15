@@ -1,0 +1,105 @@
+---
+# Create scenario. Groups mirror the platform-generated inventory: the (hyphen-free)
+# instance-array labels plus their (here empty) _scale_out/_scale_in edit groups, and the
+# `slurm_up` group the reachability probe builds. `groups`/`hostvars` are magic vars and
+# cannot be faked via play vars, so the per-host facts the playbooks collect (sl_raw_*,
+# sl_host_*) and the head-node state facts are host vars here.
+all:
+  children:
+    slurmhead:
+      hosts:
+        head-1:
+          ansible_host: 10.0.10.10
+          ansible_user: ubuntu
+          sl_host_short: instance-100
+          sl_host_fqdn: instance-100.slurm.example.com
+          sl_cluster_state_fact:
+            uuid: 0123456789abcdef0123456789abcdef
+            bootstrapped: false
+            head_short: instance-100
+            head_fqdn: instance-100.slurm.example.com
+          sl_registry_state: {}
+          sl_outputs_fact:
+            admin_password: FixturePassw0rd
+            admin_ssh_private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\nFIXTUREKEY\n-----END OPENSSH PRIVATE KEY-----\n"
+            slurm_version: "26.05.4"
+    slurmcompute:
+      hosts:
+        # HGX H100: 8 GPUs, one model
+        node-a:
+          ansible_host: 10.0.10.21
+          ansible_user: ubuntu
+          sl_host_short: instance-101
+          sl_host_fqdn: instance-101.slurm.example.com
+          sl_raw_hostname: instance-101
+          sl_raw_slurmd_c: "NodeName=instance-101 CPUs=224 Boards=1 SocketsPerBoard=2 CoresPerSocket=56 ThreadsPerCore=2 RealMemory=2063900\nUpTime=0-01:02:03"
+          sl_raw_gpu_count: 8
+          sl_raw_gpu_models: ["NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3",
+                              "NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3", "NVIDIA H100 80GB HBM3"]
+        # CPU-only; the platform hands out an already-qualified inventory name
+        node-b.slurm.example.com:
+          ansible_host: 10.0.10.22
+          ansible_user: ubuntu
+          sl_host_short: instance-102
+          sl_host_fqdn: instance-102.slurm.example.com
+          sl_raw_hostname: instance-102
+          sl_raw_slurmd_c: "NodeName=instance-102 CPUs=128 Boards=1 SocketsPerBoard=2 CoresPerSocket=32 ThreadsPerCore=2 RealMemory=515000\nUpTime=0-00:10:00"
+          sl_raw_gpu_count: 0
+          sl_raw_gpu_models: []
+        # PCIe RTX PRO 6000 Blackwell x2 (multi-word type)
+        node-c:
+          ansible_host: 10.0.10.23
+          ansible_user: ubuntu
+          sl_host_short: instance-103
+          sl_host_fqdn: ""
+          sl_raw_hostname: instance-103
+          sl_raw_slurmd_c: "NodeName=instance-103 CPUs=64 Boards=1 SocketsPerBoard=1 CoresPerSocket=32 ThreadsPerCore=2 RealMemory=257000\nUpTime=0-00:10:00"
+          sl_raw_gpu_count: 2
+          sl_raw_gpu_models: ["NVIDIA RTX PRO 6000 Blackwell Server Edition", "NVIDIA RTX PRO 6000 Blackwell Server Edition"]
+        # 4 GPUs on PCI but only 3 bound by the driver -> untyped gpu:4 (node drains, visible)
+        node-d:
+          ansible_host: 10.0.10.24
+          ansible_user: ubuntu
+          sl_host_short: instance-104
+          sl_host_fqdn: instance-104.slurm.example.com
+          sl_raw_hostname: instance-104
+          sl_raw_slurmd_c: "NodeName=instance-104 CPUs=128 Boards=1 SocketsPerBoard=2 CoresPerSocket=32 ThreadsPerCore=2 RealMemory=1031000\nUpTime=0-00:10:00"
+          sl_raw_gpu_count: 4
+          sl_raw_gpu_models: ["NVIDIA A100-SXM4-80GB", "NVIDIA A100-SXM4-80GB", "NVIDIA A100-SXM4-80GB"]
+    slurmcompute_scale_out:
+    slurmcompute_scale_in:
+    slurmhead_scale_out:
+    slurmhead_scale_in:
+    slurm_up:
+      hosts:
+        head-1:
+        node-a:
+        node-b.slurm.example.com:
+        node-c:
+    # GPU naming fixtures (not cluster members)
+    gpu_fixtures:
+      hosts:
+        fx-a100:
+          ansible_host: 192.0.2.1
+          sl_raw_hostname: fx-a100
+          sl_raw_slurmd_c: "NodeName=fx-a100 CPUs=8 Boards=1 SocketsPerBoard=1 CoresPerSocket=4 ThreadsPerCore=2 RealMemory=2048"
+          sl_raw_gpu_count: 4
+          sl_raw_gpu_models: ["NVIDIA A100-SXM4-80GB", "NVIDIA A100-SXM4-80GB", "NVIDIA A100-SXM4-80GB", "NVIDIA A100-SXM4-80GB"]
+        fx-l40s:
+          ansible_host: 192.0.2.2
+          sl_raw_hostname: fx-l40s
+          sl_raw_slurmd_c: "NodeName=fx-l40s CPUs=8 Boards=1 Sockets=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=1500"
+          sl_raw_gpu_count: 1
+          sl_raw_gpu_models: ["NVIDIA L40S"]
+        fx-mixed:
+          ansible_host: 192.0.2.3
+          sl_raw_hostname: fx-mixed
+          sl_raw_slurmd_c: "NodeName=fx-mixed CPUs=8 Boards=1 SocketsPerBoard=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=65536"
+          sl_raw_gpu_count: 2
+          sl_raw_gpu_models: ["NVIDIA L40S", "NVIDIA H100 PCIe"]
+        fx-noname:
+          ansible_host: 192.0.2.4
+          sl_raw_hostname: fx-noname
+          sl_raw_slurmd_c: "NodeName=fx-noname CPUs=8 Boards=1 SocketsPerBoard=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=65536"
+          sl_raw_gpu_count: 1
+          sl_raw_gpu_models: ["Graphics Device"]

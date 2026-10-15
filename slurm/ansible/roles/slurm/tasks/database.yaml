@@ -1,0 +1,81 @@
+---
+# Accounting: MySQL 8.4 (Ubuntu main) on the head node, reached by slurmdbd over the local
+# unix socket (StorageHost=localhost). MySQL rather than MariaDB: Ubuntu's slurmdbd plugin
+# and the upstream build both link the MySQL 8.4 client library, and MariaDB >= 11.6
+# defaults innodb_snapshot_isolation=ON, which stops slurmdbd.
+- name: Database | MySQL server
+  ansible.builtin.apt:
+    name: mysql-server
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Database | Slurm tuning (accounting.html recommendations)
+  ansible.builtin.template:
+    src: mysql-slurm.cnf.j2
+    dest: /etc/mysql/mysql.conf.d/90-slurm.cnf
+    mode: "0644"
+  register: _sl_mysql_cnf
+
+- name: Database | restart MySQL after a configuration change
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: restarted
+    enabled: true
+  when: _sl_mysql_cnf is changed
+
+- name: Database | MySQL running
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Database | accounting database and user (root over auth_socket)
+  ansible.builtin.command:
+    cmd: mysql --batch
+    stdin: |
+      CREATE DATABASE IF NOT EXISTS {{ sl_db_name }};
+      CREATE USER IF NOT EXISTS '{{ sl_db_user }}'@'localhost' IDENTIFIED BY '{{ sl_db_password }}';
+      ALTER USER '{{ sl_db_user }}'@'localhost' IDENTIFIED BY '{{ sl_db_password }}';
+      GRANT ALL PRIVILEGES ON {{ sl_db_name }}.* TO '{{ sl_db_user }}'@'localhost';
+      FLUSH PRIVILEGES;
+  changed_when: false
+  no_log: true
+
+- name: Database | slurmdbd.conf (contains the DB password)
+  ansible.builtin.template:
+    src: slurmdbd.conf.j2
+    dest: "{{ sl_conf_dir }}/slurmdbd.conf"
+    owner: slurm
+    group: slurm
+    mode: "0600"
+  register: _sl_slurmdbd_conf
+  no_log: true
+
+- name: Database | slurmdbd
+  block:
+    - name: Database | slurmdbd running (restarted after a configuration change)
+      ansible.builtin.systemd_service:
+        name: slurmdbd
+        state: "{{ 'restarted' if (_sl_slurmdbd_conf is changed) else 'started' }}"
+        enabled: true
+        daemon_reload: true
+
+    # A failed ConditionPathExists makes `systemctl start` succeed without running anything.
+    - name: Database | slurmdbd answering on its port
+      ansible.builtin.wait_for:
+        port: "{{ sl_slurmdbd_port }}"
+        host: 127.0.0.1
+        timeout: 180
+  rescue:
+    - name: Database | slurmdbd log
+      ansible.builtin.command: journalctl -u slurmdbd -n 60 --no-pager
+      register: _sl_dbd_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Database | slurmdbd failed to start
+      ansible.builtin.fail:
+        msg: "slurmdbd did not start:\n{{ _sl_dbd_journal.stdout | default('') }}"

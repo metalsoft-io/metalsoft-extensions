@@ -1,0 +1,19 @@
+---
+# The head instance group was resized: the onEdit preDeploy guard must trip.
+# Run: cd tests && ansible-playbook -i inventory-head-scale.yaml guard-spec.yaml
+- name: Head-scale guard
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Assert | head scale detected
+      ansible.builtin.assert:
+        that:
+          - sl_head_scale_requested | bool
+          - sl_head_scale_hosts == ['head-2']
+        quiet: true

@@ -1,0 +1,11 @@
+# Managed by the MetalSoft Slurm extension — Slurm accounting tuning
+# (https://slurm.schedmd.com/accounting.html). Local-only: slurmdbd uses the unix socket.
+{% set _mem = ansible_facts['memtotal_mb'] | default(16384) | int %}
+{% set _pool = [[(_mem * 0.25) | int, 1024] | max, 16384] | min %}
+[mysqld]
+bind-address = 127.0.0.1
+mysqlx = OFF
+innodb_buffer_pool_size = {{ _pool }}M
+innodb_redo_log_capacity = {{ [(_pool / 4) | int, 512] | max }}M
+innodb_lock_wait_timeout = 900
+max_allowed_packet = 64M

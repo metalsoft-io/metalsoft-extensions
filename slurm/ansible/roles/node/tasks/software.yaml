@@ -1,0 +1,83 @@
+---
+# Open MPI 5 (Ubuntu archive) is built against the same PMIx 5 as Slurm, so
+# `srun --mpi=pmix` launches MPI jobs directly. Compilers only on the head (login) node.
+- name: Software | Open MPI runtime
+  ansible.builtin.apt:
+    name: [openmpi-bin, libpmix2t64]
+    state: present
+    install_recommends: false
+    lock_timeout: 900
+
+- name: Software | Open MPI development tools on the head node
+  ansible.builtin.apt:
+    name: [libopenmpi-dev, build-essential]
+    state: present
+    lock_timeout: 900
+  when: inventory_hostname == sl_head_host
+
+# Keep MPI traffic on the cluster network (HGX servers often expose BMC USB NICs that
+# hang the TCP transport) and use the TCP/shared-memory transports (no RDMA fabric in v1).
+- name: Software | Open MPI defaults
+  ansible.builtin.blockinfile:
+    path: /etc/openmpi/openmpi-mca-params.conf
+    create: true
+    mode: "0644"
+    marker: "# {mark} MetalSoft Slurm extension"
+    block: |
+      pml = ob1
+      btl = self,sm,tcp
+      btl_tcp_if_include = {{ sl_cluster_cidr }}
+  when: sl_cluster_cidr | length > 0
+
+- name: Software | NCCL socket interface on GPU nodes
+  ansible.builtin.copy:
+    dest: /etc/nccl.conf
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension
+      NCCL_SOCKET_IFNAME={{ ansible_facts['default_ipv4']['interface'] }}
+  when:
+    - (sl_gpu_detect.gpu_count | default(0) | int) > 0
+    - ansible_facts['default_ipv4']['interface'] is defined
+
+- name: Software | Apptainer
+  when: sl_install_apptainer | bool
+  block:
+    - name: Software | APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Software | Apptainer PPA signing key
+      ansible.builtin.copy:
+        src: apptainer-ppa.asc
+        dest: /etc/apt/keyrings/apptainer-ppa.asc
+        mode: "0644"
+
+    - name: Software | Apptainer PPA source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/apptainer-ppa.sources
+        mode: "0644"
+        content: |
+          # Managed by the MetalSoft Slurm extension
+          # (the Ubuntu 26.04 archive apptainer lacks the AppArmor userns profile, LP #2164911)
+          Types: deb
+          URIs: {{ sl_apptainer_ppa_uri }}
+          Suites: {{ ansible_facts['distribution_release'] }}
+          Components: main
+          Signed-By: /etc/apt/keyrings/apptainer-ppa.asc
+      register: _sl_apptainer_source
+
+    - name: Software | refresh package index for the Apptainer PPA
+      ansible.builtin.apt:
+        update_cache: true
+        lock_timeout: 900
+      when: _sl_apptainer_source is changed
+
+    # unprivileged mode only (no apptainer-suid): the PPA package ships the AppArmor profile
+    - name: Software | install Apptainer
+      ansible.builtin.apt:
+        name: apptainer
+        state: present
+        lock_timeout: 900

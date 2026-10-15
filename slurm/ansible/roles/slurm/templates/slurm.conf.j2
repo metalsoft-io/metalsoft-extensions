@@ -1,0 +1,58 @@
+# Managed by the MetalSoft Slurm extension (v{{ sl_ext_version }}) — regenerated on every
+# deploy/scale. Put site-specific settings in local.conf (included at the end, never
+# overwritten), then run: scontrol reconfigure
+ClusterName={{ sl_cluster_name }}
+SlurmctldHost={{ sl_head_short }}({{ sl_head_ip }})
+SlurmUser=slurm
+SlurmctldPort={{ sl_slurmctld_port }}
+SlurmdPort=6818
+AuthType=auth/munge
+CredType=cred/munge
+# compute nodes fetch this file (and cgroup.conf, gres.conf, local.conf) from slurmctld
+SlurmctldParameters=enable_configless
+
+StateSaveLocation={{ sl_state_save_dir }}
+SlurmdSpoolDir={{ sl_slurmd_spool_dir }}
+SlurmctldPidFile=/run/slurmctld/slurmctld.pid
+SlurmdPidFile=/run/slurmd.pid
+SlurmctldLogFile={{ sl_log_dir }}/slurmctld.log
+SlurmdLogFile={{ sl_log_dir }}/slurmd.log
+SlurmctldDebug=info
+SlurmdDebug=info
+
+# containment and accounting through cgroup v2
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup,task/affinity
+PrologFlags=Contain
+JobAcctGatherType=jobacct_gather/cgroup
+JobAcctGatherFrequency=30
+
+# scheduling: cores and memory are consumable; a job without --mem gets DefMemPerCPU
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core_Memory
+DefMemPerCPU={{ sl_def_mem_per_cpu }}
+
+# a node that reboots or loses contact returns to service once it registers correctly
+ReturnToService=2
+JobRequeue=1
+RebootProgram=/usr/sbin/reboot
+ResumeTimeout=1800
+
+MpiDefault=pmix
+PropagateResourceLimitsExcept=MEMLOCK
+GresTypes=gpu
+
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost={{ sl_head_ip }}
+AccountingStoragePort={{ sl_slurmdbd_port }}
+AccountingStorageEnforce=associations,limits,qos,safe
+AccountingStorageTRES=gres/gpu
+
+# compute nodes ({{ sl_nodes_sorted | length }})
+{% for n in sl_nodes_sorted %}
+NodeName={{ n.node_name }} NodeAddr={{ n.node_addr }} CPUs={{ n.cpus }} Boards={{ n.boards }} SocketsPerBoard={{ n.sockets_per_board }} CoresPerSocket={{ n.cores_per_socket }} ThreadsPerCore={{ n.threads_per_core }} RealMemory={{ n.real_memory }}{% if n.gres %} Gres={{ n.gres }}{% endif %} State=UNKNOWN
+{% endfor %}
+PartitionName={{ sl_partition }} Nodes=ALL Default=YES MaxTime=INFINITE State=UP
+
+Include local.conf

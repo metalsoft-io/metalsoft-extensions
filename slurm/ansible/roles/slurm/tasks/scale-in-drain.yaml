@@ -1,0 +1,63 @@
+---
+# onEdit preDeploy, head node. Leaving hosts = slurmcompute_scale_in (still up; NOT in
+# the main group). Their Slurm names come from the registry (no SSH to them needed).
+
+# The platform's setOnly enforcement is not relied on: an edit that changes a create-only
+# input stops here, BEFORE any server is touched.
+- name: Scale-in | create-only inputs unchanged
+  ansible.builtin.assert:
+    that:
+      - sl_setonly_changed | length == 0
+    fail_msg: >-
+      These inputs cannot change after the cluster was created: {{ sl_setonly_changed | join(', ') }}
+      (created with {{ (sl_cluster_state.setonly | default({})) | to_json }}). Revert them and retry the edit.
+    quiet: true
+
+# frozen for scale-in-remove.yaml (the registry loses these hosts there)
+- name: Scale-in | leaving nodes
+  ansible.builtin.set_fact:
+    _sl_leaving_hosts: "{{ sl_leaving_hosts }}"
+    _sl_unknown_leaving: "{{ sl_scale_in_hosts | reject('in', sl_registered_hosts) | list }}"
+
+- name: Scale-in | leaving hosts that never joined the cluster
+  ansible.builtin.debug:
+    msg: "Not in the Slurm registry (never joined, nothing to drain): {{ _sl_unknown_leaving | join(', ') }}"
+  when: _sl_unknown_leaving | length > 0
+
+- name: Scale-in | drain, wait for jobs, requeue/cancel the rest
+  when: _sl_leaving_hosts | length > 0
+  block:
+    - name: Scale-in | at least one compute node remains
+      ansible.builtin.assert:
+        that:
+          - (sl_registry.keys() | list | reject('in', _sl_leaving_hosts) | list | length) > 0
+        fail_msg: "Removing {{ _sl_leaving_hosts | join(', ') }} would leave no compute node."
+        quiet: true
+
+    - name: Scale-in | drain tool
+      ansible.builtin.copy:
+        src: slurm-ext-drain
+        dest: "{{ sl_sbin }}/slurm-ext-drain"
+        mode: "0755"
+
+    # a failed scale-out can leave the extension's own validation hold behind; the drain
+    # tool refuses nodes that are in a reservation, so release it (tenant reservations
+    # still block the scale-in)
+    - name: Scale-in | release a leftover validation reservation
+      ansible.builtin.command: scontrol delete ReservationName={{ sl_validation_resv_name }}
+      register: _sl_resv_del
+      changed_when: _sl_resv_del.rc == 0
+      failed_when: false
+
+    - name: Scale-in | drain leaving nodes (bounded by scale_in_drain_timeout_minutes)
+      ansible.builtin.command: >-
+        {{ sl_sbin }}/slurm-ext-drain --timeout {{ (sl_drain_timeout_min | int) * 60 }}
+        --reason "MetalSoft scale-in" {{ sl_leaving_names | join(',') }}
+      register: _sl_drain
+      changed_when: true
+      async: "{{ (sl_drain_timeout_min | int) * 60 + 1800 }}"
+      poll: 60
+
+    - name: Scale-in | drain log
+      ansible.builtin.debug:
+        msg: "{{ _sl_drain.stdout_lines | default([]) }}"

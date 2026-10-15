@@ -1,0 +1,70 @@
+{#-
+  Node registry entries for every compute host in `sl_collect_hosts` whose raw facts were
+  collected this run (node-facts.yaml): {inventory_host: entry}. Pure Jinja over hostvars so
+  the offline harness renders it with fixture host vars.
+
+  Entry fields:
+    node_name          Slurm NodeName = short host name reported by `slurmd -C`
+    node_addr          IP on slurm-net (inventory ansible_host)
+    cpus/boards/sockets_per_board/cores_per_socket/threads_per_core   from `slurmd -C`
+    memory_mb          RealMemory reported by `slurmd -C`
+    real_memory        configured RealMemory: floor_GiB(min(0.95*mem, mem-1GiB)) — a node
+                       reporting less than configured is drained, and DIMM/firmware/kernel
+                       changes shave a little off over time
+    def_mem_per_cpu    real_memory // cpus (cluster DefMemPerCPU = min over nodes)
+    gpu_count          NVIDIA GPUs on PCI (sysfs) — a GPU the driver loses drains the node
+    gpu_models         /proc/driver/nvidia model names (what AutoDetect=nvidia reports)
+    gres               "gpu:<type>:<n>" when every GPU maps to one type, "gpu:<n>" otherwise.
+                       <type> = name tokens (split on space/hyphen, leading "NVIDIA" dropped)
+                       up to the first token with a digit — "NVIDIA H100 80GB HBM3" -> h100,
+                       "NVIDIA RTX PRO 6000 Blackwell Server Edition" -> rtx_pro_6000 — kept
+                       only when it is a substring of Slurm's detected type name (lower case,
+                       spaces as underscores), which is Slurm's matching rule.
+-#}
+{%- set out = namespace(items=[]) -%}
+{%- for h in sl_collect_hosts if hostvars[h]['sl_raw_slurmd_c'] is defined -%}
+{%-   set hv = hostvars[h] -%}
+{%-   set line = (hv['sl_raw_slurmd_c'] | string).splitlines() | select('search', '^NodeName=') | first | default('') -%}
+{%-   set kv = dict(line.split() | select('search', '=') | map('split', '=', 1) | list) -%}
+{%-   set cpus = kv.get('CPUs', '0') | int -%}
+{%-   set mem = kv.get('RealMemory', '0') | int -%}
+{%-   set mem_floor = ((([mem * 0.95, mem - 1024] | min) / 1024) | round(0, 'floor') | int) * 1024 -%}
+{%-   set real_memory = [mem_floor, (mem / 2) | int] | max -%}
+{%-   set models = hv['sl_raw_gpu_models'] | default([]) | list -%}
+{%-   set gcount = hv['sl_raw_gpu_count'] | default(0) | int -%}
+{%-   set tns = namespace(types=[]) -%}
+{%-   for m in models -%}
+{%-     set detected = m | lower | trim | regex_replace('\\s+', '_') -%}
+{%-     set toks = (m | lower | trim | regex_replace('[\\s-]+', ' ')).split(' ') -%}
+{%-     set toks = toks[1:] if (toks | first | default('')) == 'nvidia' else toks -%}
+{%-     set dtok = toks | select('search', '[0-9]') | first | default('') -%}
+{%-     set gtype = (toks[:toks.index(dtok) + 1] | join('_')) if dtok else '' -%}
+{%-     set tns.types = tns.types + [gtype if (gtype and gtype in detected) else ''] -%}
+{%-   endfor -%}
+{%-   set types = tns.types | unique | list -%}
+{%-   if gcount == 0 -%}
+{%-     set gres = '' -%}
+{%-   elif (types | length) == 1 and (types | first) and (models | length) == gcount -%}
+{%-     set gres = 'gpu:' ~ (types | first) ~ ':' ~ gcount -%}
+{%-   else -%}
+{%-     set gres = 'gpu:' ~ gcount -%}
+{%-   endif -%}
+{%-   set entry = {
+        'inventory_host': h,
+        'node_name': kv.get('NodeName', hv['sl_raw_hostname'] | default(h)),
+        'node_addr': hv['ansible_host'] | default(h),
+        'cpus': cpus,
+        'boards': kv.get('Boards', '1') | int,
+        'sockets_per_board': kv.get('SocketsPerBoard', kv.get('Sockets', '1')) | int,
+        'cores_per_socket': kv.get('CoresPerSocket', '1') | int,
+        'threads_per_core': kv.get('ThreadsPerCore', '1') | int,
+        'memory_mb': mem,
+        'real_memory': real_memory,
+        'def_mem_per_cpu': (real_memory // cpus) if cpus > 0 else real_memory,
+        'gpu_count': gcount,
+        'gpu_models': models,
+        'gres': gres
+      } -%}
+{%-   set out.items = out.items + [[h, entry]] -%}
+{%- endfor -%}
+{{ dict(out.items) | to_json }}

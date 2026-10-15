@@ -1,0 +1,32 @@
+---
+# Ubuntu 26.04 ships sudo-rs as /usr/bin/sudo. Before ansible-core 2.22 Ansible's sudo
+# become plugin cannot recognise sudo-rs' password prompt (ansible/ansible#85837), so when
+# the platform login user needs a password for sudo this host is switched to the classic
+# sudo that 26.04 still installs as /usr/bin/sudo.ws. NOPASSWD sudo (the cloud-init
+# default-user setup) and root logins need nothing.
+
+- name: Become | probe sudo
+  ansible.builtin.raw: >-
+    if [ "$(id -u)" = "0" ]; then echo ROOT;
+    elif sudo -n true >/dev/null 2>&1; then echo NOPASSWD;
+    elif [ -x /usr/bin/sudo.ws ]; then echo SUDOWS;
+    else echo NOSUDOWS; fi
+  become: false
+  register: _sl_sudo_probe
+  changed_when: false
+
+- name: Become | use classic sudo (sudo.ws) with the login password
+  ansible.builtin.set_fact:
+    ansible_become_exe: /usr/bin/sudo.ws
+    ansible_become_password: "{{ ansible_password | default('') }}"
+  no_log: true
+  when: (_sl_sudo_probe.stdout | default('') | trim) == 'SUDOWS'
+
+- name: Become | no usable sudo
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }}: the login user needs a sudo password, but /usr/bin/sudo.ws
+      is missing and sudo-rs password prompts are not supported by this ansible-core.
+      Give the OS-template user NOPASSWD sudo (cloud-init default) or install the 'sudo'
+      package.
+  when: (_sl_sudo_probe.stdout | default('') | trim) == 'NOSUDOWS'

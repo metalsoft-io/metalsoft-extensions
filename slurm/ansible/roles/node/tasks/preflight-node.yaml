@@ -1,0 +1,70 @@
+---
+- name: Preflight | Ubuntu 26.04 LTS on x86_64
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] is version('26.04', '==')
+      - ansible_facts['architecture'] == 'x86_64'
+    fail_msg: >-
+      {{ inventory_hostname }} runs {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }} ({{ ansible_facts['architecture'] }}).
+      The Slurm extension requires Ubuntu 26.04 LTS on x86_64 on every node
+      (select an Ubuntu 26.04 template, e.g. ubuntu-26-04-lts-waitforssh, for os_template).
+    quiet: true
+
+# The MetalSoft 26.04 template derives the host name from the instance DNS record and
+# falls back to "test" when instance DNS records are disabled. Slurm identifies nodes by
+# their short host name, so names must be real and unique.
+- name: Preflight | platform-assigned host name
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['hostname'] | length > 0
+      - ansible_facts['hostname'] != 'test'
+      - ansible_facts['hostname'] is match('^[A-Za-z0-9][A-Za-z0-9-]*$')
+    fail_msg: >-
+      {{ inventory_hostname }} has host name '{{ ansible_facts['hostname'] }}'. Keep
+      dns.provisionInstanceDnsRecords enabled on the slurm-net connection so the platform
+      assigns a unique host name.
+    quiet: true
+
+# Identity facts other hosts' templates read through hostvars (/etc/hosts block).
+- name: Preflight | publish host identity
+  ansible.builtin.set_fact:
+    sl_host_short: "{{ ansible_facts['hostname'] }}"
+    sl_host_fqdn: "{{ (ansible_facts['fqdn'] | default('')) | regex_replace('\\.$', '') }}"
+
+- name: Preflight | short host names are unique across the cluster
+  ansible.builtin.assert:
+    that:
+      - _sl_names | length == _sl_names | unique | length
+    fail_msg: "Duplicate short host names across the cluster: {{ _sl_names | sort | join(', ') }}"
+    quiet: true
+  vars:
+    _sl_names: "{{ ansible_play_hosts | map('extract', hostvars, ['ansible_facts', 'hostname']) | list }}"
+  run_once: true
+
+# A node that already carries a cluster id must belong to THIS cluster. The head having no
+# state while compute nodes do means the head was re-imaged and the cluster state (accounting
+# DB, controller state, /shared) is gone — never silently start a new cluster over it.
+- name: Preflight | read cluster id of this node
+  ansible.builtin.slurp:
+    src: "{{ sl_node_state_dir }}/cluster-id"
+  register: _sl_node_cluster_id
+  failed_when: false
+  when: inventory_hostname in sl_compute_hosts
+
+- name: Preflight | node belongs to this cluster
+  ansible.builtin.assert:
+    that:
+      - sl_cluster_uuid | length > 0
+      - (_sl_node_cluster_id.content | b64decode | trim) == sl_cluster_uuid
+    fail_msg: >-
+      {{ inventory_hostname }} belongs to Slurm cluster
+      '{{ _sl_node_cluster_id.content | b64decode | trim }}' but the head node reports
+      '{{ sl_cluster_uuid or 'no cluster state' }}'. If the head node was reinstalled, its
+      controller/accounting state and /shared are lost — redeploy the cluster.
+    quiet: true
+  when:
+    - inventory_hostname in sl_compute_hosts
+    # an empty file (never written by this version) counts as "no cluster yet"
+    - (_sl_node_cluster_id.content | default('') | b64decode | trim) | length > 0

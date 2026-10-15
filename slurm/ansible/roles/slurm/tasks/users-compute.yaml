@@ -1,0 +1,60 @@
+---
+# Pull-based user sync: the head publishes /shared/.slurm-ext/{passwd,group}; a timer on
+# every compute node applies it (and runs before slurmd at boot).
+- name: Users | sync tool
+  ansible.builtin.copy:
+    src: slurm-usersync
+    dest: "{{ sl_sbin }}/slurm-usersync"
+    mode: "0755"
+
+- name: Users | sync service and timer
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - slurm-usersync.service
+    - slurm-usersync.timer
+  register: _sl_usersync_units
+
+- name: Users | timer enabled
+  ansible.builtin.systemd_service:
+    name: slurm-usersync.timer
+    state: started
+    enabled: true
+    daemon_reload: "{{ _sl_usersync_units is changed }}"
+
+- name: Users | sync now
+  ansible.builtin.command: "{{ sl_sbin }}/slurm-usersync --import"
+  register: _sl_usersync_run
+  changed_when: "'useradd' in _sl_usersync_run.stdout or 'userdel' in _sl_usersync_run.stdout"
+
+- name: Users | the cluster admin exists on this node
+  ansible.builtin.command: "id -u {{ sl_admin_user }}"
+  register: _sl_admin_id
+  changed_when: false
+  failed_when: (_sl_admin_id.stdout | trim) != (sl_admin_uid | string)
+
+# Regular cluster users work through Slurm; the admin and the platform login user are
+# not in slurm-users and keep SSH access.
+- name: SSH | deny cluster users on compute nodes
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/60-slurm-ext.conf
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension: cluster users run work through Slurm
+      # (srun --jobid=<id> --overlap --pty bash opens a shell inside a running job).
+      DenyGroups {{ sl_users_group }}
+  register: _sl_sshd_dropin
+
+- name: SSH | configuration valid
+  ansible.builtin.command: sshd -t
+  changed_when: false
+  when: _sl_sshd_dropin is changed
+
+# socket-activated sshd (Ubuntu default) may not be running: only reload a running one —
+# new connections read the drop-in anyway
+- name: SSH | reload sshd  # noqa: command-instead-of-module
+  ansible.builtin.command: systemctl try-reload-or-restart ssh.service
+  when: _sl_sshd_dropin is changed
+  changed_when: true

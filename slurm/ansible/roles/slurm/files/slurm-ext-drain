@@ -1,0 +1,123 @@
+#!/bin/bash
+# Gracefully take compute nodes out of service (MetalSoft scale-in, or admin maintenance).
+#
+#   slurm-ext-drain [--timeout SECONDS] [--reason TEXT] NODE[,NODE...] [NODE...]
+#
+#  1. DRAIN the nodes: running jobs continue, no new jobs start there.
+#  2. Wait up to --timeout seconds for their jobs to finish (progress every 30 s).
+#  3. Still running after the timeout: requeue batch jobs that allow it (they restart on
+#     other nodes), cancel everything else (interactive, --no-requeue).
+#  4. Wait (bounded) for the jobs to leave, then mark the nodes DOWN.
+# Nodes slurmctld reports as "not found" are skipped (already removed). Fails closed:
+# exit 3 when a node is in a reservation (remove the reservation first), 4 when jobs do not
+# leave after cancellation, 5 when slurmctld cannot be queried (nothing changed then).
+set -euo pipefail
+
+TIMEOUT=3600
+REASON="drained by slurm-ext-drain"
+NODES=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --timeout) TIMEOUT=$2; shift 2;;
+    --reason) REASON=$2; shift 2;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0;;
+    *) IFS=',' read -r -a more <<<"$1"; NODES+=("${more[@]}"); shift;;
+  esac
+done
+[ ${#NODES[@]} -gt 0 ] || { echo "no nodes given" >&2; exit 2; }
+
+# every decision below depends on slurmctld's answers: an unreachable controller must not
+# look like "node already removed" or "no reservation"
+if ! ping_out=$(scontrol ping 2>&1) || ! grep -qw 'UP' <<<"$ping_out"; then
+  echo "ERROR: slurmctld is not responding: ${ping_out}" >&2
+  exit 5
+fi
+
+known=()
+for n in "${NODES[@]}"; do
+  [ -n "$n" ] || continue
+  if out=$(scontrol -o show node "$n" 2>&1); then
+    known+=("$n")
+  elif grep -qiF "node ${n} not found" <<<"$out"; then
+    echo "node $n is not known to slurmctld (already removed) — skipping"
+  else
+    echo "ERROR: cannot query node ${n}: ${out}" >&2
+    exit 5
+  fi
+done
+if [ ${#known[@]} -eq 0 ]; then
+  echo "nothing to drain"
+  exit 0
+fi
+list=$(IFS=,; echo "${known[*]}")
+
+# Removing a node that a reservation still references is refused here: the tenant (or
+# admin) must delete or shrink the reservation first.
+if ! resv=$(scontrol -o show reservation 2>&1); then
+  echo "ERROR: cannot list reservations: ${resv}" >&2
+  exit 5
+fi
+reserved=""
+while read -r line; do
+  name=$(sed -n 's/.*ReservationName=\([^ ]*\).*/\1/p' <<<"$line")
+  rnodes=$(sed -n 's/.* Nodes=\([^ ]*\).*/\1/p' <<<"$line")
+  if [ -z "$rnodes" ] || [ "$rnodes" = "(null)" ]; then
+    continue
+  fi
+  for n in $(scontrol show hostnames "$rnodes" 2>/dev/null || true); do
+    for k in "${known[@]}"; do
+      if [ "$n" = "$k" ]; then reserved="${reserved} ${name}:${n}"; fi
+    done
+  done
+done < <(grep 'ReservationName=' <<<"$resv" || true)
+if [ -n "$reserved" ]; then
+  echo "ERROR: node(s) in a reservation:${reserved} — delete or update the reservation(s) first" >&2
+  exit 3
+fi
+
+echo "draining ${list} (timeout ${TIMEOUT}s)"
+scontrol update NodeName="${list}" State=DRAIN Reason="${REASON}"
+
+# A failing squeue (slurmctld busy) must never look like "no jobs left".
+jobs_on_nodes() {
+  local out
+  if out=$(squeue -h -w "${list}" -o '%A' 2>/dev/null); then
+    sort -u <<<"$out" | sed '/^$/d'
+  else
+    echo "squeue-unavailable"
+  fi
+}
+
+deadline=$(( $(date +%s) + TIMEOUT ))
+while :; do
+  jobs=$(jobs_on_nodes)
+  [ -z "$jobs" ] && break
+  now=$(date +%s)
+  [ "$now" -ge "$deadline" ] && break
+  echo "$(date -Is) waiting: $(wc -w <<<"$jobs") job(s) on ${list}, $(( deadline - now ))s left"
+  sleep 30
+done
+
+jobs=$(jobs_on_nodes)
+if [ -n "$jobs" ]; then
+  echo "timeout reached: requeue/cancel $(wc -w <<<"$jobs") job(s)"
+  for j in $jobs; do
+    case "$j" in *[!0-9]*) continue;; esac
+    info=$(scontrol -o show job "$j" 2>/dev/null || true)
+    if grep -q ' BatchFlag=1' <<<"$info" && grep -q ' Requeue=1' <<<"$info"; then
+      if scontrol requeue "$j"; then echo "requeued job $j"; continue; fi
+    fi
+    scancel "$j" && echo "cancelled job $j" || true
+  done
+  for _ in $(seq 1 60); do
+    [ -z "$(jobs_on_nodes)" ] && break
+    sleep 10
+  done
+  if [ -n "$(jobs_on_nodes)" ]; then
+    echo "ERROR: jobs still on ${list} after cancellation: $(jobs_on_nodes | tr '\n' ' ')" >&2
+    exit 4
+  fi
+fi
+
+scontrol update NodeName="${list}" State=DOWN Reason="${REASON}"
+echo "drained and down: ${list}"

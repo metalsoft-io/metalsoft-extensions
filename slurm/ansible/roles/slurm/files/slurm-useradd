@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Add a Slurm cluster user (MetalSoft Slurm extension). Run as root on the head node:
+
+  sudo slurm-useradd [--account ACCOUNT] [--ssh-key "ssh-ed25519 AAAA... me@laptop"]
+                     [--no-password] [--no-wait] USER
+
+Creates USER with a never-used uid (>= 2001; uids of removed users are not handed out
+again, their kept homes stay theirs) and home /shared/home/USER, prints an initial
+password, publishes the user list for the compute nodes (they pick it up within a
+minute) and finally creates the Slurm accounting association — jobs are accepted only
+after that, so no job can start on a node that does not know the user yet.
+A user removed with slurm-userdel (home kept) gets the old uid and home back.
+"""
+import argparse
+import fcntl
+import grp
+import json
+import os
+import pwd
+import re
+import secrets
+import string
+import subprocess
+import sys
+import time
+
+CLUSTER_FILE = "/etc/slurm-ext/cluster.json"
+LAST_UID_FILE = "/etc/slurm-ext/last_uid"
+LOCK_FILE = "/etc/slurm-ext/useradd.lock"
+HOME_BASE = "/shared/home"
+USERS_GROUP = "slurm-users"
+UID_FIRST = 2001
+UID_MAX = 59999
+NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
+KEY_RE = re.compile(r"^(ssh|ecdsa|sk)-[a-z0-9@.-]+ [A-Za-z0-9+/=]+( .*)?$")
+RESERVED = {
+    "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp",
+    "proxy", "www-data", "backup", "list", "irc", "gnats", "nobody", "_apt", "messagebus",
+    "syslog", "sshd", "polkitd", "uuidd", "tcpdump", "landscape", "lxd", "dnsmasq", "statd",
+    "ubuntu", "admin", "slurm", "slurmrestd", "munge", "mysql", "nvidia-persistenced",
+}
+
+
+def sh(cmd, check=True, **kw):
+    res = subprocess.run(cmd, check=False, text=True, capture_output=True, **kw)
+    if check and res.returncode != 0:
+        die("%s failed: %s" % (" ".join(cmd), (res.stderr or res.stdout).strip()))
+    return res
+
+
+def die(msg):
+    sys.stderr.write("slurm-useradd: %s\n" % msg)
+    sys.exit(1)
+
+
+def read_last_uid():
+    try:
+        with open(LAST_UID_FILE, encoding="utf-8") as fh:
+            return int(fh.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def write_last_uid(uid):
+    tmp = LAST_UID_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("%d\n" % uid)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, LAST_UID_FILE)
+
+
+def home_owners():
+    """uid of every directory under /shared/home (kept homes of removed users included)"""
+    owners = {}
+    try:
+        for entry in os.scandir(HOME_BASE):
+            if entry.is_dir(follow_symlinks=False):
+                owners[entry.name] = entry.stat(follow_symlinks=False).st_uid
+    except FileNotFoundError:
+        pass
+    return owners
+
+
+def pick_uid(user, home):
+    """High-water allocation: a uid that ever owned an account or a home is never reused
+    for somebody else (kept files, accounting records). A returning user whose home is
+    still there gets its uid back."""
+    used = {p.pw_uid for p in pwd.getpwall()} | {g.gr_gid for g in grp.getgrall()}
+    owners = home_owners()
+    if os.path.lexists(home):
+        if os.path.islink(home) or not os.path.isdir(home):
+            die("%s exists and is not a directory; move it away first" % home)
+        owner = os.stat(home).st_uid
+        if not UID_FIRST <= owner <= UID_MAX or owner in used:
+            die("%s exists and belongs to uid %d (not a free cluster uid); move it away first"
+                % (home, owner))
+        return owner, True
+    in_range = [u for u in used | set(owners.values()) if UID_FIRST <= u <= UID_MAX]
+    uid = max([read_last_uid(), UID_FIRST - 1] + in_range) + 1
+    if uid > UID_MAX:
+        die("no free uid left in %d-%d" % (UID_FIRST, UID_MAX))
+    return uid, False
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Add a Slurm cluster user")
+    ap.add_argument("user")
+    ap.add_argument("--account", help="Slurm account (default: the cluster default account)")
+    ap.add_argument("--ssh-key", help="OpenSSH public key to authorize for the user")
+    ap.add_argument("--no-password", action="store_true", help="do not set a password (SSH key only)")
+    ap.add_argument("--no-wait", action="store_true", help="do not wait for the compute nodes to sync")
+    args = ap.parse_args()
+
+    if os.geteuid() != 0:
+        die("must run as root (sudo)")
+    if not os.path.exists(CLUSTER_FILE):
+        die("run this on the Slurm head node")
+    with open(CLUSTER_FILE, encoding="utf-8") as fh:
+        cluster = json.load(fh)
+    user = args.user
+    if not NAME_RE.match(user) or user in RESERVED:
+        die("invalid or reserved user name: %r" % user)
+    try:
+        pwd.getpwnam(user)
+        die("user %s already exists" % user)
+    except KeyError:
+        pass
+    if args.ssh_key and not KEY_RE.match(args.ssh_key.strip()):
+        die("--ssh-key does not look like an OpenSSH public key")
+    account = args.account or cluster.get("default_account", "users")
+    if not NAME_RE.match(account):
+        die("invalid account name: %r" % account)
+
+    home = os.path.join(HOME_BASE, user)
+    with open(LOCK_FILE, "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        uid, returning = pick_uid(user, home)
+        sh(["groupadd", "-g", str(uid), user])
+        sh(["useradd", "-u", str(uid), "-g", str(uid), "-G", USERS_GROUP,
+            "-M" if returning else "-m", "-d", home, "-s", "/bin/bash", "-c", "Slurm user", user])
+        write_last_uid(max(read_last_uid(), uid))
+    os.chmod(home, 0o700)
+    if returning:
+        print("re-created %s with its previous uid %d; existing home %s kept" % (user, uid, home))
+
+    password = None
+    if not args.no_password:
+        alphabet = string.ascii_letters + string.digits
+        password = "".join(secrets.choice(alphabet) for _ in range(16))
+        sh(["chpasswd"], input="%s:%s\n" % (user, password))
+    if args.ssh_key:
+        ssh_dir = os.path.join(home, ".ssh")
+        os.makedirs(ssh_dir, mode=0o700, exist_ok=True)
+        with open(os.path.join(ssh_dir, "authorized_keys"), "a", encoding="utf-8") as fh:
+            fh.write(args.ssh_key.strip() + "\n")
+        sh(["chown", "-R", "%d:%d" % (uid, uid), ssh_dir])
+        os.chmod(os.path.join(ssh_dir, "authorized_keys"), 0o600)
+
+    sh(["/usr/local/sbin/slurm-usersync", "--export"])
+    if not args.no_wait:
+        print("waiting 75 s for the compute nodes to pick up the new user ...", flush=True)
+        time.sleep(75)
+
+    cmd = ["sacctmgr", "-n", "-P", "list", "account", account, "format=account"]
+    if account not in sh(cmd).stdout.split():
+        sh(["sacctmgr", "-i", "add", "account", account, "Cluster=%s" % cluster.get("cluster_name", ""),
+            "Description=%s" % account, "Organization=%s" % account])
+    cmd = ["sacctmgr", "-n", "-P", "list", "assoc", "user=%s" % user, "account=%s" % account, "format=user"]
+    if user not in sh(cmd).stdout.split():
+        res = sh(["sacctmgr", "-i", "add", "user", user, "Account=%s" % account,
+                  "DefaultAccount=%s" % account], check=False)
+        out = res.stdout + res.stderr
+        if res.returncode != 0 and "Nothing new added" not in out and "Data has not changed" not in out:
+            die("sacctmgr failed: %s" % out.strip())
+
+    print("created Slurm user %s (uid %d, account %s, home %s)" % (user, uid, account, home))
+    if password:
+        print("initial password: %s" % password)
+    print("log in on this head node; submit jobs with sbatch/srun")
+
+
+if __name__ == "__main__":
+    main()

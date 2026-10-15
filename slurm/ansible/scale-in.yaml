@@ -1,0 +1,126 @@
+---
+# Slurm extension — onEdit preDeploy.
+#
+# Runs BEFORE the platform provisions/deprovisions servers for an edit:
+#   * slurmcompute_scale_in hosts are still up: drain them, wait for their jobs (bounded
+#     by scale_in_drain_timeout_minutes), requeue/cancel what is left, stop slurmd and
+#     remove them from slurm.conf (scontrol reconfigure);
+#   * NEW (scale-out) hosts may already be listed in slurmcompute/_scale_out but are NOT
+#     provisioned yet — this playbook never targets the main compute group or the
+#     scale-out group (only localhost, slurmhead and slurmcompute_scale_in).
+# An edit without scale-in hosts only runs the guards and re-emits the outputs.
+
+- name: Slurm scale-in | banner and guards
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Banner | slurm extension bundle version
+      ansible.builtin.debug:
+        msg: >-
+          slurm extension bundle v{{ sl_ext_version }} — onEdit preDeploy:
+          scale_in={{ sl_scale_in_hosts | join(',') or '-' }}
+          scale_out={{ sl_scale_out_hosts | join(',') or '-' }}
+          drain_timeout={{ sl_drain_timeout_min }}min
+
+    - name: Guard | the head node cannot be scaled
+      ansible.builtin.assert:
+        that:
+          - not (sl_head_scale_requested | bool)
+        fail_msg: >-
+          The slurmhead instance group was resized ({{ sl_head_scale_hosts | join(', ') }}).
+          The head node holds the controller, accounting DB and /shared and cannot be
+          added or removed — revert the head instance count to 1.
+        quiet: true
+
+    - name: Guard | at least one compute node must remain
+      ansible.builtin.assert:
+        that:
+          - sl_compute_hosts | length >= 1
+        fail_msg: "Scaling compute nodes to zero is not supported (slurmctld needs at least one node)."
+        quiet: true
+
+- name: Slurm scale-in | privilege escalation on the head node
+  hosts: slurmhead
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Probe | privilege escalation (sudo-rs aware)
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: become-probe.yaml
+
+- name: Slurm scale-in | drain and requeue on the head node
+  hosts: slurmhead
+  gather_facts: true
+  gather_subset: [min]
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Scale-in | read cluster state and node registry
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: state-read.yaml
+
+    - name: Scale-in | drain leaving nodes
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: scale-in-drain.yaml
+
+- name: Slurm scale-in | stop slurmd on leaving nodes (best effort)
+  hosts: slurmcompute_scale_in
+  gather_facts: false
+  become: true
+  # a leaving node may already be dead (e.g. it is being removed BECAUSE it failed)
+  ignore_unreachable: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Scale-in | stop slurmd
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: scale-in-stop.yaml
+
+- name: Slurm scale-in | remove leaving nodes from the cluster
+  hosts: slurmhead
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Scale-in | reconfigure without leaving nodes
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: scale-in-remove.yaml
+
+    # An empty registry means the create never reached the controller step: no outputs
+    # were ever published, and the head may not even have its secrets / Slurm yet. Skip so
+    # the edit can proceed to the postDeploy converge that repairs the cluster.
+    - name: Outputs | collect values on the head node
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: collect-outputs.yaml
+      when: sl_registered_hosts | length > 0
+
+- name: Slurm scale-in | publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | emit context JSON
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: emit-outputs.yaml
+      when: sl_registered_hosts | length > 0
+
+    - name: Outputs | cluster not configured yet
+      ansible.builtin.debug:
+        msg: "No compute node registered on the head yet; the postDeploy converge publishes the outputs."
+      when: sl_registered_hosts | length == 0

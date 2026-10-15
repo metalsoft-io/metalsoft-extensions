@@ -1,0 +1,62 @@
+---
+# Runs after the (single) reboot on every GPU node whose driver the extension manages.
+# NEW (or pending-validation) nodes fail on a problem; EXISTING nodes only warn (never
+# block an unrelated edit).
+- name: NVIDIA | verify driver, persistence, MIG and fabric
+  when:
+    - sl_install_nvidia | bool
+    - (sl_gpu_detect.gpu_count | default(0) | int) > 0
+  block:
+    - name: NVIDIA | Fabric Manager running on NVSwitch systems
+      ansible.builtin.systemd_service:
+        name: nvidia-fabricmanager
+        state: started
+        enabled: true
+      when: (sl_gpu_detect.nvswitch_count | int) > 0 or (sl_gpu_detect.sw_mng | int) > 0
+      failed_when: false
+
+    - name: NVIDIA | collect driver state
+      ansible.builtin.shell: |
+        set -o pipefail
+        open=$(grep -c 'Open Kernel Module' /proc/driver/nvidia/version 2>/dev/null || true)
+        listed=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)
+        persist=$(nvidia-smi --query-gpu=persistence_mode --format=csv,noheader 2>/dev/null | grep -vc 'Enabled' || true)
+        mig=$(nvidia-smi --query-gpu=mig.mode.current --format=csv,noheader 2>/dev/null | grep -c 'Enabled' || true)
+        fabric=$(nvidia-smi -q 2>/dev/null | grep -A2 -i '^ *Fabric' | grep -iE 'State *:' | grep -viE 'Completed|N/A' | wc -l)
+        printf '{"open": %d, "listed": %d, "not_persistent": %d, "mig_enabled": %d, "fabric_pending": %d}\n' \
+          "${open:-0}" "${listed:-0}" "${persist:-0}" "${mig:-0}" "${fabric:-0}"
+      args:
+        executable: /bin/bash
+      register: _sl_nv_state_raw
+      changed_when: false
+      # NVSwitch fabric training finishes a little after Fabric Manager starts
+      until: (_sl_nv_state_raw.stdout | from_json).fabric_pending | int == 0
+      retries: 30
+      delay: 10
+      failed_when: false
+
+    - name: NVIDIA | driver state
+      ansible.builtin.set_fact:
+        _sl_nv_state: "{{ _sl_nv_state_raw.stdout | from_json }}"
+        _sl_nv_problems: >-
+          {{ ([] if (_sl_nv_state_raw.stdout | from_json).open | int > 0 else ['open kernel module not loaded'])
+             + ([] if (_sl_nv_state_raw.stdout | from_json).listed | int == sl_gpu_detect.gpu_count | int
+                else ['nvidia-smi lists ' ~ (_sl_nv_state_raw.stdout | from_json).listed ~ ' of ' ~ sl_gpu_detect.gpu_count ~ ' GPUs'])
+             + ([] if (_sl_nv_state_raw.stdout | from_json).not_persistent | int == 0 else ['persistence mode off'])
+             + ([] if (_sl_nv_state_raw.stdout | from_json).mig_enabled | int == 0 else ['MIG enabled (not supported by AutoDetect=nvidia)'])
+             + ([] if (_sl_nv_state_raw.stdout | from_json).fabric_pending | int == 0 else ['NVSwitch fabric not ready (Fabric Manager)']) }}
+
+    - name: NVIDIA | new (or not yet validated) node must have a healthy driver
+      ansible.builtin.fail:
+        msg: "{{ inventory_hostname }}: {{ _sl_nv_problems | join('; ') }}"
+      when:
+        - (sl_host_is_new | bool) or (inventory_hostname in sl_pending_hosts)
+        - _sl_nv_problems | length > 0
+
+    - name: NVIDIA | existing node driver problems
+      ansible.builtin.debug:
+        msg: "WARNING: {{ inventory_hostname }}: {{ _sl_nv_problems | join('; ') }}"
+      when:
+        - not (sl_host_is_new | bool)
+        - inventory_hostname not in sl_pending_hosts
+        - _sl_nv_problems | length > 0

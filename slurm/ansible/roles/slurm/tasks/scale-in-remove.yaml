@@ -1,0 +1,29 @@
+---
+# Remove the (drained, DOWN) leaving nodes from slurm.conf and apply with scontrol
+# reconfigure; registry entries are deleted LAST so a retry can still map host -> node.
+- name: Scale-in | nothing to remove
+  ansible.builtin.debug:
+    msg: "No registered compute node is leaving."
+  when: (_sl_leaving_hosts | default([])) | length == 0
+
+- name: Scale-in | remove leaving nodes from the configuration
+  when: (_sl_leaving_hosts | default([])) | length > 0
+  block:
+    - name: Scale-in | registry without the leaving nodes
+      ansible.builtin.set_fact:
+        _sl_leaving_names: "{{ _sl_leaving_hosts | map('extract', sl_registry) | map(attribute='node_name') | list }}"
+        sl_registry_state: "{{ sl_registry | dict2items | rejectattr('key', 'in', _sl_leaving_hosts) | items2dict }}"
+
+    - name: Scale-in | render and apply the Slurm configuration
+      ansible.builtin.include_tasks: render-config.yaml
+
+    - name: Scale-in | leaving nodes are gone from slurmctld
+      ansible.builtin.command: "scontrol -o show node {{ item }}"
+      loop: "{{ _sl_leaving_names }}"
+      register: _sl_gone
+      changed_when: false
+      failed_when: _sl_gone.rc == 0
+
+    - name: Scale-in | delete registry entries
+      ansible.builtin.command: "{{ sl_sbin }}/slurm-ext-registry delete {{ _sl_leaving_hosts | join(' ') }}"
+      changed_when: true

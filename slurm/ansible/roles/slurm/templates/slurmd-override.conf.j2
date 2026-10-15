@@ -1,0 +1,16 @@
+# Managed by the MetalSoft Slurm extension
+[Unit]
+# users must exist and /shared is mounted first when the head is reachable (Wants, not
+# Requires: a node booting while the head is down still starts slurmd, which retries the
+# configless fetch); on GPU nodes the driver must be initialised (AutoDetect=nvidia reads
+# /proc/driver/nvidia) and the NVSwitch fabric trained
+After=remote-fs.target slurm-usersync.service{% if (sl_gpu_detect.gpu_count | default(0) | int) > 0 %} nvidia-persistenced.service nvidia-fabricmanager.service{% endif %}
+
+Wants=slurm-usersync.service{% if (sl_gpu_detect.gpu_count | default(0) | int) > 0 %} nvidia-persistenced.service{% endif %}
+
+WantsMountsFor={{ sl_shared_dir }}
+StartLimitIntervalSec=0
+
+[Service]
+Restart=on-failure
+RestartSec=10

@@ -1,0 +1,47 @@
+---
+# Created BEFORE any Slurm package: Slurm needs the same SlurmUser UID/GID on every node
+# (Debian/Ubuntu use 64030 and keep an existing user; SchedMD's packages create none).
+- name: Accounts | slurm group
+  ansible.builtin.group:
+    name: slurm
+    gid: "{{ sl_slurm_gid }}"
+    system: true
+
+- name: Accounts | slurm user
+  ansible.builtin.user:
+    name: slurm
+    uid: "{{ sl_slurm_uid }}"
+    group: slurm
+    system: true
+    home: /var/lib/slurm
+    create_home: false
+    shell: /usr/sbin/nologin
+    comment: Slurm workload manager
+
+# Regular cluster users (created by slurm-useradd) are members; compute nodes deny SSH to it.
+- name: Accounts | cluster users group
+  ansible.builtin.group:
+    name: "{{ sl_users_group }}"
+    gid: "{{ sl_users_gid }}"
+
+- name: Accounts | Slurm directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /var/lib/slurm, owner: slurm, mode: "0755" }
+    - { path: "{{ sl_log_dir }}", owner: slurm, mode: "0755" }
+    - { path: "{{ sl_conf_dir }}", owner: root, mode: "0755" }
+
+# The cluster admin (created on the head, replicated to compute nodes by slurm-usersync)
+# gets password-less sudo everywhere — the tenant owns these servers.
+- name: Accounts | sudo for the cluster admin
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/90-slurm-ext-admin
+    mode: "0440"
+    content: |
+      # Managed by the MetalSoft Slurm extension
+      {{ sl_admin_user }} ALL=(ALL) NOPASSWD: ALL

@@ -1,0 +1,12 @@
+# Managed by the MetalSoft Slurm extension (v{{ sl_ext_version }}) — regenerated on every run.
+AuthType=auth/munge
+DbdHost={{ ansible_facts['hostname'] }}
+DbdPort={{ sl_slurmdbd_port }}
+SlurmUser=slurm
+LogFile={{ sl_log_dir }}/slurmdbd.log
+PidFile=/run/slurmdbd/slurmdbd.pid
+StorageType=accounting_storage/mysql
+StorageHost=localhost
+StorageUser={{ sl_db_user }}
+StoragePass={{ sl_db_password }}
+StorageLoc={{ sl_db_name }}

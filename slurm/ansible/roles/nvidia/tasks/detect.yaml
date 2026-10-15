@@ -1,0 +1,40 @@
+---
+# Raw hardware facts only (classification is in the tasks that consume them):
+#   gpu_count       NVIDIA PCI functions of class 0300 (VGA) / 0302 (3D) — the GPU count
+#                   Slurm must see (a GPU missing from the driver then drains the node)
+#   gpu_device_ids  their PCI device ids (pre-Turing check against the driver modaliases)
+#   nvswitch_count  NVSwitch bridges (class 0680: HGX A100/H100/H200) -> Fabric Manager
+#   sw_mng          ConnectX "SW_MNG" bridge functions (HGX B200/B300 NVLink5) -> nvlsm
+- name: NVIDIA | collect PCI facts
+  ansible.builtin.shell: |
+    set -o pipefail
+    ids=""; count=0
+    for d in /sys/bus/pci/devices/*; do
+      [ "$(cat "$d/vendor" 2>/dev/null)" = "0x10de" ] || continue
+      case "$(cat "$d/class" 2>/dev/null)" in
+        0x0300*|0x0302*)
+          count=$((count + 1))
+          ids="${ids}${ids:+,}\"$(sed 's/^0x//' "$d/device")\"";;
+      esac
+    done
+    nvswitch=$(lspci -n -d 10de::0680 2>/dev/null | wc -l)
+    swmng=$(lspci -vvv 2>/dev/null | grep -c 'SW_MNG' || true)
+    sb=$(mokutil --sb-state 2>/dev/null | head -n1 | tr -d '"' || true)
+    printf '{"gpu_count": %d, "gpu_device_ids": [%s], "nvswitch_count": %d, "sw_mng": %d, "secure_boot": "%s"}\n' \
+      "$count" "$ids" "$nvswitch" "$swmng" "${sb:-unknown}"
+  args:
+    executable: /bin/bash
+  register: _sl_gpu_detect_raw
+  changed_when: false
+
+- name: NVIDIA | record hardware facts
+  ansible.builtin.set_fact:
+    sl_gpu_detect: "{{ _sl_gpu_detect_raw.stdout | from_json }}"
+
+- name: NVIDIA | GPUs found
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: {{ sl_gpu_detect.gpu_count }} NVIDIA GPU(s),
+      NVSwitch={{ sl_gpu_detect.nvswitch_count }}, NVLink5 bridge={{ sl_gpu_detect.sw_mng }},
+      {{ sl_gpu_detect.secure_boot }}
+  when: (sl_gpu_detect.gpu_count | int) > 0

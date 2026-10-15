@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Node registry of the MetalSoft Slurm extension (head node only).
+
+The registry is the source of truth for the NodeName lines in slurm.conf: one JSON file
+per compute node, keyed by the MetalSoft inventory host name, in /etc/slurm-ext/nodes.d.
+It lets the onEdit preDeploy stage re-render slurm.conf while new servers are not
+provisioned yet, and keeps unreachable nodes in the configuration (they show DOWN).
+
+  slurm-ext-registry dump                print {inventory_host: entry, ...} as JSON
+  slurm-ext-registry put < entries.json  write/replace entries (JSON object on stdin);
+                                         prints {"changed": [...]}
+  slurm-ext-registry delete HOST ...     remove entries; prints {"changed": [...]}
+"""
+import json
+import os
+import re
+import sys
+import tempfile
+
+REGISTRY_DIR = os.environ.get("SLURM_EXT_REGISTRY_DIR", "/etc/slurm-ext/nodes.d")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
+
+
+def _path(host):
+    if not SAFE_NAME.match(host):
+        raise SystemExit("invalid host name: %r" % host)
+    return os.path.join(REGISTRY_DIR, host + ".json")
+
+
+def dump():
+    entries = {}
+    if os.path.isdir(REGISTRY_DIR):
+        for name in sorted(os.listdir(REGISTRY_DIR)):
+            if not name.endswith(".json"):
+                continue
+            with open(os.path.join(REGISTRY_DIR, name), encoding="utf-8") as fh:
+                entries[name[: -len(".json")]] = json.load(fh)
+    print(json.dumps(entries, sort_keys=True))
+
+
+def put():
+    entries = json.load(sys.stdin)
+    if not isinstance(entries, dict):
+        raise SystemExit("expected a JSON object on stdin")
+    os.makedirs(REGISTRY_DIR, mode=0o700, exist_ok=True)
+    changed = []
+    for host, entry in sorted(entries.items()):
+        path = _path(host)
+        new = json.dumps(entry, sort_keys=True, indent=2) + "\n"
+        old = None
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                old = fh.read()
+        if old == new:
+            continue
+        fd, tmp = tempfile.mkstemp(dir=REGISTRY_DIR, prefix=".tmp-")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(new)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+        changed.append(host)
+    print(json.dumps({"changed": changed}))
+
+
+def delete(hosts):
+    changed = []
+    for host in hosts:
+        path = _path(host)
+        if os.path.exists(path):
+            os.remove(path)
+            changed.append(host)
+    print(json.dumps({"changed": changed}))
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] not in ("dump", "put", "delete"):
+        raise SystemExit(__doc__)
+    if argv[1] == "dump":
+        dump()
+    elif argv[1] == "put":
+        put()
+    else:
+        delete(argv[2:])
+
+
+if __name__ == "__main__":
+    main(sys.argv)

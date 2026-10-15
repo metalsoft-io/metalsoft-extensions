@@ -1,0 +1,354 @@
+---
+# Offline render/contract test — create scenario.
+# Run: cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+- name: Render the Slurm bundle from fixtures (create)
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  vars:
+    # the head node's own facts used by head-local templates (slurmdbd.conf, mysql cnf)
+    ansible_facts:
+      hostname: instance-100
+      memtotal_mb: 131072
+    sl_db_password: FixtureDbPass
+    ext: "{{ lookup('ansible.builtin.file', '../extension.json') | from_json }}"
+    t: ../ansible/roles/slurm/templates
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Assert | inputs and site config resolution
+      ansible.builtin.assert:
+        that:
+          - sl_source == 'upstream'
+          - sl_version_input == '26.05.4'
+          - sl_bom[sl_version_input].sha256 | length == 64
+          - sl_cluster_name == 'slurm'
+          - sl_partition == 'compute'
+          - sl_admin_user == 'slurmadmin'
+          - sl_admin_extra_pubkey == ''
+          - sl_install_nvidia | bool
+          - sl_install_apptainer | bool
+          - sl_external_nfs == ''
+          - sl_drain_timeout_min | int == 60
+          - sl_nvidia_branch == '580'
+          - not (sl_blackwell_enabled | bool)
+          - not (sl_allow_ubuntu_source | bool)
+          - sl_debs_dir == '/shared/.slurm-ext/debs/26.05.4'
+          - sl_nvidia_pkgs == ['nvidia-headless-no-dkms-580-server-open', 'nvidia-utils-580-server']
+
+    - name: Assert | inventory, reachability and network derivations
+      ansible.builtin.assert:
+        that:
+          - sl_head_host == 'head-1'
+          - sl_head_ip == '10.0.10.10'
+          - sl_compute_hosts == ['node-a', 'node-b.slurm.example.com', 'node-c', 'node-d']
+          - not (sl_head_scale_requested | bool)
+          - sl_cluster_cidr == '10.0.10.0/24'
+          - sl_ntp_servers == ['10.0.0.5']
+          # create: nothing pending, nothing bootstrapped -> every compute host is new
+          - sl_pending_hosts == []
+          - sl_validate_hosts == sl_compute_hosts
+          - not (sl_bootstrapped | bool)
+          - sl_new_compute_hosts == sl_compute_hosts
+          - sl_existing_compute_hosts == []
+          - sl_up_compute_hosts == ['node-a', 'node-b.slurm.example.com', 'node-c']
+          # an unreachable NEW host must fail the run (state-read asserts this list is empty)
+          - sl_unreachable_new_hosts == ['node-d']
+          - sl_setonly_changed == []
+        quiet: true
+
+    - name: Render registry entries for every compute host with facts
+      ansible.builtin.set_fact:
+        entries: "{{ lookup('ansible.builtin.template', t ~ '/registry-entries.json.j2', template_vars={'sl_collect_hosts': sl_compute_hosts}) | from_json }}"
+
+    - name: Assert | registry entries (parsing, memory headroom, GPU types)
+      ansible.builtin.assert:
+        that:
+          - entries.keys() | list | sort == sl_compute_hosts | sort
+          - entries['node-a'].node_name == 'instance-101'
+          - entries['node-a'].node_addr == '10.0.10.21'
+          - entries['node-a'].cpus == 224
+          - entries['node-a'].sockets_per_board == 2
+          - entries['node-a'].cores_per_socket == 56
+          - entries['node-a'].threads_per_core == 2
+          - entries['node-a'].real_memory == 1959936
+          - entries['node-a'].def_mem_per_cpu == 8749
+          - entries['node-a'].gres == 'gpu:h100:8'
+          - entries['node-b.slurm.example.com'].node_name == 'instance-102'
+          - entries['node-b.slurm.example.com'].real_memory == 488448
+          - entries['node-b.slurm.example.com'].gres == ''
+          - entries['node-c'].gres == 'gpu:rtx_pro_6000:2'
+          - entries['node-c'].real_memory == 243712
+          # driver sees 3 of 4 GPUs: untyped count from PCI, so Slurm drains the node visibly
+          - entries['node-d'].gres == 'gpu:4'
+          - entries['node-d'].real_memory == 978944
+        quiet: true
+
+    - name: Render GPU naming fixtures
+      ansible.builtin.set_fact:
+        gpu_fx: "{{ lookup('ansible.builtin.template', t ~ '/registry-entries.json.j2', template_vars={'sl_collect_hosts': groups['gpu_fixtures']}) | from_json }}"
+
+    - name: Assert | GPU type derivation and memory edge cases
+      ansible.builtin.assert:
+        that:
+          # hyphenated model names split on '-': "NVIDIA A100-SXM4-80GB" -> a100
+          - gpu_fx['fx-a100'].gres == 'gpu:a100:4'
+          - gpu_fx['fx-l40s'].gres == 'gpu:l40s:1'
+          # older slurmd -C prints Sockets= instead of SocketsPerBoard=
+          - gpu_fx['fx-l40s'].sockets_per_board == 1
+          # tiny memory: headroom formula never goes to zero
+          - gpu_fx['fx-l40s'].real_memory == 750
+          - gpu_fx['fx-a100'].real_memory == 1024
+          # two different models on one node -> untyped
+          - gpu_fx['fx-mixed'].gres == 'gpu:2'
+          # no digit-bearing token -> untyped
+          - gpu_fx['fx-noname'].gres == 'gpu:1'
+        quiet: true
+
+    # set_fact (not play vars): include_vars-loaded defaults outrank play/task vars
+    - name: Use the rendered entries as the registry
+      ansible.builtin.set_fact:
+        sl_registry: "{{ entries }}"
+
+    - name: Render configuration files
+      ansible.builtin.set_fact:
+        slurm_conf: "{{ lookup('ansible.builtin.template', t ~ '/slurm.conf.j2') }}"
+        gres_conf: "{{ lookup('ansible.builtin.template', t ~ '/gres.conf.j2') }}"
+        cgroup_conf: "{{ lookup('ansible.builtin.template', t ~ '/cgroup.conf.j2') }}"
+        slurmdbd_conf: "{{ lookup('ansible.builtin.template', t ~ '/slurmdbd.conf.j2') }}"
+        mysql_cnf: "{{ lookup('ansible.builtin.template', t ~ '/mysql-slurm.cnf.j2') }}"
+        slurmd_dropin: "{{ lookup('ansible.builtin.template', t ~ '/slurmd-override.conf.j2') }}"
+        hosts_block: "{{ lookup('ansible.builtin.template', '../ansible/roles/node/templates/hosts-block.j2') }}"
+        local_conf: "{{ lookup('ansible.builtin.template', t ~ '/local.conf.j2') }}"
+
+    - name: Write rendered files for manual inspection
+      ansible.builtin.copy:
+        content: "{{ item.value }}"
+        dest: "/tmp/slurm-ext-render-{{ item.key }}"
+        mode: "0644"
+      loop: "{{ {'slurm.conf': slurm_conf, 'gres.conf': gres_conf, 'cgroup.conf': cgroup_conf, 'hosts': hosts_block} | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Parse slurm.conf
+      ansible.builtin.set_fact:
+        conf_lines: "{{ slurm_conf.splitlines() | map('trim') | reject('match', '^(#|$)') | list }}"
+        node_lines: "{{ slurm_conf.splitlines() | select('match', '^NodeName=') | list }}"
+
+    - name: Assert | slurm.conf
+      ansible.builtin.assert:
+        that:
+          - "'ClusterName=slurm' in conf_lines"
+          - "'SlurmctldHost=instance-100(10.0.10.10)' in conf_lines"
+          - "'SlurmUser=slurm' in conf_lines"
+          - "'AuthType=auth/munge' in conf_lines"
+          - "'SlurmctldParameters=enable_configless' in conf_lines"
+          - "'SelectType=select/cons_tres' in conf_lines"
+          - "'SelectTypeParameters=CR_Core_Memory' in conf_lines"
+          - "'ReturnToService=2' in conf_lines"
+          - "'MpiDefault=pmix' in conf_lines"
+          - "'GresTypes=gpu' in conf_lines"
+          - "'AccountingStorageHost=10.0.10.10' in conf_lines"
+          - "'AccountingStorageEnforce=associations,limits,qos,safe' in conf_lines"
+          # cluster default = smallest per-node RealMemory/CPUs
+          - "'DefMemPerCPU=3808' in conf_lines"
+          - node_lines | length == 4
+          - node_lines[0] == 'NodeName=instance-101 NodeAddr=10.0.10.21 CPUs=224 Boards=1 SocketsPerBoard=2 CoresPerSocket=56 ThreadsPerCore=2 RealMemory=1959936 Gres=gpu:h100:8 State=UNKNOWN'
+          - node_lines[1] is search('^NodeName=instance-102 NodeAddr=10.0.10.22 .* RealMemory=488448 State=UNKNOWN$')
+          - "'PartitionName=compute Nodes=ALL Default=YES MaxTime=INFINITE State=UP' in conf_lines"
+          - conf_lines | last == 'Include local.conf'
+          # nothing unrendered / no Python reprs leaked into the file
+          - slurm_conf is not search('[{][{]|[}][}]|None|True|False')
+          - conf_lines | reject('match', '^[A-Za-z]+=') | reject('match', '^Include ') | list == []
+        quiet: true
+
+    - name: Assert | gres.conf, cgroup.conf, slurmdbd.conf, MySQL, slurmd drop-in
+      ansible.builtin.assert:
+        that:
+          - gres_conf is search('(?m)^NodeName=instance-101,instance-103,instance-104 AutoDetect=nvidia$')
+          - cgroup_conf is search('(?m)^ConstrainDevices=yes$')
+          - slurmdbd_conf is search('(?m)^DbdHost=instance-100$')
+          - slurmdbd_conf is search('(?m)^StorageHost=localhost$')
+          - slurmdbd_conf is search('(?m)^StoragePass=FixtureDbPass$')
+          - slurmdbd_conf is search('(?m)^AuthType=auth/munge$')
+          - mysql_cnf is search('(?m)^innodb_buffer_pool_size = 16384M$')
+          - mysql_cnf is search('(?m)^innodb_redo_log_capacity = 4096M$')
+          - mysql_cnf is search('(?m)^innodb_lock_wait_timeout = 900$')
+          # Wants (not Requires): a node booting while the head is down still starts slurmd
+          - slurmd_dropin is search('(?m)^WantsMountsFor=/shared$')
+          - slurmd_dropin is not search('RequiresMountsFor')
+          - slurmd_dropin is search('(?m)^Restart=on-failure$')
+          - local_conf is search('scontrol reconfigure')
+        quiet: true
+
+    - name: Assert | /etc/hosts block (reachable hosts by facts; no loopback alias)
+      ansible.builtin.assert:
+        that:
+          # 4 reachable hosts by identity facts + node-d (unreachable) from the registry
+          - hosts_block.splitlines() | length == 5
+          - "'10.0.10.10 instance-100.slurm.example.com instance-100' in hosts_block.splitlines()"
+          - "'10.0.10.23 instance-103' in hosts_block.splitlines()"
+          - "'10.0.10.24 instance-104' in hosts_block.splitlines()"
+          - hosts_block is not search('127\\.0\\.1\\.1')
+        quiet: true
+
+    - name: Outputs payload
+      ansible.builtin.set_fact:
+        payload: "{{ sl_outputs_payload }}"
+
+    - name: Assert | outputs payload == extension.json outputs
+      ansible.builtin.assert:
+        that:
+          - payload.keys() | list | sort == ext.outputs | map(attribute='label') | list | sort
+          - payload.keys() | list | intersect(ext.inputs | map(attribute='label') | list) == []
+          - payload.values() | reject('string') | list == []
+          - payload.values() | select('search', '\.$') | list == []
+          - payload.head_node_ip == '10.0.10.10'
+          - payload.head_node_hostname == 'instance-100.slurm.example.com'
+          - payload.ssh_command == 'ssh slurmadmin@10.0.10.10'
+          - payload.admin_user == 'slurmadmin'
+          - payload.admin_password == 'FixturePassw0rd'
+          - payload.admin_ssh_private_key is search('BEGIN OPENSSH PRIVATE KEY')
+          - payload.slurm_cluster_name == 'slurm'
+          - payload.slurm_installed_version == '26.05.4'
+          - payload.default_partition == 'compute'
+          - payload.compute_node_count == '4'
+          - payload.compute_nodes == 'instance-101,instance-102,instance-103,instance-104'
+          - payload.gpu_total == '14'
+          - payload.data_mount == ''
+        quiet: true
+
+- name: Guard checks (create scenario)
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Keep the fixture inputs
+      ansible.builtin.set_fact:
+        _orig_iv: "{{ extensionInstanceVariables }}"
+
+    - name: Inputs with slurm_source=ubuntu
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ _orig_iv | combine({'slurm_source': 'ubuntu'}) }}"
+
+    - name: Ubuntu source without the admin opt-in is rejected on a new cluster
+      block:
+        - name: Run the source gate with slurm_source=ubuntu
+          ansible.builtin.include_tasks: ../ansible/roles/node/tasks/source-gate.yaml
+
+        - name: The guard did not trip
+          ansible.builtin.fail:
+            msg: "source gate accepted slurm_source=ubuntu without allow_ubuntu_slurm_source"
+      rescue:
+        - name: Assert | ubuntu source gated by the site admin opt-in
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg | default('') is search('allow_ubuntu_slurm_source')
+            quiet: true
+
+    - name: Inputs with a reserved admin user name
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ _orig_iv | combine({'admin_username': 'ubuntu'}) }}"
+
+    - name: Reserved admin user names are rejected
+      block:
+        - name: Run the cluster preflight with admin_username=ubuntu
+          ansible.builtin.include_tasks: ../ansible/roles/node/tasks/preflight-cluster.yaml
+
+        - name: The guard did not trip
+          ansible.builtin.fail:
+            msg: "preflight accepted admin_username=ubuntu"
+      rescue:
+        - name: Assert | reserved admin name rejected
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg | default('') is search('admin_username')
+            quiet: true
+
+    - name: Fixture inputs again
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ _orig_iv }}"
+
+    - name: The default inputs pass the cluster preflight
+      ansible.builtin.include_tasks: ../ansible/roles/node/tasks/preflight-cluster.yaml
+
+    - name: The default inputs pass the source gate
+      ansible.builtin.include_tasks: ../ansible/roles/node/tasks/source-gate.yaml
+
+# A cluster created with slurm_source=ubuntu (recorded in cluster.json) keeps working
+# after the site admin revokes the opt-in.
+- name: Source gate on an existing Ubuntu-source cluster
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Ubuntu-source inputs, cluster.json records the same create-time choice
+      ansible.builtin.set_fact:
+        extensionInstanceVariables: "{{ extensionInstanceVariables | combine({'slurm_source': 'ubuntu'}) }}"
+        sl_cluster_state: {bootstrapped: true, setonly: {slurm_source: ubuntu}}
+
+    - name: Assert | opt-in revoked
+      ansible.builtin.assert:
+        that:
+          - sl_source == 'ubuntu'
+          - not (sl_allow_ubuntu_source | bool)
+        quiet: true
+
+    - name: The recorded Ubuntu-source cluster passes the gate
+      ansible.builtin.include_tasks: ../ansible/roles/node/tasks/source-gate.yaml
+
+# The cluster CIDR from both recordSet subnet shapes.
+- name: Cluster CIDR derivation
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load globals
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/globals/defaults
+
+    - name: Assert | CIDR subnet + netmask (fixture)
+      ansible.builtin.assert:
+        that:
+          - sl_cluster_cidr == '10.0.10.0/24'
+        quiet: true
+
+    - name: RecordSet with a bare subnet address and a /22 netmask
+      ansible.builtin.set_fact:
+        extensionInstanceRecordSet: >-
+          {{ extensionInstanceRecordSet | combine({'serverInstanceGroups': [
+               {'serverInstanceGroupLabel': 'slurmhead', 'logicalNetworks': [{'label': 'slurm-net',
+                'subnets': [{'subnet': '10.0.8.0', 'netmask': '255.255.252.0', 'ipType': 'ipv4'}]}]}]}) }}
+
+    - name: Assert | bare subnet + netmask
+      ansible.builtin.assert:
+        that:
+          - sl_cluster_cidr == '10.0.8.0/22'
+        quiet: true
+
+    - name: RecordSet with a CIDR subnet and no netmask
+      ansible.builtin.set_fact:
+        extensionInstanceRecordSet: >-
+          {{ extensionInstanceRecordSet | combine({'serverInstanceGroups': [
+               {'serverInstanceGroupLabel': 'slurmhead', 'logicalNetworks': [{'label': 'slurm-net',
+                'subnets': [{'subnet': '172.16.0.0/16', 'ipType': 'ipv4'}]}]}]}) }}
+
+    - name: Assert | CIDR subnet without netmask
+      ansible.builtin.assert:
+        that:
+          - sl_cluster_cidr == '172.16.0.0/16'
+        quiet: true

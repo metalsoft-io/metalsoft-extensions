@@ -1,0 +1,172 @@
+---
+# Offline checks of extension.json against the platform contract
+# (.claude/skills/building-metalsoft-extensions/SKILL.md + reference.md).
+# Run: cd tests && ansible-playbook -i inventory.yaml definition-spec.yaml
+- name: Check extension.json against the extension contract
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ext: "{{ lookup('ansible.builtin.file', '../extension.json') | from_json }}"
+    safe_input_types:
+      - ExtensionInputString
+      - ExtensionInputInteger
+      - ExtensionInputBoolean
+      - ExtensionInputEnum
+      - ExtensionInputServerType
+      - ExtensionInputOsTemplate
+    input_labels: "{{ ext.inputs | map(attribute='label') | list }}"
+    output_labels: "{{ ext.outputs | map(attribute='label') | list }}"
+    config_labels: "{{ ext.configVars | default([]) | map(attribute='label') | list }}"
+    oci_labels: "{{ ext.assets | selectattr('assetType', 'equalto', 'OciImage') | map(attribute='label') | list }}"
+    bundle_labels: "{{ ext.assets | selectattr('assetType', 'equalto', 'AnsibleBundle') | map(attribute='label') | list }}"
+    all_tasks: >-
+      {{ (ext.onCreate + ext.onEdit + ext.onDelete) | map(attribute='tasks') | flatten }}
+    regex_inputs: "{{ (ext.inputs + ext.configVars) | selectattr('options.validationRegEx', 'defined') | list }}"
+    drain_input: "{{ ext.inputs | selectattr('label', 'equalto', 'scale_in_drain_timeout_minutes') | first }}"
+    scale_in_task: >-
+      {{ ext.onEdit | selectattr('stage', 'equalto', 'preDeploy') | map(attribute='tasks') | flatten | first }}
+    globals_version: "{{ (lookup('ansible.builtin.file', '../ansible/roles/globals/defaults/main.yaml') | from_yaml).sl_ext_version }}"
+  tasks:
+    - name: Assert | required top-level fields and labels
+      ansible.builtin.assert:
+        that:
+          - ext.kind == 'ExtensionDefinition'
+          - ext[item] is defined
+        quiet: true
+      loop: [kind, schemaVersion, name, label, extensionType, vendor, extensionVersion, icon, dependencies, inputs, outputs, assets]
+
+    - name: Assert | definition shape
+      ansible.builtin.assert:
+        that:
+          # definition label: letters/digits/underscore, no hyphen, no trailing underscore
+          - ext.label is match('^(?!.*_$)[a-zA-Z][a-zA-Z0-9_]{0,62}$')
+          - ext.extensionType == 'application'
+          - ext.dependencies.controllerVersion | length > 0
+          - ext.extensionVersion is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+          # single version source: banner/globals == definition == bundle zip name
+          - ext.extensionVersion == globals_version
+          - (ext.assets | selectattr('assetType', 'equalto', 'AnsibleBundle') | first).url is search('-v' ~ ext.extensionVersion ~ '\.zip$')
+          - ext.helpText is not defined
+          - ext.assets | length <= 12
+        quiet: true
+
+    - name: Assert | instance arrays
+      ansible.builtin.assert:
+        that:
+          - (ext.infrastructure.instanceArrays | map(attribute='label') | list) == ['slurmhead', 'slurmcompute']
+          - ext.infrastructure.instanceArrays | map(attribute='label') | select('match', '^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$') | list | length == 2
+          # controllers >= v7.4.4 turn '-' into '_' in inventory group names: no hyphens, so
+          # the group names equal the labels everywhere
+          - ext.infrastructure.instanceArrays | map(attribute='label') | select('search', '-') | list == []
+          # the playbooks address the groups through these globals
+          - (lookup('ansible.builtin.file', '../ansible/roles/globals/defaults/main.yaml') | from_yaml).sl_head_label == 'slurmhead'
+          - (lookup('ansible.builtin.file', '../ansible/roles/globals/defaults/main.yaml') | from_yaml).sl_compute_label == 'slurmcompute'
+          - (ext.infrastructure.instanceArrays | first).instanceCount == '1'
+          # every array attaches slurm-net with the settings the 26.04 template depends on
+          - ext.infrastructure.instanceArrays | map(attribute='logicalNetworks') | map('first') | map(attribute='label') | unique | list == ['slurm-net']
+          - ext.infrastructure.instanceArrays | map(attribute='logicalNetworks') | map('first') | map(attribute='networkConnection')
+            | selectattr('providesDefaultRoute', 'equalto', true) | list | length == 2
+          - ext.infrastructure.instanceArrays | map(attribute='logicalNetworks') | map('first') | map(attribute='networkConnection')
+            | map(attribute='dns') | selectattr('provisionInstanceDnsRecords', 'equalto', true) | list | length == 2
+          - (ext.infrastructure.logicalNetworks | map(attribute='label') | list) == ['slurm-net']
+        quiet: true
+
+    - name: Assert | inputs
+      ansible.builtin.assert:
+        that:
+          - item.label == item.name
+          - item.label | length <= 63
+          - item.inputType in safe_input_types
+          - item.options is defined
+          - (item.helpText | default('')) | length <= 128
+          - item.inputType not in ['ExtensionInputServerType', 'ExtensionInputOsTemplate'] or item.defaultValue is not defined
+          - item.inputType != 'ExtensionInputEnum' or (item.options['values'] | length <= 12 and item.options['values'] | unique | length == item.options['values'] | length and item.defaultValue in item.options['values'])
+          - item.inputType != 'ExtensionInputEnum' or (item.options['values'] | select('string') | list | length == item.options['values'] | length)
+          - not (item.isPassword | default(false)) or item.inputType == 'ExtensionInputString'
+          - item.inputType != 'ExtensionInputBoolean' or item.defaultValue is boolean
+          - item.inputType != 'ExtensionInputInteger' or (item.defaultValue is integer and item.defaultValue >= item.options.minValue and item.defaultValue <= item.options.maxValue)
+        fail_msg: "input {{ item.label }} violates the input contract"
+        quiet: true
+      loop: "{{ ext.inputs }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | string regexes are <= 64 chars and match their own default
+      ansible.builtin.assert:
+        that:
+          - item.options.validationRegEx | length <= 64
+          - (item.defaultValue | string) is match(item.options.validationRegEx)
+        fail_msg: "{{ item.label }}: default {{ item.defaultValue | to_json }} vs {{ item.options.validationRegEx }}"
+        quiet: true
+      loop: "{{ regex_inputs }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | configVars (String/Integer/Boolean, defaults set)
+      ansible.builtin.assert:
+        that:
+          - item.label == item.name
+          - item.inputType in ['ExtensionInputString', 'ExtensionInputInteger', 'ExtensionInputBoolean']
+          - item.defaultValue is defined
+          - (item.helpText | default('')) | length <= 128
+        quiet: true
+      loop: "{{ ext.configVars }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | outputs
+      ansible.builtin.assert:
+        that:
+          - item.label == item.name
+          - item.label | length <= 63
+          - item.outputType | length <= 32
+          - (item.helpText | default('')) | length <= 128
+        quiet: true
+      loop: "{{ ext.outputs }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | one label namespace across inputs, outputs and configVars
+      ansible.builtin.assert:
+        that:
+          - (input_labels + output_labels + config_labels) | length == (input_labels + output_labels + config_labels) | unique | length
+        fail_msg: "duplicate labels: {{ input_labels + output_labels + config_labels }}"
+        quiet: true
+
+    - name: Assert | every #/input/ reference resolves
+      ansible.builtin.assert:
+        that:
+          - (ext.infrastructure | to_json | regex_findall('#/input/([a-z0-9_]+)') | unique | reject('in', input_labels) | list) == []
+        quiet: true
+
+    - name: Assert | assets
+      ansible.builtin.assert:
+        that:
+          - item.url | length <= 128
+          - item.assetType in ['AnsibleBundle', 'OciImage']
+          - item.assetType != 'OciImage' or (item.url is search(item.tagRegistry | regex_escape) and item.repositoryRegistry is defined)
+        quiet: true
+      loop: "{{ ext.assets }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | lifecycle tasks (Ansible only, EE on every task, playbooks exist)
+      ansible.builtin.assert:
+        that:
+          - item.taskType == 'ExtensionTaskAnsible'
+          - item.options.ee in oci_labels
+          - item.options.asset in bundle_labels
+          - item.options.playbook | length <= 32
+          - item.options.playbook != 'job.yml'
+          - lookup('ansible.builtin.fileglob', '../ansible/' ~ item.options.playbook) | length > 0
+          - item.options.executionTimeout | int > 3600
+        quiet: true
+      loop: "{{ all_tasks }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: Assert | scale-in timeout covers the longest drain the input allows
+      ansible.builtin.assert:
+        that:
+          - scale_in_task.options.executionTimeout | int >= (drain_input.options.maxValue | int) * 60 + 3600
+        quiet: true

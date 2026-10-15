@@ -1,0 +1,161 @@
+---
+# Built-in integration test, run as the cluster admin (exercises users, MUNGE, /shared,
+# accounting, scheduling and the node daemons end to end).
+#   create:  every node, batch + interactive + MPI + GPU + Apptainer + sacct
+#   edit:    only the NEW nodes, inside the MAINT reservation made by the controller, so a
+#            busy cluster's pending jobs cannot race the test
+- name: Validate | scope
+  ansible.builtin.set_fact:
+    _sl_val_create: "{{ not (sl_bootstrapped | bool) }}"
+    _sl_val_dir: "{{ sl_home_base }}/{{ sl_admin_user }}/.slurm-ext-validate"
+    _sl_val_hosts: "{{ sl_up_compute_hosts if not (sl_bootstrapped | bool) else sl_up_validate_hosts }}"
+
+- name: Validate | node names under test
+  ansible.builtin.set_fact:
+    _sl_val_nodes: "{{ _sl_val_hosts | map('extract', sl_registry_state) | map(attribute='node_name') | list | sort }}"
+    _sl_val_gpu_nodes: >-
+      {{ _sl_val_hosts | map('extract', sl_registry_state) | selectattr('gpu_count', 'gt', 0) | list }}
+    _sl_val_resv: >-
+      {{ (' --reservation=' ~ sl_validation_reservation)
+         if (sl_bootstrapped | bool and (sl_validation_reservation | default('')) | length > 0) else '' }}
+
+- name: Validate | functional checks
+  when: _sl_val_nodes | length > 0 and (_sl_val_create | bool or (sl_validation_reservation | default('')) | length > 0)
+  block:
+    - name: Validate | work directory of the admin user
+      ansible.builtin.file:
+        path: "{{ _sl_val_dir }}"
+        state: directory
+        owner: "{{ sl_admin_user }}"
+        group: "{{ sl_admin_user }}"
+        mode: "0755"
+
+    - name: Validate | srun on every node under test
+      ansible.builtin.command:
+        cmd: >-
+          runuser -u {{ sl_admin_user }} -- srun{{ _sl_val_resv }} -N {{ _sl_val_nodes | length }}
+          -w {{ _sl_val_nodes | join(',') }} --ntasks-per-node=1 --immediate=300 -t 5 hostname -s
+        chdir: "{{ _sl_val_dir }}"
+      register: _sl_val_srun
+      changed_when: false
+      failed_when: (_sl_val_srun.stdout_lines | map('trim') | sort) != _sl_val_nodes
+
+    - name: Validate | GPUs visible to a GPU job
+      ansible.builtin.command:
+        cmd: >-
+          runuser -u {{ sl_admin_user }} -- srun{{ _sl_val_resv }} -N 1 -w {{ (_sl_val_gpu_nodes | first).node_name }}
+          --gpus={{ (_sl_val_gpu_nodes | first).gpu_count }} --immediate=300 -t 5 nvidia-smi -L
+        chdir: "{{ _sl_val_dir }}"
+      register: _sl_val_gpu
+      changed_when: false
+      failed_when: >-
+        _sl_val_gpu.rc != 0 or
+        (_sl_val_gpu.stdout_lines | select('match', '^GPU ') | list | length) != ((_sl_val_gpu_nodes | first).gpu_count | int)
+      when: _sl_val_gpu_nodes | length > 0
+
+    - name: Validate | batch job, MPI and Apptainer (create only)
+      when: _sl_val_create | bool
+      block:
+        - name: Validate | MPI test program
+          ansible.builtin.copy:
+            src: mpi_hello.c
+            dest: "{{ _sl_val_dir }}/mpi_hello.c"
+            owner: "{{ sl_admin_user }}"
+            group: "{{ sl_admin_user }}"
+            mode: "0644"
+
+        - name: Validate | compile the MPI test program on the head node
+          ansible.builtin.command:
+            cmd: "runuser -u {{ sl_admin_user }} -- mpicc -o mpi_hello mpi_hello.c"
+            chdir: "{{ _sl_val_dir }}"
+          changed_when: false
+
+        - name: Validate | batch script
+          ansible.builtin.copy:
+            dest: "{{ _sl_val_dir }}/batch.sh"
+            owner: "{{ sl_admin_user }}"
+            group: "{{ sl_admin_user }}"
+            mode: "0755"
+            content: |
+              #!/bin/bash
+              #SBATCH --job-name=metalsoft-validate
+              #SBATCH --nodes=1
+              #SBATCH --time=5
+              echo "batch-ok $(hostname -s) $(id -un)"
+              {% if sl_install_apptainer | bool %}
+              apptainer --version
+              {% endif %}
+
+        - name: Validate | batch job completes
+          ansible.builtin.command:
+            cmd: >-
+              runuser -u {{ sl_admin_user }} -- sbatch --wait --parsable
+              -o {{ _sl_val_dir }}/batch-%j.out batch.sh
+            chdir: "{{ _sl_val_dir }}"
+          register: _sl_val_batch
+          changed_when: false
+          timeout: 900
+
+        - name: Validate | batch job output written to /shared
+          ansible.builtin.command: "cat {{ _sl_val_dir }}/batch-{{ _sl_val_batch.stdout | trim | regex_replace(';.*$', '') }}.out"
+          register: _sl_val_batch_out
+          changed_when: false
+          failed_when: >-
+            ('batch-ok' not in _sl_val_batch_out.stdout) or
+            ((sl_install_apptainer | bool) and ('apptainer version' not in _sl_val_batch_out.stdout))
+
+        - name: Validate | MPI over PMIx across nodes
+          ansible.builtin.command:
+            cmd: >-
+              runuser -u {{ sl_admin_user }} -- srun -N {{ [_sl_val_nodes | length, 2] | min }}
+              --ntasks-per-node=1 --mpi=pmix --immediate=300 -t 5 ./mpi_hello
+            chdir: "{{ _sl_val_dir }}"
+          register: _sl_val_mpi
+          changed_when: false
+          failed_when: >-
+            (_sl_val_mpi.stdout_lines | select('search', '^mpi-hello rank') | list | length)
+            != ([_sl_val_nodes | length, 2] | min)
+
+        - name: Validate | job recorded by accounting (sacct)
+          ansible.builtin.command: >-
+            sacct -n -X -P -o State -j {{ _sl_val_batch.stdout | trim | regex_replace(';.*$', '') }}
+          register: _sl_val_sacct
+          changed_when: false
+          until: "'COMPLETED' in _sl_val_sacct.stdout"
+          retries: 12
+          delay: 5
+  always:
+    - name: Validate | remove the validation reservation
+      ansible.builtin.command: scontrol delete ReservationName={{ sl_validation_reservation }}
+      changed_when: true
+      failed_when: false
+      when: (sl_validation_reservation | default('')) | length > 0
+
+- name: Validate | scale-out without a reservation — functional checks skipped
+  ansible.builtin.debug:
+    msg: "WARNING: could not reserve the new nodes, functional checks skipped (registration was verified)."
+  when:
+    - not (_sl_val_create | bool)
+    - _sl_val_nodes | length > 0
+    - (sl_validation_reservation | default('')) | length == 0
+
+# reached only when every check that ran passed
+- name: Validate | validated nodes are no longer pending
+  ansible.builtin.copy:
+    dest: "{{ sl_pending_file }}"
+    content: >-
+      {{ (sl_pending_hosts + sl_new_compute_hosts) | reject('in', _sl_val_hosts)
+         | select('in', sl_compute_hosts) | unique | list | to_json }}
+    owner: root
+    group: root
+    mode: "0600"
+  when: sl_bootstrapped | bool
+
+- name: Validate | mark the cluster bootstrapped
+  ansible.builtin.file:
+    path: "{{ sl_bootstrapped_file }}"
+    state: touch
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+  when: _sl_val_create | bool

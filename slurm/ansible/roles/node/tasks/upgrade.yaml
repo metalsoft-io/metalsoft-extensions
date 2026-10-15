@@ -1,0 +1,11 @@
+---
+# New nodes start from the newest kernel/userspace so the NVIDIA prebuilt modules match
+# the kernel that will boot. Existing nodes are never upgraded by a converge.
+- name: Upgrade | full upgrade (new nodes only)
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+    lock_timeout: 900
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: sl_host_is_new | bool

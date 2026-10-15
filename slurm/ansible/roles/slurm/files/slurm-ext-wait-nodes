@@ -1,0 +1,65 @@
+#!/bin/bash
+# Wait until Slurm nodes registered with a valid configuration (MetalSoft Slurm extension).
+#
+#   slurm-ext-wait-nodes [--timeout SECONDS] NODE[,NODE...] [NODE...]
+#
+# Usable states: idle, mixed, allocated, completing, reserved, maint, planned.
+# Fails fast (exit 1) on configuration errors — INVAL, or a drain reason starting with
+# "Low " (node has less CPU/memory than configured) or mentioning gres (GPU count/type
+# mismatch). Exit 2 on timeout. Progress is printed every 10 s.
+set -euo pipefail
+
+TIMEOUT=900
+NODES=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --timeout) TIMEOUT=$2; shift 2;;
+    *) IFS=',' read -r -a more <<<"$1"; NODES+=("${more[@]}"); shift;;
+  esac
+done
+[ ${#NODES[@]} -gt 0 ] || { echo "no nodes given" >&2; exit 2; }
+list=$(IFS=,; echo "${NODES[*]}")
+
+deadline=$(( $(date +%s) + TIMEOUT ))
+while :; do
+  ok=(); waiting=(); bad=()
+  declare -A seen=()
+  out=$(sinfo -h -N -n "${list}" -o '%N|%T|%E' 2>/dev/null || true)
+  while IFS='|' read -r node state reason; do
+    [ -n "${node}" ] || continue
+    [ -z "${seen[$node]:-}" ] || continue
+    seen[$node]=1
+    base=${state%%[*~#!%\$@^+-]*}
+    if [[ "${state}" == inval* ]] || [[ "${reason}" == Low\ * ]] || [[ "${reason,,}" == *gres* ]]; then
+      bad+=("${node} (${state}: ${reason})")
+      continue
+    fi
+    case "${state}" in
+      *'*'*) waiting+=("${node}:${state}"); continue;;
+    esac
+    case "${base}" in
+      idle|mixed|allocated|completing|reserved|maint|planned) ok+=("${node}");;
+      *) waiting+=("${node}:${state}${reason:+ (${reason})}");;
+    esac
+  done <<<"${out}"
+  for n in "${NODES[@]}"; do
+    [ -n "${seen[$n]:-}" ] || waiting+=("${n}:not-known-yet")
+  done
+  unset seen
+
+  if [ ${#bad[@]} -gt 0 ]; then
+    printf 'node configuration error: %s\n' "${bad[@]}" >&2
+    exit 1
+  fi
+  if [ ${#waiting[@]} -eq 0 ]; then
+    echo "all ${#ok[@]} node(s) registered: ${list}"
+    exit 0
+  fi
+  now=$(date +%s)
+  if [ "${now}" -ge "${deadline}" ]; then
+    printf 'timeout waiting for: %s\n' "${waiting[*]}" >&2
+    exit 2
+  fi
+  echo "$(date -Is) ${#ok[@]}/${#NODES[@]} ready, waiting for: ${waiting[*]}"
+  sleep 10
+done

@@ -1,0 +1,28 @@
+---
+# Head node: secrets, cluster identity, MUNGE, /shared, Slurm packages, MySQL + slurmdbd,
+# cluster.json, admin user and user tooling. Order matters: identity + key before
+# packages, packages before the DB daemon, cluster.json (its uuid stamps the user
+# snapshot) before the user export, users after /shared exists.
+- name: Head | secrets and cluster identity
+  ansible.builtin.import_tasks: head-secrets.yaml
+
+- name: Head | MUNGE
+  ansible.builtin.import_tasks: munge.yaml
+
+- name: Head | shared filesystem (NFS server)
+  ansible.builtin.import_tasks: storage-server.yaml
+
+- name: Head | optional external NFS at /data
+  ansible.builtin.import_tasks: data-mount.yaml
+
+- name: Head | Slurm packages
+  ansible.builtin.import_tasks: packages-head.yaml
+
+- name: Head | accounting database and slurmdbd
+  ansible.builtin.import_tasks: database.yaml
+
+- name: Head | record cluster state
+  ansible.builtin.import_tasks: cluster-state.yaml
+
+- name: Head | admin user and user tooling
+  ansible.builtin.import_tasks: users-head.yaml

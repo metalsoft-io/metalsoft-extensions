@@ -1,0 +1,33 @@
+---
+# Optional tenant NFS export mounted at /data on every node (datasets, results). Automount
+# so a node boots even when the export is temporarily unavailable.
+- name: Data | mount the external NFS export at /data
+  when: sl_external_nfs | length > 0
+  block:
+    - name: Data | mount point
+      ansible.builtin.file:
+        path: "{{ sl_data_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Data | fstab entry
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\S+\s+{{ sl_data_dir }}\s'
+        line: "{{ sl_external_nfs }} {{ sl_data_dir }} nfs rw,hard,noatime,_netdev,x-systemd.automount,x-systemd.mount-timeout=60 0 0"
+      register: _sl_data_fstab
+
+    - name: Data | activate the automount
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+        name: remote-fs.target
+        state: restarted
+      when: _sl_data_fstab is changed
+
+    - name: Data | export reachable
+      ansible.builtin.command: "timeout 90 stat -f {{ sl_data_dir }}"
+      register: _sl_data_stat
+      changed_when: false
+      retries: 3
+      delay: 10
+      until: _sl_data_stat.rc == 0

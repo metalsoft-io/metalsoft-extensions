@@ -1,0 +1,9 @@
+# Site-specific Slurm settings for cluster "{{ sl_cluster_name }}".
+#
+# This file is included at the END of slurm.conf, is shipped to the compute nodes
+# (configless) and is NEVER overwritten by the MetalSoft Slurm extension. After editing:
+#   sudo scontrol reconfigure
+#
+# Examples:
+#   PartitionName=debug Nodes=ALL MaxTime=00:30:00 State=UP
+#   (do not add a second Default=YES partition)

@@ -1,0 +1,49 @@
+---
+# Configless: slurmd fetches slurm.conf (+ cgroup/gres/local.conf) from slurmctld at start
+# and on every `scontrol reconfigure`; no local slurm.conf may shadow it.
+- name: slurmd | no local slurm.conf on compute nodes
+  ansible.builtin.file:
+    path: "{{ sl_conf_dir }}/slurm.conf"
+    state: absent
+
+- name: slurmd | spool and log directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "0755"
+  loop:
+    - { path: "{{ sl_slurmd_spool_dir }}", owner: root }
+    - { path: "{{ sl_log_dir }}", owner: slurm }
+
+- name: slurmd | options (controller address)
+  ansible.builtin.copy:
+    dest: /etc/default/slurmd
+    mode: "0644"
+    content: |
+      # Managed by the MetalSoft Slurm extension — configless mode
+      SLURMD_OPTIONS="--conf-server {{ sl_head_ip }}:{{ sl_slurmctld_port }}"
+  register: _sl_slurmd_defaults
+
+- name: slurmd | drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/slurmd.service.d
+    state: directory
+    mode: "0755"
+
+- name: slurmd | systemd drop-in (ordering, restart policy)
+  ansible.builtin.template:
+    src: slurmd-override.conf.j2
+    dest: /etc/systemd/system/slurmd.service.d/50-slurm-ext.conf
+    mode: "0644"
+  register: _sl_slurmd_dropin
+
+- name: slurmd | reload systemd units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _sl_slurmd_dropin is changed
+
+- name: slurmd | restart needed when its options changed (safe for running jobs)
+  ansible.builtin.set_fact:
+    sl_slurmd_restart_needed: "{{ (_sl_slurmd_defaults is changed) or (_sl_slurmd_dropin is changed) or (_sl_munge_key_compute is changed) }}"

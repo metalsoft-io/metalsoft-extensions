@@ -1,0 +1,54 @@
+---
+# ONE reboot per new node (after the full upgrade and the NVIDIA install), decided by
+# probing state so a retried run does not reboot again. Existing nodes are never rebooted
+# here — they only get a warning (admins use `scontrol reboot ASAP nextstate=RESUME`).
+- name: Reboot | detect a pending kernel or driver activation
+  ansible.builtin.shell: |
+    set -o pipefail
+    newest=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's#.*/vmlinuz-##' | sort -V | tail -n1)
+    running=$(uname -r)
+    if [ -f /var/run/reboot-required ]; then
+      echo "reboot-required flag"
+    elif [ -n "$newest" ] && [ "$newest" != "$running" ]; then
+      echo "kernel $newest installed, $running running"
+    elif [ "{{ (sl_install_nvidia | bool and (sl_gpu_detect.gpu_count | default(0) | int) > 0) | ternary('yes', 'no') }}" = yes ] \
+         && lsmod | grep -qE '^(nouveau|nova_core) '; then
+      echo "nouveau/nova_core loaded (blacklisted for the NVIDIA driver)"
+    else
+      echo none
+    fi
+  args:
+    executable: /bin/bash
+  register: _sl_reboot_probe
+  changed_when: false
+
+- name: Reboot | decide
+  ansible.builtin.set_fact:
+    _sl_reboot_reason: >-
+      {{ _sl_reboot_probe.stdout | trim if (_sl_reboot_probe.stdout | trim) != 'none'
+         else ('NVIDIA driver installed' if (sl_nvidia_reboot_needed | default(false) | bool) else '') }}
+
+- name: Reboot | activate kernel / NVIDIA driver (new nodes only)
+  ansible.builtin.reboot:
+    reboot_timeout: 3600
+    msg: "MetalSoft Slurm extension: {{ _sl_reboot_reason }}"
+  when:
+    - sl_host_is_new | bool
+    - _sl_reboot_reason | length > 0
+
+- name: Reboot | refresh facts after the reboot
+  ansible.builtin.setup:
+    gather_subset: [min, hardware, network]
+  when:
+    - sl_host_is_new | bool
+    - _sl_reboot_reason | length > 0
+
+- name: Reboot | existing node needs a reboot (not done by the extension)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ inventory_hostname }} needs a reboot ({{ _sl_reboot_reason }}); it is
+      running jobs-capable services, so the extension does not reboot it. Drain and reboot
+      it with: scontrol reboot ASAP nextstate=RESUME <node>
+  when:
+    - not (sl_host_is_new | bool)
+    - _sl_reboot_reason | length > 0

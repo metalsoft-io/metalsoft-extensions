@@ -1,0 +1,319 @@
+---
+# Slurm extension — global derivations (role defaults only, no tasks).
+#
+# Every play lists `roles: [globals]` first; the offline harness loads this file with
+# include_vars. All derived variables use the `sl_` prefix so they can never collide
+# with extra-vars (input / configVar / output labels, per-array customVariables named
+# after the instance-array labels). Values are PURE derivations of the extra-vars, the
+# inventory and the raw facts the playbooks collect — no network or node access here.
+
+# Single source of truth for the bundle version (banner + offline definition check).
+sl_ext_version: "1.0.0"
+
+# ---------------------------------------------------------------------------------------
+# Inputs (extensionInstanceVariables.<label>) and site config (configVars.<label>)
+# ---------------------------------------------------------------------------------------
+_sl_iv: "{{ extensionInstanceVariables | default({}, true) }}"
+# configVars may also surface top-level on some controllers — the dict wins, top-level
+# is the fallback. Booleans use .get() with an explicit default (a real `false` is falsy).
+_sl_cv: "{{ configVars | default({}, true) }}"
+
+sl_source: "{{ _sl_iv.get('slurm_source') | default('upstream', true) | string | trim | lower }}"
+sl_version_input: "{{ _sl_iv.get('slurm_version') | default('26.05.4', true) | string | trim }}"
+sl_cluster_name: "{{ _sl_iv.get('cluster_name') | default('slurm', true) | string | trim }}"
+sl_partition: "{{ _sl_iv.get('partition_name') | default('compute', true) | string | trim }}"
+sl_admin_user: "{{ _sl_iv.get('admin_username') | default('slurmadmin', true) | string | trim }}"
+sl_admin_extra_pubkey: "{{ _sl_iv.get('admin_ssh_public_key') | default('', true) | string | trim }}"
+sl_install_nvidia: "{{ _sl_iv.get('install_nvidia_driver', true) | bool }}"
+sl_install_apptainer: "{{ _sl_iv.get('install_apptainer', true) | bool }}"
+sl_external_nfs: "{{ _sl_iv.get('external_nfs_export') | default('', true) | string | trim }}"
+# .get() not default(…, true): 0 is a legitimate value (requeue immediately)
+sl_drain_timeout_min: "{{ _sl_iv.get('scale_in_drain_timeout_minutes', 60) | int }}"
+
+sl_nvidia_branch: >-
+  {{ _sl_cv.get('nvidia_driver_branch') | default(nvidia_driver_branch | default('580'), true) | string | trim }}
+sl_blackwell_enabled: >-
+  {{ _sl_cv.get('nvidia_blackwell_hgx_enabled', nvidia_blackwell_hgx_enabled | default(false)) | bool }}
+sl_allow_ubuntu_source: >-
+  {{ _sl_cv.get('allow_ubuntu_slurm_source', allow_ubuntu_slurm_source | default(false)) | bool }}
+
+# Inputs that must not change after create (checked at onEdit preDeploy against the
+# values recorded in cluster.json — the platform's setOnly enforcement is not relied on).
+sl_setonly_snapshot:
+  slurm_source: "{{ sl_source }}"
+  slurm_version: "{{ sl_version_input }}"
+  cluster_name: "{{ sl_cluster_name }}"
+  partition_name: "{{ sl_partition }}"
+  admin_username: "{{ sl_admin_user }}"
+  external_nfs_export: "{{ sl_external_nfs }}"
+  install_nvidia_driver: "{{ sl_install_nvidia | string | lower }}"
+  install_apptainer: "{{ sl_install_apptainer | string | lower }}"
+
+# create-only inputs whose current value differs from the value recorded at create
+# (cluster.json "setonly"), as "key=value" string sets compared with difference()
+_sl_setonly_recorded: "{{ sl_cluster_state.setonly | default({}) }}"
+_sl_setonly_keys: "{{ _sl_setonly_recorded.keys() | list | select('in', sl_setonly_snapshot.keys() | list) | sort }}"
+_sl_setonly_old: >-
+  {{ _sl_setonly_keys | zip(_sl_setonly_keys | map('extract', _sl_setonly_recorded) | map('string')) | map('join', '=') | list }}
+_sl_setonly_new: >-
+  {{ _sl_setonly_keys | zip(_sl_setonly_keys | map('extract', sl_setonly_snapshot) | map('string')) | map('join', '=') | list }}
+sl_setonly_changed: "{{ _sl_setonly_old | difference(_sl_setonly_new) | map('regex_replace', '=.*$', '') | list | sort }}"
+
+# ---------------------------------------------------------------------------------------
+# Slurm source releases (upstream builds are checksum-pinned; verified against both
+# download.schedmd.com and the GitHub release asset digests)
+# ---------------------------------------------------------------------------------------
+sl_bom:
+  "26.05.4":
+    sha256: "035f4b193d4de979ba5381beca206a50b6b886b2793b06f68a1ce7e67022b06a"
+  "25.11.8":
+    sha256: "34ace13f81011add6094569d13bfc4006ad8868201c2236e2905443c7e526393"
+sl_tarball_url: "https://download.schedmd.com/slurm/slurm-{{ sl_version_input }}.tar.bz2"
+# Ubuntu archive package that carries the distro Slurm version string
+sl_distro_version_pkg: slurm-wlm-basic-plugins
+
+# Upstream (slurm-smd*) packages per node role
+sl_upstream_head_pkgs: [slurm-smd, slurm-smd-client, slurm-smd-slurmctld, slurm-smd-slurmdbd]
+sl_upstream_compute_pkgs: [slurm-smd, slurm-smd-client, slurm-smd-slurmd, slurm-smd-libpmi2-0]
+# Ubuntu archive packages per node role (installed without recommends)
+sl_distro_head_pkgs: [slurm-wlm-basic-plugins, slurm-client, slurmctld, slurmdbd, slurm-wlm-mysql-plugin]
+sl_distro_compute_pkgs: [slurm-wlm-basic-plugins, slurm-client, slurmd]
+# Runtime libraries both sources need explicitly (PMIx is dlopen()ed, munge is only a
+# Recommends) — also marked "manual" so autoremove never takes them
+sl_runtime_pkgs: [munge, libpmix2t64]
+
+# ---------------------------------------------------------------------------------------
+# Paths, ids, ports
+# ---------------------------------------------------------------------------------------
+sl_state_dir: /etc/slurm-ext
+sl_secrets_dir: /etc/slurm-ext/secrets
+sl_registry_dir: /etc/slurm-ext/nodes.d
+sl_cluster_file: /etc/slurm-ext/cluster.json
+sl_bootstrapped_file: /etc/slurm-ext/bootstrapped
+sl_pending_file: /etc/slurm-ext/pending-validation.json
+sl_applied_conf_file: /etc/slurm-ext/applied-conf.sha256
+# MAINT reservation that holds new nodes during scale-out validation
+sl_validation_resv_name: metalsoft-validate
+sl_node_state_dir: /etc/slurm-ext-node
+sl_conf_dir: /etc/slurm
+sl_state_save_dir: /var/spool/slurmctld
+sl_slurmd_spool_dir: /var/spool/slurmd
+sl_log_dir: /var/log/slurm
+sl_shared_dir: /shared
+sl_home_base: /shared/home
+sl_shared_internal: /shared/.slurm-ext
+sl_debs_dir: "{{ sl_shared_internal }}/debs/{{ sl_version_input }}"
+sl_build_dir: /var/lib/slurm-ext/build
+sl_data_dir: /data
+sl_sbin: /usr/local/sbin
+
+sl_slurm_uid: 64030
+sl_slurm_gid: 64030
+sl_users_group: slurm-users
+sl_users_gid: 1999
+sl_admin_uid: 2000
+sl_uid_min: 2000
+sl_uid_max: 59999
+sl_default_account: users
+sl_db_name: slurm_acct_db
+sl_db_user: slurm
+
+sl_slurmctld_port: 6817
+sl_slurmdbd_port: 6819
+
+# OS / login accounts that may never be used as the cluster admin
+sl_reserved_users:
+  - root
+  - daemon
+  - bin
+  - sys
+  - sync
+  - games
+  - man
+  - lp
+  - mail
+  - news
+  - uucp
+  - proxy
+  - www-data
+  - backup
+  - list
+  - irc
+  - gnats
+  - nobody
+  - _apt
+  - messagebus
+  - syslog
+  - sshd
+  - polkitd
+  - uuidd
+  - tcpdump
+  - landscape
+  - lxd
+  - dnsmasq
+  - statd
+  - ubuntu
+  - admin
+  - slurm
+  - slurmrestd
+  - munge
+  - mysql
+  - nvidia-persistenced
+
+# ---------------------------------------------------------------------------------------
+# Inventory. Groups are named after the instance-array labels, but controllers >= v7.4.4
+# escape '-' to '_' in group names (the recordSet keeps the raw label) — the labels are
+# therefore hyphen-free so slurmhead / slurmcompute are identical on every controller.
+# On edit the platform adds <label>_scale_out / <label>_scale_in (omitted when empty);
+# scale-in hosts are NOT in the main group.
+# ---------------------------------------------------------------------------------------
+sl_head_label: slurmhead
+sl_compute_label: slurmcompute
+sl_head_hosts: "{{ groups[sl_head_label] | default([]) }}"
+sl_head_host: "{{ sl_head_hosts | first | default('') }}"
+sl_compute_hosts: "{{ groups[sl_compute_label] | default([]) }}"
+sl_scale_in_hosts: "{{ groups[sl_compute_label ~ '_scale_in'] | default([]) }}"
+sl_scale_out_hosts: "{{ groups[sl_compute_label ~ '_scale_out'] | default([]) }}"
+sl_head_scale_hosts: >-
+  {{ (groups[sl_head_label ~ '_scale_out'] | default([])) + (groups[sl_head_label ~ '_scale_in'] | default([])) }}
+sl_head_scale_requested: "{{ sl_head_scale_hosts | length > 0 }}"
+# filled by the reachability probe play (group_by)
+sl_up_hosts: "{{ groups['slurm_up'] | default([]) }}"
+
+sl_head_ip: "{{ (hostvars[sl_head_host]['ansible_host'] | default(sl_head_host)) if sl_head_host else '' }}"
+
+# ---------------------------------------------------------------------------------------
+# Head-node state (facts set on the head by the state-read / controller tasks):
+#   sl_cluster_state  — cluster.json content + bootstrapped flag
+#   sl_registry_state — node registry: inventory host -> entry (see registry-entries.json.j2)
+#   sl_outputs_fact   — secrets/version slurped for the outputs payload
+# Read through hostvars so every host (and localhost) sees the head's view.
+# ---------------------------------------------------------------------------------------
+sl_cluster_state: "{{ (hostvars[sl_head_host]['sl_cluster_state_fact'] | default({})) if sl_head_host else {} }}"
+sl_registry: "{{ (hostvars[sl_head_host]['sl_registry_state'] | default({})) if sl_head_host else {} }}"
+sl_outputs_state: "{{ (hostvars[sl_head_host]['sl_outputs_fact'] | default({})) if sl_head_host else {} }}"
+
+sl_bootstrapped: "{{ sl_cluster_state.bootstrapped | default(false) | bool }}"
+sl_cluster_uuid: "{{ sl_cluster_state.uuid | default('') }}"
+sl_head_short: "{{ sl_cluster_state.head_short | default('') }}"
+sl_head_fqdn: "{{ sl_cluster_state.head_fqdn | default('') }}"
+
+sl_registered_hosts: "{{ sl_registry.keys() | list }}"
+# "new" = not yet in the registry (or the cluster never finished bootstrapping). Not based
+# on _scale_out membership, so it survives retries, reverted and abandoned edits.
+_sl_new_compute_hosts_live: >-
+  {{ sl_compute_hosts if not sl_bootstrapped else (sl_compute_hosts | reject('in', sl_registered_hosts) | list) }}
+# Frozen when the head state is read (state-read.yaml): the registry gains the new hosts
+# later in the same run, but they must stay "new" until the run ends.
+sl_new_compute_hosts: >-
+  {{ (hostvars[sl_head_host]['sl_new_hosts_snapshot'] | default(_sl_new_compute_hosts_live))
+     if sl_head_host else _sl_new_compute_hosts_live }}
+sl_existing_compute_hosts: "{{ sl_compute_hosts | reject('in', sl_new_compute_hosts) | list }}"
+sl_host_is_new: "{{ (not sl_bootstrapped) or (inventory_hostname in sl_new_compute_hosts) }}"
+# registry entries whose host left the main group outside the scale-in flow
+sl_stale_registry_hosts: "{{ sl_registered_hosts | reject('in', sl_compute_hosts) | list }}"
+# onEdit preDeploy: registered hosts leaving the cluster, and their Slurm node names
+sl_leaving_hosts: "{{ sl_scale_in_hosts | select('in', sl_registered_hosts) | list }}"
+sl_leaving_names: "{{ sl_leaving_hosts | map('extract', sl_registry) | map(attribute='node_name') | list }}"
+
+# Scale-out nodes stay "pending validation" (persisted on the head) from the moment they
+# enter the registry until join + validation succeeded, so a retried edit re-validates
+# them (registration wait, MAINT reservation, functional checks) instead of treating them
+# as existing. Node-baseline new-ness (upgrade, driver, reboot) stays registry-based.
+sl_pending_hosts: "{{ (hostvars[sl_head_host]['sl_pending_state'] | default([])) if sl_head_host else [] }}"
+sl_validate_hosts: "{{ sl_compute_hosts | select('in', sl_new_compute_hosts + sl_pending_hosts) | list }}"
+
+sl_unreachable_compute_hosts: "{{ sl_compute_hosts | reject('in', sl_up_hosts) | list }}"
+# new or pending nodes must be reachable (they cannot be validated otherwise)
+sl_unreachable_new_hosts: "{{ sl_unreachable_compute_hosts | select('in', sl_validate_hosts) | list }}"
+sl_up_compute_hosts: "{{ sl_compute_hosts | select('in', sl_up_hosts) | list }}"
+sl_up_new_compute_hosts: "{{ sl_up_compute_hosts | select('in', sl_new_compute_hosts) | list }}"
+sl_up_validate_hosts: "{{ sl_up_compute_hosts | select('in', sl_validate_hosts) | list }}"
+
+# ---------------------------------------------------------------------------------------
+# Cluster network CIDR (NFS export, ufw, Open MPI interface selection). Primary source:
+# the recordSet slurm-net subnet of the head group; fallback: head default_ipv4 facts.
+# ---------------------------------------------------------------------------------------
+_sl_mask_bits: {"255": 8, "254": 7, "252": 6, "248": 5, "240": 4, "224": 3, "192": 2, "128": 1, "0": 0}
+_sl_head_group_rs: >-
+  {{ extensionInstanceRecordSet.serverInstanceGroups | default([])
+     | selectattr('serverInstanceGroupLabel', 'defined')
+     | selectattr('serverInstanceGroupLabel', 'equalto', sl_head_label) | first | default({}) }}
+_sl_head_nets_rs: "{{ _sl_head_group_rs.logicalNetworks | default([]) }}"
+_sl_net_rs: >-
+  {{ ((_sl_head_nets_rs | selectattr('label', 'defined') | selectattr('label', 'equalto', 'slurm-net') | list)
+      + (_sl_head_nets_rs | selectattr('name', 'defined') | selectattr('name', 'equalto', 'slurm-net') | list)
+      + _sl_head_nets_rs) | first | default({}) }}
+_sl_subnet_rs: >-
+  {{ ((_sl_net_rs.subnets | default([]) | rejectattr('ipType', 'defined') | list)
+      + (_sl_net_rs.subnets | default([]) | selectattr('ipType', 'defined') | selectattr('ipType', 'equalto', 'ipv4') | list))
+     | first | default({}) }}
+# the platform sends subnet as "a.b.c.d/nn" (older shapes: the bare address): prefix length
+# from the netmask when present, else from the "/nn" suffix
+_sl_subnet_addr: "{{ (_sl_subnet_rs.subnet | default('') | string).split('/') | first }}"
+_sl_subnet_bits: >-
+  {{ (_sl_subnet_rs.netmask.split('.') | map('extract', _sl_mask_bits) | map('int') | sum)
+     if (_sl_subnet_rs.netmask | default('')) else (((_sl_subnet_rs.subnet | default('') | string).split('/'))[1] | default('')) }}
+_sl_cidr_rs: "{{ (_sl_subnet_addr ~ '/' ~ _sl_subnet_bits) if (_sl_subnet_addr and (_sl_subnet_bits | string | trim)) else '' }}"
+_sl_head_default_ipv4: "{{ (hostvars[sl_head_host]['ansible_facts']['default_ipv4'] | default({})) if sl_head_host else {} }}"
+_sl_cidr_facts: >-
+  {{ (_sl_head_default_ipv4.network ~ '/' ~ (_sl_head_default_ipv4.netmask.split('.') | map('extract', _sl_mask_bits) | map('int') | sum))
+     if ((_sl_head_default_ipv4.network | default('')) and (_sl_head_default_ipv4.netmask | default(''))) else '' }}
+sl_cluster_cidr: "{{ _sl_cidr_rs or _sl_cidr_facts }}"
+
+# NTP servers handed out by the site (may be empty -> keep the OS defaults)
+sl_ntp_servers: "{{ extensionInstanceRecordSet.ntpServers | default([], true) | select('string') | map('trim') | reject('equalto', '') | list }}"
+
+# ---------------------------------------------------------------------------------------
+# Node registry derivations (slurm.conf rendering, outputs)
+# ---------------------------------------------------------------------------------------
+sl_nodes_sorted: "{{ sl_registry.values() | list | sort(attribute='node_name') }}"
+sl_node_names: "{{ sl_nodes_sorted | map(attribute='node_name') | list }}"
+sl_gpu_total: "{{ sl_nodes_sorted | map(attribute='gpu_count') | map('int') | sum }}"
+sl_def_mem_per_cpu: >-
+  {{ (sl_nodes_sorted | map(attribute='def_mem_per_cpu') | map('int') | min) if sl_nodes_sorted else 1024 }}
+
+# ---------------------------------------------------------------------------------------
+# NVIDIA
+# ---------------------------------------------------------------------------------------
+sl_nvidia_supported_branches: ["580", "595"]
+sl_nvidia_pkgs:
+  - "nvidia-headless-no-dkms-{{ sl_nvidia_branch }}-server-open"
+  - "nvidia-utils-{{ sl_nvidia_branch }}-server"
+sl_nvidia_fabric_pkgs:
+  - "nvidia-fabricmanager-{{ sl_nvidia_branch }}"
+  - "libnvidia-nscq-{{ sl_nvidia_branch }}"
+sl_nvidia_blackwell_pkgs: [infiniband-diags, libibumad3]
+sl_nvlsm_min_version: "2025.10.14"
+sl_cuda_repo_url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/"
+sl_cuda_repo_key_url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/60DF8A40.pub"
+
+# ---------------------------------------------------------------------------------------
+# Apptainer (official PPA; the 26.04 archive package lacks its AppArmor userns profile)
+# ---------------------------------------------------------------------------------------
+sl_apptainer_ppa_uri: "https://ppa.launchpadcontent.net/apptainer/ppa/ubuntu"
+sl_apptainer_ppa_fingerprint: "F6B0F5193D4F3301EF491FF0AFE36534FC6218AE"
+
+# ---------------------------------------------------------------------------------------
+# Outputs (context.json). Labels are EXACTLY the extension.json output labels (never an
+# input label) and every write carries all of them — the platform REPLACES stored outputs
+# on every successful run. Values come from the head node each run (fail-closed emit).
+# ---------------------------------------------------------------------------------------
+sl_context_json_path: "/runner/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+# EE-local scratch for files moved head -> EE -> nodes within ONE run (binary-safe fetch/copy)
+sl_ee_tmp: "/tmp/slurm-ext-{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') | default('local', true) }}"
+
+sl_outputs_payload:
+  head_node_ip: "{{ sl_head_ip }}"
+  head_node_hostname: "{{ (sl_head_fqdn or sl_head_short or sl_head_host) | regex_replace('\\.$', '') }}"
+  ssh_command: "{{ ('ssh ' ~ sl_admin_user ~ '@' ~ sl_head_ip) if sl_head_ip else '' }}"
+  admin_user: "{{ sl_admin_user }}"
+  admin_password: "{{ sl_outputs_state.admin_password | default('') }}"
+  admin_ssh_private_key: "{{ sl_outputs_state.admin_ssh_private_key | default('') }}"
+  slurm_cluster_name: "{{ sl_cluster_name }}"
+  slurm_installed_version: "{{ sl_outputs_state.slurm_version | default('') }}"
+  default_partition: "{{ sl_partition }}"
+  compute_node_count: "{{ sl_node_names | length | string }}"
+  compute_nodes: "{{ sl_node_names | join(',') }}"
+  gpu_total: "{{ sl_gpu_total | string }}"
+  data_mount: "{{ sl_external_nfs }}"

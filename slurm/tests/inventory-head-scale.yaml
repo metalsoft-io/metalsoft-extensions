@@ -1,0 +1,19 @@
+---
+# An operator resized the head instance group: the scale-in guard must trip.
+all:
+  children:
+    slurmhead:
+      hosts:
+        head-1:
+          ansible_host: 10.0.10.10
+    slurmcompute:
+      hosts:
+        node-a:
+          ansible_host: 10.0.10.21
+    slurmcompute_scale_out:
+    slurmcompute_scale_in:
+    slurmhead_scale_out:
+      hosts:
+        head-2:
+          ansible_host: 10.0.10.11
+    slurmhead_scale_in:

@@ -1,0 +1,75 @@
+---
+# Start slurmd (configless: it fetches the configuration from slurmctld) and wait until
+# the new nodes registered with a valid configuration.
+- name: Join | MUNGE credential from the head node decodes here
+  ansible.builtin.command:
+    cmd: unmunge
+    stdin: "{{ hostvars[sl_head_host]['sl_munge_cred'] }}"
+  register: _sl_unmunge
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Join | same MUNGE key and synchronised clocks
+  ansible.builtin.assert:
+    that:
+      - _sl_unmunge.rc == 0
+    fail_msg: >-
+      {{ inventory_hostname }} cannot decode a MUNGE credential from the head node
+      ({{ _sl_unmunge.stderr | default('') | trim }}) — different munge.key or clock skew > 5 min.
+    quiet: true
+
+- name: Join | slurmd state
+  ansible.builtin.systemd_service:
+    name: slurmd
+  register: _sl_slurmd_active
+
+# Restarting slurmd does not affect running jobs (slurmstepd keeps them).
+- name: Join | start or restart slurmd
+  ansible.builtin.systemd_service:
+    name: slurmd
+    enabled: true
+    daemon_reload: true
+    state: >-
+      {{ 'restarted' if ((_sl_slurmd_active.status.ActiveState | default('')) == 'active' and (sl_slurmd_restart_needed | default(false) | bool))
+         else 'started' }}
+
+- name: Join | slurmd running
+  ansible.builtin.systemd_service:
+    name: slurmd
+  register: _sl_slurmd_running
+  until: (_sl_slurmd_running.status.ActiveState | default('')) == 'active'
+  retries: 12
+  delay: 10
+
+- name: Join | new / pending nodes registered with a valid configuration
+  ansible.builtin.command: >-
+    {{ sl_sbin }}/slurm-ext-wait-nodes --timeout 900
+    {{ _sl_new_names | join(',') }}
+  vars:
+    _sl_new_names: >-
+      {{ (ansible_play_hosts | select('in', sl_validate_hosts) | list)
+         | map('extract', hostvars[sl_head_host]['sl_registry_state']) | map(attribute='node_name') | list }}
+  delegate_to: "{{ sl_head_host }}"
+  run_once: true
+  changed_when: false
+  when: _sl_new_names | length > 0
+
+- name: Join | state of existing nodes
+  ansible.builtin.command: "sinfo -h -N -n {{ _sl_old_names | join(',') }} -o '%N %T %E'"
+  vars:
+    _sl_old_names: >-
+      {{ (ansible_play_hosts | reject('in', sl_validate_hosts) | list)
+         | map('extract', hostvars[sl_head_host]['sl_registry_state']) | map(attribute='node_name') | list }}
+  register: _sl_old_state
+  delegate_to: "{{ sl_head_host }}"
+  run_once: true
+  changed_when: false
+  failed_when: false
+  when: _sl_old_names | length > 0
+
+- name: Join | existing nodes report
+  ansible.builtin.debug:
+    msg: "{{ _sl_old_state.stdout_lines | default([]) }}"
+  run_once: true
+  when: _sl_old_state.stdout_lines is defined

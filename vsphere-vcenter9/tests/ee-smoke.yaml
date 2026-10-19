@@ -1,0 +1,104 @@
+---
+# EE smoke test — runs INSIDE the built EE image with the vCSA ISO mounted, no ESXi needed:
+#   docker run --rm -v $PWD:/work:ro -v /path/to/VMware-VCSA-all-<ver>.iso:/iso/vcsa.iso:ro \
+#     -w /work/tests ee-vsphere-vcenter9:<tag> \
+#     ansible-playbook -i inventory.yaml -e @fixtures/sample-variables.json -e iso_file=/iso/vcsa.iso ee-smoke.yaml
+# Exercises the real extraction, render and vcsa-deploy template verification against the
+# image's tools (pycdlib, tput, vcsa-deploy's bundled runtime).
+- name: EE smoke test
+  hosts: esxi[0]
+  connection: local
+  gather_facts: false
+  vars:
+    vcsa_datastore: { name: datastore1 }
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        dir: "{{ item }}"
+      loop:
+        - ../ansible/roles/globals/defaults
+        - ../ansible/roles/vcsa/defaults
+
+    - name: Use a scratch work dir
+      ansible.builtin.set_fact:
+        vcsa_work_dir: /tmp/vcsa-smoke
+        vcsa_cli_dir: /tmp/vcsa-smoke/vcsa-cli-installer
+        vcsa_deploy_bin: /tmp/vcsa-smoke/vcsa-cli-installer/lin64/vcsa-deploy
+        vcsa_template_src: /tmp/vcsa-smoke/vcsa-cli-installer/templates/install/embedded_vCSA_on_ESXi.json
+        vcsa_template_dest: /tmp/vcsa-smoke/vcsa-install.json
+        vcsa_log_dir: /tmp/vcsa-smoke/logs
+
+    - name: Create the work dir
+      ansible.builtin.file:
+        path: "{{ vcsa_work_dir }}"
+        state: directory
+        mode: "0700"
+
+    # Same script and arguments as fetch-installer.yaml, reading the mounted ISO in place
+    # of the download (get_url would copy all 13 GB through a symlink).
+    - name: Extract vcsa-cli-installer and the appliance OVA
+      ansible.builtin.script:
+        cmd: "../ansible/roles/vcsa/files/iso_extract.py {{ iso_file | quote }} {{ vcsa_work_dir | quote }} /vcsa-cli-installer /vcsa"
+        executable: "{{ ansible_playbook_python }}"
+
+    - name: Check the OVA landed next to the installer
+      ansible.builtin.find:
+        paths: "{{ vcsa_work_dir }}/vcsa"
+        patterns: "*.ova"
+      register: smoke_ova
+
+    - name: vcsa-deploy runs in this image
+      ansible.builtin.command: "{{ vcsa_deploy_bin }} --version"
+      environment:
+        TERM: dumb
+      register: smoke_version
+      changed_when: false
+
+    # vcsa-deploy install hands the OVA to this ovftool; it needs libnsl.so.1 and
+    # libcrypt.so.1 from the image, which --verify-template-only never loads
+    - name: Bundled ovftool runs in this image
+      ansible.builtin.command: "{{ vcsa_work_dir }}/vcsa/ovftool/lin64/ovftool --version"
+      register: smoke_ovftool
+      changed_when: false
+
+    # vcsa-deploy install's IpFqdnInUse / DNS prechecks exec ping; --verify-template-only never does
+    - name: ping exists and works in this image
+      ansible.builtin.command: ping -c1 -W2 127.0.0.1
+      changed_when: false
+
+    - name: Render the install spec from the ISO's own template
+      ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/render-template.yaml
+
+    - name: vcsa-deploy accepts the rendered spec
+      ansible.builtin.command:
+        argv:
+          - "{{ vcsa_deploy_bin }}"
+          - install
+          - --accept-eula
+          - --no-ssl-certificate-verification
+          - --verify-template-only
+          - --log-dir
+          - "{{ vcsa_log_dir }}/verify"
+          - "{{ vcsa_template_dest }}"
+      environment:
+        TERM: dumb
+      register: smoke_verify
+      changed_when: false
+      failed_when: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "ova: {{ smoke_ova.files | map(attribute='path') | map('basename') | list }}"
+          - "vcsa-deploy: {{ smoke_version.stdout_lines | last }}"
+          - "{{ smoke_ovftool.stdout }}"
+          - "verify rc={{ smoke_verify.rc }}"
+          - "{{ smoke_verify.stdout_lines[-40:] if smoke_verify.rc != 0 else (smoke_verify.stdout_lines | select('search', 'succe') | list) }}"
+
+    - name: Assert smoke results
+      ansible.builtin.assert:
+        that:
+          - smoke_ova.files | length == 1
+          - smoke_ova.files[0].size > 4294967296  # not truncated at 4 GiB
+          - smoke_verify.rc == 0
+        quiet: true

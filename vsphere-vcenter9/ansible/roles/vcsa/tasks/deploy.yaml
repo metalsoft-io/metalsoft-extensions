@@ -1,0 +1,64 @@
+---
+- name: Verify the install spec
+  ansible.builtin.command:
+    argv:
+      - "{{ vcsa_deploy_bin }}"
+      - install
+      - --accept-eula
+      - --no-ssl-certificate-verification
+      - --verify-template-only
+      - --log-dir
+      - "{{ vcsa_log_dir }}/verify"
+      - "{{ vcsa_template_dest }}"
+  environment:
+    TERM: dumb
+  changed_when: false
+
+# vcsa-deploy blocks through OVA deploy and firstboot (~30-60 min); run it async so the
+# task is not tied to one long-lived connection.
+- name: Deploy vCenter Server Appliance
+  ansible.builtin.command:
+    argv:
+      - "{{ vcsa_deploy_bin }}"
+      - install
+      - --accept-eula
+      - --no-ssl-certificate-verification
+      - --terse
+      - --log-dir
+      - "{{ vcsa_log_dir }}/install"
+      - "{{ vcsa_template_dest }}"
+  environment:
+    TERM: dumb
+  async: "{{ vcsa_deploy_async_timeout }}"
+  poll: 30
+  register: vcsa_deploy_result
+  changed_when: true
+  failed_when: false
+
+- name: Show the tail of the vcsa-deploy log on failure
+  ansible.builtin.shell: "tail -n 80 $(ls -t {{ vcsa_log_dir }}/install/*/vcsa-cli-installer.log 2>/dev/null | head -1) 2>/dev/null || true"
+  register: vcsa_deploy_log_tail
+  changed_when: false
+  when: vcsa_deploy_result.rc | default(1) != 0
+
+- name: Fail | vcsa-deploy did not succeed
+  ansible.builtin.fail:
+    msg: |
+      vcsa-deploy exited {{ vcsa_deploy_result.rc | default('unknown') }} (1=runtime, 2=validation, 3=template).
+      {{ vcsa_deploy_result.stdout | default('') | regex_replace(vcenter_admin_password | regex_escape, '********') | truncate(4000) }}
+      --- log tail ---
+      {{ vcsa_deploy_log_tail.stdout | default('') | regex_replace(vcenter_admin_password | regex_escape, '********') }}
+  when: vcsa_deploy_result.rc | default(1) != 0
+
+- name: Wait for the vCenter UI
+  ansible.builtin.uri:
+    url: "https://{{ vcenter_ip }}/ui/"
+    method: GET
+    status_code: 200
+    validate_certs: false
+    follow_redirects: all
+    timeout: 10
+  register: vcsa_ready
+  until: vcsa_ready.status | default(0) == 200
+  retries: "{{ vcsa_ready_retries }}"
+  delay: "{{ vcsa_ready_delay }}"

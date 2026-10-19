@@ -1,0 +1,121 @@
+---
+# Offline scale test — no ESXi or vCenter needed. Run once per inventory:
+#   cd tests && ansible-playbook -i inventory-create.yaml -e @fixtures/scale-variables.json scale-spec.yaml
+#   cd tests && ansible-playbook -i inventory-edit.yaml   -e @fixtures/scale-variables.json scale-spec.yaml
+# Asserts which host gets vCenter, which hosts join the cluster, and (edit) the scale-in guards of the
+# real scale-in-host.yaml, fed a fake vCenter VM list (the direct host query fails against 127.0.0.1).
+- name: Scale contract
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        dir: "{{ item }}"
+      loop:
+        - ../ansible/roles/globals/defaults
+        - ../ansible/roles/vcsa/defaults
+
+    - name: Set the scenario
+      ansible.builtin.set_fact:
+        scale_edit: "{{ groups['esxi_scale_in'] is defined }}"
+
+    # ---- create ----------------------------------------------------------------------
+    - name: Assert | create | vCenter goes on the lowest instance id, whatever the inventory order
+      ansible.builtin.assert:
+        that:
+          - vcsa_host == 'instance-31.example.com'
+          - esxi_cluster_members | sort == ['instance-31.example.com', 'instance-32.example.com', 'instance-33.example.com']
+          - esxi_scale_in_hosts == []
+        fail_msg: "vcsa_host={{ vcsa_host }} members={{ esxi_cluster_members }}"
+      when: not scale_edit
+
+    - name: Assert | vCenter host falls back to the first inventory host when names do not match
+      ansible.builtin.assert:
+        that: >-
+          (((esxi_record_instances | map(attribute='host') | map('regex_replace', '^', 'x-')
+             | select('in', groups['esxi']) | list) + groups['esxi']) | first) == groups['esxi'][0]
+      when: not scale_edit
+
+    # ---- edit ------------------------------------------------------------------------
+    - name: Assert | edit | survivors plus new hosts join the cluster, the leaving host does not
+      ansible.builtin.assert:
+        that:
+          - esxi_cluster_members | sort == ['instance-31.example.com', 'instance-32.example.com', 'instance-34.example.com']
+          - esxi_scale_in_hosts == ['instance-33.example.com']
+        fail_msg: "members={{ esxi_cluster_members }} scale_in={{ esxi_scale_in_hosts }}"
+      when: scale_edit
+
+    - name: Guard cases (edit)
+      when: scale_edit
+      vars:
+        leaving_host: instance-33.example.com
+        vcsa_cluster_host_names: []
+      block:
+        - name: Case | leaving host carries the vCenter VM → refused
+          block:
+            - name: Run scale-in-host.yaml
+              ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/scale-in-host.yaml
+              vars:
+                vcsa_vcenter_vms:
+                  virtual_machines:
+                    - { guest_name: vcenter, power_state: poweredOn, esxi_hostname: 127.0.0.1, ip_address: 10.0.20.50 }
+            - name: Should not get here
+              ansible.builtin.fail:
+                msg: "scale-in accepted a host that runs vCenter"
+              register: guard_escaped
+          rescue:
+            - name: Assert | refused for the vCenter VM
+              ansible.builtin.assert:
+                that:
+                  - guard_escaped is not defined
+                  - "'runs the vCenter VM' in ansible_failed_result.msg"
+                fail_msg: "{{ ansible_failed_result.msg | default('') }}"
+
+        - name: Case | leaving host runs another VM → refused
+          block:
+            - name: Run scale-in-host.yaml
+              ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/scale-in-host.yaml
+              vars:
+                vcsa_vcenter_vms:
+                  virtual_machines:
+                    - { guest_name: app1, power_state: poweredOn, esxi_hostname: 127.0.0.1, ip_address: 10.0.20.90 }
+                    - { guest_name: elsewhere, power_state: poweredOn, esxi_hostname: 10.0.20.11, ip_address: "" }
+            - name: Should not get here
+              ansible.builtin.fail:
+                msg: "scale-in accepted a host with running VMs"
+              register: guard_escaped2
+          rescue:
+            - name: Assert | refused for running VMs, naming only the leaving host's VM
+              ansible.builtin.assert:
+                that:
+                  - guard_escaped2 is not defined
+                  - "'has powered-on VMs' in ansible_failed_result.msg"
+                  - "'app1' in ansible_failed_result.msg"
+                  - "'elsewhere' not in ansible_failed_result.msg"
+                fail_msg: "{{ ansible_failed_result.msg | default('') }}"
+
+        - name: Case | only powered-off VMs → accepted (not in the cluster, so nothing to remove)
+          ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/scale-in-host.yaml
+          vars:
+            vcsa_vcenter_vms:
+              virtual_machines:
+                - { guest_name: old, power_state: poweredOff, esxi_hostname: 127.0.0.1, ip_address: "" }
+
+        - name: Case | neither the host nor vCenter answers → refused
+          block:
+            - name: Run scale-in-host.yaml
+              ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/scale-in-host.yaml
+              vars:
+                vcsa_vcenter_vms: {}
+            - name: Should not get here
+              ansible.builtin.fail:
+                msg: "scale-in accepted a host it could not check"
+              register: guard_escaped3
+          rescue:
+            - name: Assert | refused when nothing can be verified
+              ansible.builtin.assert:
+                that:
+                  - guard_escaped3 is not defined
+                  - "'cannot be checked' in ansible_failed_result.msg"
+                fail_msg: "{{ ansible_failed_result.msg | default('') }}"

@@ -1,0 +1,348 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "VMware vCenter Server 9",
+  "label": "vsphere_vcenter9",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.3.0",
+  "description": "Installs ESXi 9 on one or more bare-metal servers, deploys a vCenter Server Appliance 9 on the first and adds every host to a vCenter cluster. Scale by changing the host count.",
+  "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
+  "dependencies": {
+    "controllerVersion": "release-v7.2",
+    "osTemplates": [
+      "esxi-9-25370933-standard"
+    ]
+  },
+  "inputs": [
+    {
+      "label": "server_type",
+      "name": "server_type",
+      "helpText": "Server type for the ESXi hosts (the first also runs vCenter: 'small' needs 4 vCPU / 21 GB RAM on top of ESXi).",
+      "inputType": "ExtensionInputServerType",
+      "options": {
+        "minCpu": 1,
+        "minRamGb": 32
+      }
+    },
+    {
+      "label": "os_template",
+      "name": "os_template",
+      "helpText": "ESXi OS template, e.g. esxi-9-25370933-standard. vCenter must be the same or newer patch level.",
+      "inputType": "ExtensionInputOsTemplate",
+      "options": {
+        "osFamily": "ESXi"
+      }
+    },
+    {
+      "label": "esxi_host_count",
+      "name": "esxi_host_count",
+      "helpText": "ESXi host count; vCenter runs on the first. Edit later to add/remove hosts (removed hosts: no powered-on VMs).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 32
+      }
+    },
+    {
+      "label": "mgmt_network_profile",
+      "name": "mgmt_network_profile",
+      "helpText": "Network profile (label) for the ESXi and vCenter management network, e.g. vcf-mgmt. Needs an IPv4 subnet.",
+      "inputType": "ExtensionInputNetworkProfile",
+      "setOnly": true,
+      "options": {}
+    },
+    {
+      "label": "vcenter_admin_password",
+      "name": "vcenter_admin_password",
+      "helpText": "Appliance root and administrator@<SSO domain> password: 8-20 chars, upper, lower, digit, special other than _ (! @ - .)",
+      "inputType": "ExtensionInputString",
+      "isPassword": true,
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9!@#$%^&*()+=._-]{8,20}$"
+      }
+    },
+    {
+      "label": "sso_domain_name",
+      "name": "sso_domain_name",
+      "helpText": "vCenter Single Sign-On domain.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vsphere.local",
+      "options": {
+        "validationRegEx": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+      },
+      "setOnly": true
+    },
+    {
+      "label": "deployment_size",
+      "name": "deployment_size",
+      "helpText": "vCenter deployment size (tiny: 10 hosts, small: 100, medium: 400, large: 1000, xlarge: 2000).",
+      "inputType": "ExtensionInputEnum",
+      "defaultValue": "small",
+      "options": {
+        "values": [
+          "tiny",
+          "small",
+          "medium",
+          "large",
+          "xlarge"
+        ]
+      },
+      "setOnly": true
+    },
+    {
+      "label": "vcenter_vm_name",
+      "name": "vcenter_vm_name",
+      "helpText": "Name of the vCenter VM on the ESXi host.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "vcenter",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
+      },
+      "setOnly": true
+    },
+    {
+      "label": "datastore_name",
+      "name": "datastore_name",
+      "helpText": "ESXi datastore for the appliance. Empty: the accessible datastore with the most free space.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^.{0,64}$"
+      },
+      "setOnly": true
+    },
+    {
+      "label": "thin_disk_mode",
+      "name": "thin_disk_mode",
+      "helpText": "Thin-provision the appliance disks (thick 'small' needs 734 GB free).",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "enable_ssh",
+      "name": "enable_ssh",
+      "helpText": "Enable SSH on the vCenter appliance.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "create_datacenter_cluster",
+      "name": "create_datacenter_cluster",
+      "helpText": "Create a datacenter and cluster and keep every ESXi host in it, also on scale-out/in.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "datacenter_name",
+      "name": "datacenter_name",
+      "helpText": "Datacenter created in vCenter.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "Datacenter",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$"
+      }
+    },
+    {
+      "label": "cluster_name",
+      "name": "cluster_name",
+      "helpText": "Cluster created in vCenter.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "Cluster",
+      "options": {
+        "validationRegEx": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$"
+      }
+    }
+  ],
+  "configVars": [
+    {
+      "label": "DNSResolvers",
+      "name": "DNSResolvers",
+      "helpText": "Comma-separated resolvers serving the site zone and its reverse zone (vCenter needs both). Empty: record-set resolvers.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {}
+    },
+    {
+      "label": "vcsa_iso_url",
+      "name": "vcsa_iso_url",
+      "helpText": "HTTP(S) URL, no auth, of the VMware-VCSA-all ISO you downloaded from VMware. Same ESXi patch level or newer.",
+      "inputType": "ExtensionInputString",
+      "options": {
+        "validationRegEx": "^https?://[A-Za-z0-9.:/_%+-]+\\.iso$"
+      }
+    },
+    {
+      "label": "vcsa_iso_sha256",
+      "name": "vcsa_iso_sha256",
+      "helpText": "Optional SHA-256 of the ISO, verified after download.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^([a-f0-9]{64})?$"
+      }
+    },
+    {
+      "label": "vcsa_work_dir",
+      "name": "vcsa_work_dir",
+      "helpText": "Scratch directory in the execution environment (needs 25 GB free).",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "/tmp/vcsa",
+      "options": {
+        "validationRegEx": "^/[A-Za-z0-9/._-]*$"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "label": "vcenter_url",
+      "name": "vcenter_url",
+      "outputType": "url",
+      "helpText": "vCenter UI"
+    },
+    {
+      "label": "vcenter_fqdn",
+      "name": "vcenter_fqdn",
+      "outputType": "string"
+    },
+    {
+      "label": "vcenter_ip",
+      "name": "vcenter_ip",
+      "outputType": "string"
+    },
+    {
+      "label": "vcenter_sso_username",
+      "name": "vcenter_sso_username",
+      "outputType": "string"
+    }
+  ],
+  "infrastructure": {
+    "instanceArrays": [
+      {
+        "label": "esxi",
+        "instanceCount": "#/input/esxi_host_count",
+        "serverType": "#/input/server_type",
+        "osTemplate": "#/input/os_template",
+        "logicalNetworks": [
+          {
+            "label": "vcenter-mgmt",
+            "networkConnection": {
+              "tagged": true,
+              "accessMode": "l2",
+              "redundancy": {
+                "mode": "active-active",
+                "implementation": {
+                  "implementationType": "server-only-bond"
+                }
+              },
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "label": "vcenter-mgmt",
+        "profileLabel": "#/input/mgmt_network_profile",
+        "ipAllocations": [
+          {
+            "tags": {
+              "role": "vcenter"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "vcenter.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "vsphere-vcenter9-bundle",
+      "name": "vsphere-vcenter9-bundle",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/vsphere-vcenter9/vsphere-vcenter9-v1.3.0.zip"
+    },
+    {
+      "label": "ee-vsphere-vcenter9-1-0-1",
+      "name": "ee-vsphere-vcenter9-1-0-1",
+      "assetType": "OciImage",
+      "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-vsphere-vcenter9.1.0.1.tar.gz",
+      "namespaceRegistry": "ee-vsphere-vcenter9",
+      "repositoryRegistry": "registry.metalsoft.dev",
+      "tagRegistry": "1.0.1"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "preDeploy",
+      "tasks": []
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "deploy-vcenter",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vsphere-vcenter9-bundle",
+            "playbook": "deploy.yaml",
+            "ee": "ee-vsphere-vcenter9-1-0-1",
+            "executionTimeout": 14400,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onEdit": [
+    {
+      "stage": "preDeploy",
+      "tasks": [
+        {
+          "label": "scale-in",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vsphere-vcenter9-bundle",
+            "playbook": "scale-in.yaml",
+            "ee": "ee-vsphere-vcenter9-1-0-1",
+            "executionTimeout": 3600,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "scale-out",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "vsphere-vcenter9-bundle",
+            "playbook": "scale-out.yaml",
+            "ee": "ee-vsphere-vcenter9-1-0-1",
+            "executionTimeout": 3600,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onDelete": []
+}

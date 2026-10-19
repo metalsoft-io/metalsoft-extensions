@@ -1,0 +1,8 @@
+# Create deploy of a 3-host array, listed out of instance-id order on purpose.
+all:
+  children:
+    esxi:
+      hosts:
+        instance-33.example.com: {ansible_host: 10.0.20.13, ansible_user: root, ansible_password: "EsxPassw0rd!123"}
+        instance-31.example.com: {ansible_host: 10.0.20.11, ansible_user: root, ansible_password: "EsxPassw0rd!123"}
+        instance-32.example.com: {ansible_host: 10.0.20.12, ansible_user: root, ansible_password: "EsxPassw0rd!123"}

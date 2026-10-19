@@ -1,0 +1,71 @@
+---
+# Fail before downloading 13 GB if anything the install needs is missing or wrong.
+- name: Assert the vCSA ISO URL is set
+  ansible.builtin.assert:
+    that:
+      - vcsa_iso_url is regex('^https?://.+\\.iso$')
+    fail_msg: >-
+      The site config 'vcsa_iso_url' is empty or not an http(s) URL of an .iso ('{{ vcsa_iso_url }}').
+      Download VMware-VCSA-all-<version>.iso from VMware, serve it over HTTP(S) without auth, and set its URL.
+    quiet: true
+
+- name: Assert platform allocations are present
+  ansible.builtin.assert:
+    that:
+      - mgmt_network | length > 0
+      - vcenter_ip | length > 0
+      - vcenter_fqdn | length > 0
+      - vcenter_prefix is regex('^[0-9]+$')
+      - vcenter_gateway | length > 0
+    fail_msg: >-
+      Missing the 'vcenter' IP allocation on network 'vcenter-mgmt' (ip='{{ vcenter_ip }}',
+      fqdn='{{ vcenter_fqdn }}', prefix='{{ vcenter_prefix }}', gateway='{{ vcenter_gateway }}').
+      An empty fqdn means no DNS provisioning extension handled the record at this site.
+    quiet: true
+
+# The input regex can only check charset and length (no lookahead); the class rules
+# are vCenter's own policy, checked here so the failure is immediate.
+- name: Assert vCenter password policy
+  ansible.builtin.assert:
+    that:
+      - vcenter_admin_password | length >= 8
+      - vcenter_admin_password | length <= 20
+      - vcenter_admin_password is regex('[A-Z]')
+      - vcenter_admin_password is regex('[a-z]')
+      - vcenter_admin_password is regex('[0-9]')
+      # vCenter does not count '_' as special (verified with vcsa-deploy 9.1 --verify-template-only)
+      - vcenter_admin_password is regex('[^A-Za-z0-9_]')
+    fail_msg: >-
+      vcenter_admin_password must be 8-20 characters with at least one uppercase letter,
+      one lowercase letter, one digit and one special character other than '_' (vCenter does not count it).
+    quiet: true
+  no_log: true
+
+# vCenter firstboot needs forward AND reverse resolution of its own FQDN.
+- name: Resolve vCenter FQDN (forward)
+  ansible.builtin.command: "dig +short +time=3 +tries=2 @{{ dns_servers | first }} {{ vcenter_fqdn }} A"
+  register: vcsa_dns_forward
+  changed_when: false
+  failed_when: false
+  when: not (vcsa_skip_dns_check | bool)
+
+- name: Resolve vCenter IP (reverse)
+  ansible.builtin.command: "dig +short +time=3 +tries=2 @{{ dns_servers | first }} -x {{ vcenter_ip }}"
+  register: vcsa_dns_reverse
+  changed_when: false
+  failed_when: false
+  when: not (vcsa_skip_dns_check | bool)
+
+- name: Assert vCenter DNS round-trip
+  ansible.builtin.assert:
+    that:
+      - vcenter_ip in vcsa_dns_forward.stdout_lines
+      - (vcenter_fqdn ~ '.') in vcsa_dns_reverse.stdout_lines or vcenter_fqdn in vcsa_dns_reverse.stdout_lines
+    fail_msg: >-
+      DNS check against {{ dns_servers | first }} failed:
+      {{ vcenter_fqdn }} -> {{ vcsa_dns_forward.stdout_lines | default([]) }} (expected {{ vcenter_ip }}),
+      {{ vcenter_ip }} -> {{ vcsa_dns_reverse.stdout_lines | default([]) }} (expected {{ vcenter_fqdn }}).
+      vCenter requires forward and reverse records — check the site's DNS extension and reverse zone,
+      and the DNSResolvers site config.
+    quiet: true
+  when: not (vcsa_skip_dns_check | bool)

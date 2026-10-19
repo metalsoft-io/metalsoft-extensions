@@ -1,0 +1,73 @@
+---
+# One leaving host (leaving_host = inventory name). Its VMs are read from the host itself; vCenter's
+# view is the fallback when the host does not answer (e.g. failed hardware).
+- name: "List VMs on the host | {{ leaving_host }}"
+  community.vmware.vmware_vm_info:
+    hostname: "{{ hostvars[leaving_host].ansible_host }}"
+    username: "{{ hostvars[leaving_host].ansible_user | default('root') }}"
+    password: "{{ hostvars[leaving_host].ansible_password }}"
+    validate_certs: false
+    vm_type: vm
+  register: vcsa_leaving_direct
+  failed_when: false
+
+- name: "Fail | VMs on the host cannot be verified | {{ leaving_host }}"
+  ansible.builtin.fail:
+    msg: >-
+      Neither {{ leaving_host }} ({{ hostvars[leaving_host].ansible_host }}) nor vCenter {{ vcenter_ip }} answered,
+      so it cannot be checked that the host carries no vCenter or running VMs. Restore access, or remove the host
+      from vCenter by hand, then retry.
+  when:
+    - vcsa_leaving_direct.virtual_machines is not defined
+    - vcsa_vcenter_vms.virtual_machines is not defined
+
+- name: "Collect the host's VMs | {{ leaving_host }}"
+  ansible.builtin.set_fact:
+    vcsa_leaving_vms: >-
+      {{ vcsa_leaving_direct.virtual_machines
+         if vcsa_leaving_direct.virtual_machines is defined
+         else (vcsa_vcenter_vms.virtual_machines
+               | selectattr('esxi_hostname', 'equalto', hostvars[leaving_host].ansible_host) | list) }}
+
+- name: "Fail | the host carries vCenter | {{ leaving_host }}"
+  ansible.builtin.fail:
+    msg: >-
+      {{ leaving_host }} ({{ hostvars[leaving_host].ansible_host }}) runs the vCenter VM '{{ vcsa_vm_name }}'.
+      vCenter is installed on the lowest-numbered host, which scale-in never removes; if the VM was moved, move it
+      back to a remaining host first. Nothing was removed.
+  when: >-
+    vcsa_leaving_vms | selectattr('guest_name', 'equalto', vcsa_vm_name) | list | length > 0
+    or vcsa_leaving_vms | selectattr('ip_address', 'defined') | selectattr('ip_address', 'equalto', vcenter_ip) | list | length > 0
+
+- name: "Fail | the host runs VMs | {{ leaving_host }}"
+  ansible.builtin.fail:
+    msg: >-
+      {{ leaving_host }} ({{ hostvars[leaving_host].ansible_host }}) has powered-on VMs:
+      {{ vcsa_leaving_vms | selectattr('power_state', 'equalto', 'poweredOn') | map(attribute='guest_name') | join(', ') }}.
+      Its local disks are wiped on scale-in: migrate or power off these VMs, then retry.
+  when: vcsa_leaving_vms | selectattr('power_state', 'equalto', 'poweredOn') | list | length > 0
+
+- name: "Remove the host from vCenter | {{ leaving_host }}"
+  when: hostvars[leaving_host].ansible_host in vcsa_cluster_host_names
+  block:
+    # A host that does not answer is disconnected in vCenter, which can remove it without maintenance mode.
+    - name: "Enter maintenance mode | {{ leaving_host }}"
+      vmware.vmware.esxi_maintenance_mode:
+        hostname: "{{ vcenter_ip }}"
+        username: "{{ vcenter_sso_username }}"
+        password: "{{ vcenter_admin_password }}"
+        validate_certs: false
+        esxi_host_name: "{{ hostvars[leaving_host].ansible_host }}"
+        enable_maintenance_mode: true
+        timeout: 600
+      when: vcsa_leaving_direct.virtual_machines is defined
+
+    - name: "Remove from vCenter | {{ leaving_host }}"
+      vmware.vmware.esxi_host:
+        hostname: "{{ vcenter_ip }}"
+        username: "{{ vcenter_sso_username }}"
+        password: "{{ vcenter_admin_password }}"
+        validate_certs: false
+        datacenter: "{{ vcenter_datacenter_name }}"
+        esxi_host_name: "{{ hostvars[leaving_host].ansible_host }}"
+        state: absent

@@ -1,0 +1,65 @@
+---
+# A retry re-runs the whole playbook: detect an existing appliance before downloading anything.
+- name: Probe for a running vCenter
+  ansible.builtin.uri:
+    url: "https://{{ vcenter_ip }}/ui/"
+    method: GET
+    status_code: 200
+    validate_certs: false
+    follow_redirects: all
+    timeout: 10
+  register: vcsa_probe
+  failed_when: false
+
+- name: Look for an existing vCenter VM on the ESXi host
+  community.vmware.vmware_guest_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: false
+    datacenter: ha-datacenter
+    name: "{{ vcsa_vm_name }}"
+  register: vcsa_vm_info
+  failed_when: false
+  when: vcsa_probe.status | default(0) != 200
+
+- name: Set vCenter deployment state
+  ansible.builtin.set_fact:
+    vcsa_running: "{{ vcsa_probe.status | default(0) == 200 }}"
+    vcsa_vm_exists: "{{ (vcsa_vm_info.instance | default({})) | length > 0 }}"
+
+# VM present but not answering: an interrupted run whose firstboot may still be going.
+# Wait for it; if it never comes up, the operator must remove the VM (vcsa-deploy refuses
+# to deploy over an existing VM name).
+- name: Wait for an in-progress vCenter firstboot
+  ansible.builtin.uri:
+    url: "https://{{ vcenter_ip }}/ui/"
+    method: GET
+    status_code: 200
+    validate_certs: false
+    follow_redirects: all
+    timeout: 10
+  register: vcsa_resume_wait
+  until: vcsa_resume_wait.status | default(0) == 200
+  retries: "{{ vcsa_ready_retries }}"
+  delay: "{{ vcsa_ready_delay }}"
+  failed_when: false
+  when:
+    - not (vcsa_running | bool)
+    - vcsa_vm_exists | bool
+
+- name: Fail | Existing vCenter VM never became ready
+  ansible.builtin.fail:
+    msg: >-
+      VM '{{ vcsa_vm_name }}' exists on {{ esxi_hostname }} but vCenter at {{ vcenter_ip }} did not
+      respond within {{ (vcsa_ready_retries | int) * (vcsa_ready_delay | int) // 60 }} minutes.
+      It is a failed earlier deployment: power it off and delete it from the ESXi host, then retry.
+  when:
+    - not (vcsa_running | bool)
+    - vcsa_vm_exists | bool
+    - vcsa_resume_wait.status | default(0) != 200
+
+- name: Mark vCenter as running after resume
+  ansible.builtin.set_fact:
+    vcsa_running: true
+  when: vcsa_resume_wait.status | default(0) == 200

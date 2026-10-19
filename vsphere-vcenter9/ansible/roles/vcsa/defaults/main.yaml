@@ -1,0 +1,57 @@
+---
+# The vCSA-all installer ISO, downloaded without auth from the operator's own HTTP(S) server
+# (site config vcsa_iso_url, mandatory: the ISO comes from VMware under the customer's entitlement).
+vcsa_iso_url: "{{ configVars.vcsa_iso_url | default('', true) }}"
+vcsa_iso_name: "{{ vcsa_iso_url | urlsplit('path') | basename }}"
+vcsa_iso_checksum: "{{ ('sha256:' ~ configVars.vcsa_iso_sha256) if (configVars.vcsa_iso_sha256 | default('') | length > 0) else omit }}"
+
+# Peak usage: ISO (~13 GB) + extracted installer and OVA (~9 GB). The ISO is removed
+# right after extraction.
+vcsa_work_dir: "{{ configVars.vcsa_work_dir | default('/tmp/vcsa', true) }}"
+vcsa_work_dir_min_free_gb: 25
+
+# Test-only (manual runs against a host without DNS): -e vcsa_skip_dns_check=true with the 'vcenter'
+# allocation's fqdn set to its IP gives an IP-named vCenter. No extension input sets it.
+vcsa_skip_dns_check: false
+vcsa_cli_dir: "{{ vcsa_work_dir }}/vcsa-cli-installer"
+vcsa_deploy_bin: "{{ vcsa_cli_dir }}/lin64/vcsa-deploy"
+vcsa_template_src: "{{ vcsa_cli_dir }}/templates/install/embedded_vCSA_on_ESXi.json"
+vcsa_template_dest: "{{ vcsa_work_dir }}/vcsa-install.json"
+vcsa_log_dir: "{{ vcsa_work_dir }}/logs"
+
+vcsa_deployment_size: "{{ extensionInstanceVariables.deployment_size | default('small', true) }}"
+vcsa_thin_disk_mode: "{{ extensionInstanceVariables.thin_disk_mode | default(true) | bool }}"
+vcsa_vm_name: "{{ extensionInstanceVariables.vcenter_vm_name | default('vcenter', true) }}"
+vcsa_ssh_enable: "{{ extensionInstanceVariables.enable_ssh | default(false) | bool }}"
+vcsa_datastore_override: "{{ extensionInstanceVariables.datastore_name | default('') }}"
+
+# Provisioned storage per deployment size (vcsa-deploy --supported-deployment-sizes, 9.1).
+# Thick mode needs all of it free; thin mode only needs room for the initial footprint.
+vcsa_storage_gb:
+  tiny: 619
+  small: 734
+  medium: 933
+  large: 1383
+  xlarge: 2308
+vcsa_thin_min_free_gb: 100
+vcsa_required_free_gb: >-
+  {{ vcsa_thin_min_free_gb if (vcsa_thin_disk_mode | bool)
+     else vcsa_storage_gb.get(vcsa_deployment_size, 734) }}
+
+# vcsa-deploy waits for firstboot itself (~30-60 min); this budget only covers the API
+# coming up afterwards, or a firstboot already in progress from an interrupted run.
+vcsa_ready_retries: 60
+vcsa_ready_delay: 30
+vcsa_deploy_async_timeout: 10800
+
+create_datacenter_cluster: "{{ extensionInstanceVariables.create_datacenter_cluster | default(true) | bool }}"
+vcenter_datacenter_name: "{{ extensionInstanceVariables.datacenter_name | default('Datacenter', true) }}"
+vcenter_cluster_name: "{{ extensionInstanceVariables.cluster_name | default('Cluster', true) }}"
+
+# Outputs are derived from the record set, so every run can recompute them.
+context_json_file_path: "/runner/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+vcsa_outputs_payload:
+  vcenter_url: "{{ ('https://' ~ vcenter_fqdn) if vcenter_fqdn else '' }}"
+  vcenter_fqdn: "{{ vcenter_fqdn }}"
+  vcenter_ip: "{{ vcenter_ip }}"
+  vcenter_sso_username: "{{ vcenter_sso_username }}"

@@ -1,0 +1,15 @@
+---
+# The platform REPLACES stored outputs with every successful run's context.json — a run that
+# writes none wipes them — so every lifecycle playbook ends here. Guarded so a flow that
+# already wrote a context.json is left alone. NEVER add platform action keys here.
+- name: Check if this run already wrote a context JSON
+  ansible.builtin.stat:
+    path: "{{ context_json_file_path }}"
+  register: _context_artifact
+
+- name: Write outputs context JSON artifact
+  ansible.builtin.copy:
+    content: "{{ vcsa_outputs_payload | to_nice_json }}"
+    dest: "{{ context_json_file_path }}"
+    mode: "0644"
+  when: not _context_artifact.stat.exists

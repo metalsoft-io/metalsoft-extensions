@@ -1,0 +1,47 @@
+---
+# Host preparation for the vCenter appliance. Every step is idempotent, so a retried
+# deployment re-runs it safely.
+- name: Configure DNS servers on the ESXi host
+  community.vmware.vmware_host_dns:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    dns_servers: "{{ dns_servers }}"
+    type: "static"
+  delegate_to: localhost
+
+- name: Configure NTP servers on the ESXi host
+  community.vmware.vmware_host_ntp:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ esxi_hostname }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    ntp_servers: "{{ ntp_servers }}"
+  delegate_to: localhost
+
+- name: Set ntpd service policy to "Start and stop with host"
+  community.vmware.vmware_host_service_manager:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    esxi_hostname: "{{ esxi_hostname }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    service_name: ntpd
+    service_policy: "on"
+    state: start
+  delegate_to: localhost
+
+- name: Ensure the VM port group exists on the management VLAN
+  community.vmware.vmware_portgroup:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    hosts: "{{ esxi_hostname }}"
+    switch: "{{ esxi_vswitch_name }}"
+    portgroup: "{{ esxi_vm_portgroup_name }}"
+    vlan_id: "{{ esxi_vm_vlan_id | int }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    state: present
+  delegate_to: localhost

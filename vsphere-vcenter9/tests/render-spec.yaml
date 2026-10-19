@@ -1,0 +1,143 @@
+---
+# Offline render/contract test — no ESXi, ISO download or DNS needed.
+#   cd tests && ansible-playbook -i inventory.yaml -e @fixtures/sample-variables.json render-spec.yaml
+# Runs the real render-template.yaml against the template shipped in the 9.1 ISO
+# (fixtures/embedded_vCSA_on_ESXi-9.1.0.0.json) and asserts the spec handed to vcsa-deploy.
+- name: Render and validate the vcsa-deploy install spec
+  hosts: esxi[0]
+  connection: local
+  gather_facts: false
+  vars:
+    # what vmware_datastore_info returns on a fresh host (local VMFS + a small boot datastore)
+    vcsa_datastores:
+      datastores:
+        - { name: "OSDATA-1", accessible: true, freeSpace: 64424509440 }
+        - { name: "datastore1", accessible: true, freeSpace: 1932735283200 }
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        dir: "{{ item }}"
+      loop:
+        - ../ansible/roles/globals/defaults
+        - ../ansible/roles/vcsa/defaults
+
+    # include_vars outranks play vars, so test paths are set after loading the defaults
+    - name: Point file paths at the fixture and a temp dir
+      ansible.builtin.set_fact:
+        vcsa_template_src: "{{ playbook_dir }}/fixtures/embedded_vCSA_on_ESXi-9.1.0.0.json"
+        vcsa_template_dest: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/vcsa-render-test.json"
+        context_json_file_path: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/vcsa-context-test.json"
+
+    # ---- platform contract ------------------------------------------------------------
+    - name: Assert | inventory group matches the instance array label
+      ansible.builtin.assert:
+        that:
+          - groups['esxi'] | length == 1
+          - vcsa_host == inventory_hostname
+        quiet: true
+
+    - name: Assert | allocation lookups resolve
+      ansible.builtin.assert:
+        that:
+          - vcenter_ip == '10.0.20.50'
+          - vcenter_fqdn == 'vcenter.vc9test.example.com'
+          - vcenter_prefix == '24'
+          - vcenter_gateway == '10.0.20.1'
+          - esxi_vm_vlan_id | int == 120
+          - esxi_hostname == '10.0.20.11'
+        fail_msg: "ip={{ vcenter_ip }} fqdn={{ vcenter_fqdn }} prefix={{ vcenter_prefix }} gw={{ vcenter_gateway }} vlan={{ esxi_vm_vlan_id }}"
+
+    - name: Assert | FQDN comes from the record set, under baseDomain
+      ansible.builtin.assert:
+        that: vcenter_fqdn.endswith('.' ~ extensionInstanceRecordSet.baseDomain)
+        quiet: true
+
+    - name: Assert | site-config resolvers win over record-set resolvers
+      ansible.builtin.assert:
+        that: dns_servers == ['10.0.0.10', '10.0.0.11']
+        fail_msg: "{{ dns_servers }}"
+
+    - name: Assert | ISO URL from site config, file name from its path
+      ansible.builtin.assert:
+        that:
+          - vcsa_iso_url == configVars.vcsa_iso_url
+          - vcsa_iso_name == 'VMware-VCSA-all-9.1.0.0.25370922.iso'
+        fail_msg: "{{ vcsa_iso_url }} -> {{ vcsa_iso_name }}"
+
+    # ---- input validation -------------------------------------------------------------
+    - name: Assert | sample password satisfies vCenter policy
+      ansible.builtin.assert:
+        that:
+          - vcenter_admin_password | length >= 8 and vcenter_admin_password | length <= 20
+          - vcenter_admin_password is regex('[A-Z]') and vcenter_admin_password is regex('[a-z]')
+          - vcenter_admin_password is regex('[0-9]') and vcenter_admin_password is regex('[^A-Za-z0-9]')
+        quiet: true
+
+    # ---- datastore selection ------------------------------------------------------------
+    - name: Select datastore (real task file minus the vmware call)
+      ansible.builtin.set_fact:
+        vcsa_datastore: >-
+          {{ vcsa_datastores.datastores | selectattr('accessible', 'equalto', true)
+             | sort(attribute='freeSpace', reverse=true) | first | default({}) }}
+
+    - name: Assert | largest datastore picked and big enough
+      ansible.builtin.assert:
+        that:
+          - vcsa_datastore.name == 'datastore1'
+          - (vcsa_datastore.freeSpace | int) >= (vcsa_required_free_gb | int) * 1073741824
+        quiet: true
+
+    # ---- install spec -------------------------------------------------------------------
+    - name: Render the install spec with the real task file
+      ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/render-template.yaml
+
+    - name: Load the rendered spec
+      ansible.builtin.set_fact:
+        rendered: "{{ lookup('file', vcsa_template_dest) | from_json }}"
+      no_log: true
+
+    - name: Assert | install spec contract
+      ansible.builtin.assert:
+        that:
+          - rendered.__version == '2.13.0'
+          - rendered.new_vcsa.esxi.hostname == '10.0.20.11'
+          - rendered.new_vcsa.esxi.datastore == 'datastore1'
+          - rendered.new_vcsa.esxi.deployment_network == 'VM Network'
+          - rendered.new_vcsa.appliance.deployment_option == 'small'
+          - rendered.new_vcsa.appliance.thin_disk_mode is sameas true
+          - rendered.new_vcsa.appliance.name == 'vcenter'
+          - rendered.new_vcsa.network.system_name == 'vcenter.vc9test.example.com'
+          - rendered.new_vcsa.network.ip == '10.0.20.50'
+          - rendered.new_vcsa.network.prefix == '24'
+          - rendered.new_vcsa.network.gateway == '10.0.20.1'
+          - rendered.new_vcsa.network.dns_servers == ['10.0.0.10', '10.0.0.11']
+          - rendered.new_vcsa.os.ntp_servers == ['10.0.0.20']
+          - rendered.new_vcsa.os.ssh_enable is sameas false
+          - rendered.new_vcsa.sso.domain_name == 'vsphere.local'
+          - rendered.new_vcsa.os.password == vcenter_admin_password
+          - rendered.new_vcsa.sso.password == vcenter_admin_password
+          - rendered.ceip.settings.ceip_enabled is sameas false
+          - (rendered | to_json) is not search('"<')
+        quiet: true
+
+    # ---- outputs ------------------------------------------------------------------------
+    - name: Emit outputs with the real task file
+      ansible.builtin.include_tasks: ../ansible/roles/vcsa/tasks/emit-outputs.yaml
+
+    - name: Assert | outputs payload
+      ansible.builtin.assert:
+        that:
+          - (lookup('file', context_json_file_path) | from_json) == expected
+        fail_msg: "{{ lookup('file', context_json_file_path) }}"
+      vars:
+        expected:
+          vcenter_url: "https://vcenter.vc9test.example.com"
+          vcenter_fqdn: "vcenter.vc9test.example.com"
+          vcenter_ip: "10.0.20.50"
+          vcenter_sso_username: "administrator@vsphere.local"
+
+    - name: Clean up
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: [ "{{ vcsa_template_dest }}", "{{ context_json_file_path }}" ]

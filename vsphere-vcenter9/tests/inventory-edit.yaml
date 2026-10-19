@@ -1,0 +1,14 @@
+# Edit deploy: 33 leaves, 34 joins. Scale-in hosts are excluded from the main group, as on the platform.
+# 33 points at 127.0.0.1 so the direct VM query fails fast and the vCenter fallback is exercised.
+all:
+  children:
+    esxi:
+      hosts:
+        instance-31.example.com: {ansible_host: 10.0.20.11, ansible_user: root, ansible_password: "EsxPassw0rd!123"}
+        instance-32.example.com: {ansible_host: 10.0.20.12, ansible_user: root, ansible_password: "EsxPassw0rd!123"}
+    esxi_scale_out:
+      hosts:
+        instance-34.example.com: {ansible_host: 10.0.20.14, ansible_user: root, ansible_password: "EsxPassw0rd!123"}
+    esxi_scale_in:
+      hosts:
+        instance-33.example.com: {ansible_host: 127.0.0.1, ansible_user: root, ansible_password: "EsxPassw0rd!123"}

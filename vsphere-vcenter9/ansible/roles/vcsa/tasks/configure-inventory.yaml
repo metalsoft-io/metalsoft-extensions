@@ -1,0 +1,42 @@
+---
+# Run from localhost. All idempotent: re-runs converge on the same datacenter/cluster and on every
+# host of esxi_cluster_members being in the cluster (added by management IP, as on create).
+- name: Configure the datacenter, cluster and host membership
+  when: create_datacenter_cluster | bool
+  block:
+    - name: Create datacenter
+      community.vmware.vmware_datacenter:
+        hostname: "{{ vcenter_ip }}"
+        username: "{{ vcenter_sso_username }}"
+        password: "{{ vcenter_admin_password }}"
+        validate_certs: false
+        datacenter_name: "{{ vcenter_datacenter_name }}"
+        state: present
+
+    # community.vmware.vmware_cluster was removed in community.vmware 6.0
+    - name: Create cluster
+      vmware.vmware.cluster:
+        hostname: "{{ vcenter_ip }}"
+        username: "{{ vcenter_sso_username }}"
+        password: "{{ vcenter_admin_password }}"
+        validate_certs: false
+        datacenter: "{{ vcenter_datacenter_name }}"
+        cluster: "{{ vcenter_cluster_name }}"
+        state: present
+
+    # community.vmware.vmware_host is deprecated (removed in 7.0)
+    - name: Add the ESXi hosts to the cluster
+      vmware.vmware.esxi_host:
+        hostname: "{{ vcenter_ip }}"
+        username: "{{ vcenter_sso_username }}"
+        password: "{{ vcenter_admin_password }}"
+        validate_certs: false
+        datacenter: "{{ vcenter_datacenter_name }}"
+        cluster: "{{ vcenter_cluster_name }}"
+        esxi_host_name: "{{ hostvars[item].ansible_host }}"
+        esxi_username: "{{ hostvars[item].ansible_user | default('root') }}"
+        esxi_password: "{{ hostvars[item].ansible_password }}"
+        state: present
+      loop: "{{ esxi_cluster_members }}"
+      loop_control:
+        label: "{{ item }} ({{ hostvars[item].ansible_host }})"

@@ -1,0 +1,75 @@
+---
+extension_instance_id: "{{ extensionInstanceRecordSet.extensionInstanceId }}"
+ntp_servers: "{{ extensionInstanceRecordSet.ntpServers | default(['0.us.pool.ntp.org', '1.us.pool.ntp.org'], true) }}"
+
+# DNSResolvers (site config) is an optional comma-separated string ("10.0.0.53" or
+# "10.0.0.53,10.0.0.54"). It takes precedence over the record set's dnsResolvers, which may be
+# stale or public; vCenter firstboot fails if it cannot resolve its own FQDN forward and reverse.
+dns_resolvers_input: "{{ configVars.DNSResolvers | default('') }}"
+dns_servers: >-
+  {{
+    (
+      (dns_resolvers_input.split(',') if (dns_resolvers_input is string) else dns_resolvers_input)
+      | map('trim') | reject('equalto', '') | list
+    )
+    or (extensionInstanceRecordSet.dnsResolvers | default([], true))
+    or ['1.1.1.1', '8.8.8.8']
+  }}
+
+# The 'esxi' instance array (one or more hosts)
+esxi_group_base: >-
+  {{ extensionInstanceRecordSet.serverInstanceGroups | default([])
+     | selectattr('serverInstanceGroupLabel', 'equalto', 'esxi') | first | default({}) }}
+
+# Hosts of the array in instance-id order. Inventory hostnames are the instances' subdomainPermanent,
+# which is serverInstances[].host in the record set.
+esxi_record_instances: >-
+  {{ extensionInstanceRecordSet.serverInstances | default([])
+     | selectattr('serverInstanceGroupId', 'equalto', esxi_group_base.serverInstanceGroupId | default(-1))
+     | sort(attribute='serverInstanceId') | list }}
+
+# vCenter is installed on the lowest-numbered instance: MetalSoft removes the highest-numbered
+# instances on scale-in, so this host stays as long as the array exists. Falls back to the first
+# inventory host if the record set and inventory names ever disagree.
+vcsa_host: >-
+  {{ ((esxi_record_instances | map(attribute='host') | select('in', groups['esxi'] | default([])) | list)
+      + (groups['esxi'] | default([]))) | first | default('') }}
+
+# Every host that should be in the vCenter cluster: on create the whole array, on an edit the
+# survivors plus the hosts being added (scale-in hosts are already excluded from 'esxi').
+esxi_cluster_members: "{{ (groups['esxi'] | default([])) | union(groups['esxi_scale_out'] | default([])) }}"
+esxi_scale_in_hosts: "{{ groups['esxi_scale_in'] | default([]) }}"
+
+# Build an index (name -> logical network object)
+logical_networks_index: >-
+  {{ dict(
+     (esxi_group_base.logicalNetworks | default([])) | map(attribute='name') | list
+     | zip(esxi_group_base.logicalNetworks | default([]))
+    )
+  }}
+mgmt_network: "{{ logical_networks_index.get('vcenter-mgmt', {}) }}"
+mgmt_subnet: "{{ mgmt_network.subnets | default([]) | selectattr('ipType', 'equalto', 'ipv4') | first | default({}) }}"
+
+# vCenter appliance IP / FQDN — allocated by the platform (role tag 'vcenter'). The fqdn is
+# the record-set value (ground truth for DNS); strip its trailing dot.
+vcenter_allocation: >-
+  {{ mgmt_network | json_query('subnets[].ipAllocations[]') | default([], true)
+     | selectattr('tags.role', 'equalto', 'vcenter') | first | default({}) }}
+vcenter_ip: "{{ vcenter_allocation.ip | default('') }}"
+vcenter_fqdn: "{{ vcenter_allocation.fqdn | default('') | regex_replace('\\.$', '') }}"
+vcenter_prefix: "{{ (vcenter_allocation.cidr | default('/')).split('/') | last }}"
+vcenter_gateway: "{{ vcenter_allocation.gateway | default(mgmt_subnet.gateway | default('')) }}"
+
+vcenter_sso_domain: "{{ extensionInstanceVariables.sso_domain_name | default('vsphere.local', true) }}"
+vcenter_sso_username: "administrator@{{ vcenter_sso_domain }}"
+vcenter_admin_password: "{{ extensionInstanceVariables.vcenter_admin_password | default('') }}"
+
+# ESXi connection (inventory host vars from the OS template credentials) — used by both roles
+esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
+esxi_hostname: "{{ hostvars[inventory_hostname].ansible_host }}"
+esxi_password: "{{ hostvars[inventory_hostname].ansible_password }}"
+esxi_validate_certs: false
+esxi_vswitch_name: "vSwitch0"
+# vCenter is attached to this port group; it carries the management VLAN of the host
+esxi_vm_portgroup_name: "VM Network"
+esxi_vm_vlan_id: "{{ mgmt_network.vlan_id | default(0) }}"

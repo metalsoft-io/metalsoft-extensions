@@ -1,0 +1,37 @@
+---
+# Runs against the host that carries vCenter (vcsa_host); every ESXi/vCenter call is made from the EE.
+# Cluster membership of all hosts is configure-inventory.yaml, run from localhost by the playbooks.
+- name: Validate inputs, allocations and DNS
+  ansible.builtin.import_tasks: validate.yaml
+  delegate_to: localhost
+
+- name: Probe for an existing vCenter
+  ansible.builtin.import_tasks: probe.yaml
+  delegate_to: localhost
+
+- name: Install vCenter
+  when: not (vcsa_running | bool)
+  delegate_to: localhost
+  block:
+    - name: Select datastore
+      ansible.builtin.import_tasks: select-datastore.yaml
+
+    - name: Fetch and extract the installer
+      ansible.builtin.import_tasks: fetch-installer.yaml
+
+    - name: Render the install spec
+      ansible.builtin.import_tasks: render-template.yaml
+
+    - name: Run vcsa-deploy
+      ansible.builtin.import_tasks: deploy.yaml
+
+  always:
+    - name: Remove installer work directory
+      ansible.builtin.file:
+        path: "{{ vcsa_work_dir }}"
+        state: absent
+
+- name: Skip | vCenter already deployed
+  ansible.builtin.debug:
+    msg: "vCenter already responding at {{ vcenter_ip }} — skipped download and install."
+  when: vcsa_running | bool

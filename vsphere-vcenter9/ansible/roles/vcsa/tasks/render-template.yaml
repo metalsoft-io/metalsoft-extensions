@@ -1,0 +1,59 @@
+---
+# Start from the template shipped in the ISO, so its __version and any keys a newer
+# vcsa-deploy expects stay correct; only the values we own are overridden.
+- name: Read the installer's embedded_vCSA_on_ESXi template
+  ansible.builtin.slurp:
+    src: "{{ vcsa_template_src }}"
+  register: vcsa_template_raw
+
+- name: Build the vcsa-deploy install spec
+  ansible.builtin.set_fact:
+    vcsa_install_spec: "{{ vcsa_template_raw.content | b64decode | from_json | combine(vcsa_overrides, recursive=True) }}"
+  vars:
+    vcsa_overrides:
+      new_vcsa:
+        esxi:
+          hostname: "{{ esxi_hostname }}"
+          username: "{{ esxi_username }}"
+          password: "{{ esxi_password }}"
+          deployment_network: "{{ esxi_vm_portgroup_name }}"
+          datastore: "{{ vcsa_datastore.name }}"
+        appliance:
+          thin_disk_mode: "{{ vcsa_thin_disk_mode | bool }}"
+          deployment_option: "{{ vcsa_deployment_size }}"
+          name: "{{ vcsa_vm_name }}"
+        network:
+          ip_family: ipv4
+          mode: static
+          system_name: "{{ vcenter_fqdn }}"
+          ip: "{{ vcenter_ip }}"
+          prefix: "{{ vcenter_prefix }}"
+          gateway: "{{ vcenter_gateway }}"
+          dns_servers: "{{ dns_servers }}"
+        os:
+          password: "{{ vcenter_admin_password }}"
+          ntp_servers: "{{ ntp_servers }}"
+          ssh_enable: "{{ vcsa_ssh_enable | bool }}"
+        sso:
+          password: "{{ vcenter_admin_password }}"
+          domain_name: "{{ vcenter_sso_domain }}"
+      ceip:
+        settings:
+          ceip_enabled: false
+  no_log: true
+
+# Any "<...>" sample value left over means the template gained a key we do not set.
+- name: Assert no sample placeholders remain
+  ansible.builtin.assert:
+    that: >-
+      vcsa_install_spec.new_vcsa | to_json | regex_findall('\"<[^\"]*>\"') | length == 0
+    fail_msg: "The installer template has placeholder values this extension does not fill — update render-template.yaml."
+    quiet: true
+  no_log: true
+
+- name: Write the install spec
+  ansible.builtin.copy:
+    content: "{{ vcsa_install_spec | to_nice_json }}"
+    dest: "{{ vcsa_template_dest }}"
+    mode: "0600"
+  no_log: true

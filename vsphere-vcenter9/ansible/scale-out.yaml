@@ -1,0 +1,28 @@
+---
+# onEdit postDeploy. New hosts (esxi_scale_out) are installed by now and leaving hosts are gone.
+# Converge: prepare every host (DNS, NTP, VM port group) and keep every host in the vCenter cluster.
+# Idempotent, so an edit without a host-count change or a retry is a no-op.
+- name: Prepare the ESXi hosts
+  hosts: esxi:esxi_scale_out
+  gather_facts: false
+  roles:
+    - role: esxi
+      tags: esxi
+
+- name: Add every ESXi host to the cluster
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Configure vCenter inventory
+      ansible.builtin.include_role:
+        name: vcsa
+        tasks_from: configure-inventory.yaml
+
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: vcsa
+        tasks_from: emit-outputs.yaml

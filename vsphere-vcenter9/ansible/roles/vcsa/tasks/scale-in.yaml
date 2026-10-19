@@ -1,0 +1,37 @@
+---
+# onEdit preDeploy, run from localhost: the hosts in esxi_scale_in are still installed and reachable;
+# MetalSoft wipes them after this stage. Refuse to remove a host that carries vCenter or runs VMs,
+# then take each one out of vCenter (maintenance mode, remove) so vCenter keeps no stale host.
+- name: List VMs known to vCenter
+  community.vmware.vmware_vm_info:
+    hostname: "{{ vcenter_ip }}"
+    username: "{{ vcenter_sso_username }}"
+    password: "{{ vcenter_admin_password }}"
+    validate_certs: false
+    vm_type: vm
+  register: vcsa_vcenter_vms
+  failed_when: false
+
+- name: List cluster hosts
+  vmware.vmware.cluster_info:
+    hostname: "{{ vcenter_ip }}"
+    username: "{{ vcenter_sso_username }}"
+    password: "{{ vcenter_admin_password }}"
+    validate_certs: false
+    datacenter: "{{ vcenter_datacenter_name }}"
+    cluster: "{{ vcenter_cluster_name }}"
+  register: vcsa_cluster_info
+  failed_when: false
+  when: create_datacenter_cluster | bool
+
+- name: Set cluster host names
+  ansible.builtin.set_fact:
+    vcsa_cluster_host_names: >-
+      {{ (vcsa_cluster_info.clusters | default({})).get(vcenter_cluster_name, {}).get('hosts', [])
+         | map(attribute='name') | list }}
+
+- name: Check and remove each leaving host
+  ansible.builtin.include_tasks: scale-in-host.yaml
+  loop: "{{ esxi_scale_in_hosts }}"
+  loop_control:
+    loop_var: leaving_host

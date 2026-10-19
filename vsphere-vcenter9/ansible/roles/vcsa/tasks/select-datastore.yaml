@@ -1,0 +1,31 @@
+---
+- name: Gather ESXi datastores
+  community.vmware.vmware_datastore_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: false
+    datacenter: ha-datacenter
+  register: vcsa_datastores
+
+# Override wins; otherwise the accessible datastore with the most free space
+# (normally the local VMFS datastore created by the ESXi OS template).
+- name: Choose the vCenter datastore
+  ansible.builtin.set_fact:
+    vcsa_datastore: >-
+      {{ (vcsa_datastores.datastores | selectattr('name', 'equalto', vcsa_datastore_override) | first)
+         if vcsa_datastore_override | length > 0
+         else (vcsa_datastores.datastores | selectattr('accessible', 'equalto', true)
+               | sort(attribute='freeSpace', reverse=true) | first | default({})) }}
+
+- name: Assert the datastore has room for vCenter
+  ansible.builtin.assert:
+    that:
+      - vcsa_datastore.name is defined
+      - (vcsa_datastore.freeSpace | int) >= (vcsa_required_free_gb | int) * 1024 * 1024 * 1024
+    fail_msg: >-
+      Datastore '{{ vcsa_datastore.name | default(vcsa_datastore_override or 'none found') }}' has
+      {{ ((vcsa_datastore.freeSpace | default(0) | int) / 1073741824) | round(0) | int }} GB free;
+      '{{ vcsa_deployment_size }}' ({{ 'thin' if vcsa_thin_disk_mode | bool else 'thick' }}) needs
+      {{ vcsa_required_free_gb }} GB.
+    quiet: true

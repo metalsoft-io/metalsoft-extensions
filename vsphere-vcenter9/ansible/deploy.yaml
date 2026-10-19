@@ -1,0 +1,58 @@
+---
+- name: Prepare the ESXi hosts
+  hosts: esxi
+  gather_facts: false
+  pre_tasks:
+    - name: Note execution start time
+      ansible.builtin.debug:
+        msg: "Execution started at {{ now(utc=true).strftime('%Y-%m-%d %H:%M:%S') }} UTC"
+      run_once: true
+      delegate_to: localhost
+  roles:
+    - role: esxi
+      tags: esxi
+
+- name: Pick the host that carries vCenter
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Assert a vCenter host was found
+      ansible.builtin.assert:
+        that: vcsa_host | length > 0
+        fail_msg: "No host in the 'esxi' group — the inventory has no ESXi hosts."
+        quiet: true
+
+    - name: Target the vCenter host
+      ansible.builtin.add_host:
+        name: "{{ vcsa_host }}"
+        groups: vcsa_target
+      changed_when: false
+
+- name: Deploy vCenter Server Appliance
+  hosts: vcsa_target
+  gather_facts: false
+  roles:
+    - role: vcsa
+      tags: vcsa
+
+- name: Create datacenter and cluster, add every ESXi host
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Configure vCenter inventory
+      ansible.builtin.include_role:
+        name: vcsa
+        tasks_from: configure-inventory.yaml
+
+# Stored outputs are REPLACED by every successful run's context.json — always publish
+# them as the last step (only reached when the plays above succeeded).
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: vcsa
+        tasks_from: emit-outputs.yaml

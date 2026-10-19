@@ -1,0 +1,150 @@
+{
+  "extensionInstanceVariables": {
+    "vcenter_admin_password": "VMware1!Test",
+    "sso_domain_name": "vsphere.local",
+    "deployment_size": "small",
+    "vcenter_vm_name": "vcenter",
+    "datastore_name": "",
+    "thin_disk_mode": true,
+    "enable_ssh": false,
+    "create_datacenter_cluster": true,
+    "datacenter_name": "Datacenter",
+    "cluster_name": "Cluster"
+  },
+  "configVars": {
+    "DNSResolvers": "10.0.0.10, 10.0.0.11",
+    "vcsa_iso_url": "http://mirror.example.com:8080/isos/VMware-VCSA-all-9.1.0.0.25370922.iso",
+    "vcsa_iso_sha256": "",
+    "vcsa_work_dir": "/tmp/vcsa"
+  },
+  "extensionInstanceRecordSet": {
+    "extensionInstanceId": "vc9test",
+    "extensionInstanceName": "vc9test",
+    "siteLabel": "dc-test",
+    "baseDomain": "example.com",
+    "repositoryBaseUrl": "https://repo.example.com",
+    "ntpServers": [
+      "10.0.0.20"
+    ],
+    "dnsResolvers": [
+      "1.1.1.1"
+    ],
+    "serverInstanceGroups": [
+      {
+        "serverInstanceGroupId": 7,
+        "serverInstanceGroupLabel": "esxi",
+        "tags": [],
+        "logicalNetworks": [
+          {
+            "id": 3,
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "subnets": [
+              {
+                "subnet": "10.0.20.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.20.1",
+                "mtu": 1500,
+                "ipType": "ipv4",
+                "ipAllocations": [
+                  {
+                    "ip": "10.0.20.50",
+                    "cidr": "10.0.20.50/24",
+                    "gateway": "10.0.20.1",
+                    "netmask": "255.255.255.0",
+                    "maskBits": 24,
+                    "networkAddress": "10.0.20.0",
+                    "fqdn": "vcenter.vc9test.example.com.",
+                    "tags": {
+                      "role": "vcenter"
+                    }
+                  }
+                ],
+                "ipRanges": []
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "serverInstances": [
+      {
+        "serverInstanceId": 33,
+        "serverInstanceGroupId": 7,
+        "host": "instance-33.example.com",
+        "logicalNetworks": [
+          {
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "uplinks": [
+              "aa:bb:cc:00:21:01",
+              "aa:bb:cc:00:21:02"
+            ]
+          }
+        ],
+        "ipv4Ips": [
+          "10.0.20.13"
+        ]
+      },
+      {
+        "serverInstanceId": 31,
+        "serverInstanceGroupId": 7,
+        "host": "instance-31.example.com",
+        "logicalNetworks": [
+          {
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "uplinks": [
+              "aa:bb:cc:00:1f:01",
+              "aa:bb:cc:00:1f:02"
+            ]
+          }
+        ],
+        "ipv4Ips": [
+          "10.0.20.11"
+        ]
+      },
+      {
+        "serverInstanceId": 32,
+        "serverInstanceGroupId": 7,
+        "host": "instance-32.example.com",
+        "logicalNetworks": [
+          {
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "uplinks": [
+              "aa:bb:cc:00:20:01",
+              "aa:bb:cc:00:20:02"
+            ]
+          }
+        ],
+        "ipv4Ips": [
+          "10.0.20.12"
+        ]
+      },
+      {
+        "serverInstanceId": 34,
+        "serverInstanceGroupId": 7,
+        "host": "instance-34.example.com",
+        "logicalNetworks": [
+          {
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "uplinks": [
+              "aa:bb:cc:00:22:01",
+              "aa:bb:cc:00:22:02"
+            ]
+          }
+        ],
+        "ipv4Ips": [
+          "10.0.20.14"
+        ]
+      }
+    ]
+  }
+}

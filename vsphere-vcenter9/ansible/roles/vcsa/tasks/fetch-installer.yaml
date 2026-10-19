@@ -1,0 +1,49 @@
+---
+- name: Create installer work directory
+  ansible.builtin.file:
+    path: "{{ vcsa_work_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Check free space in the work directory
+  ansible.builtin.command: "df -BG --output=avail {{ vcsa_work_dir }}"
+  register: vcsa_work_df
+  changed_when: false
+
+- name: Assert enough room for the ISO and the extracted installer
+  ansible.builtin.assert:
+    that: (vcsa_work_df.stdout_lines | last | trim | regex_replace('G$', '') | int) >= vcsa_work_dir_min_free_gb
+    fail_msg: >-
+      {{ vcsa_work_dir }} has {{ vcsa_work_df.stdout_lines | last | trim }} free; the installer needs
+      {{ vcsa_work_dir_min_free_gb }} GB (ISO + extracted OVA). Set the vcsa_work_dir site config to a
+      larger volume.
+    quiet: true
+
+- name: Download vCSA installer ISO
+  ansible.builtin.get_url:
+    url: "{{ vcsa_iso_url }}"
+    dest: "{{ vcsa_work_dir }}/{{ vcsa_iso_name }}"
+    validate_certs: false
+    checksum: "{{ vcsa_iso_checksum }}"
+    timeout: 120
+    mode: "0600"
+  register: vcsa_iso_download
+  retries: 3
+  delay: 30
+  until: vcsa_iso_download is succeeded
+
+# Containers cannot loop-mount; iso_extract.py (pycdlib) reads the Rock Ridge ISO directly.
+# vcsa-deploy finds the OVA at ../../vcsa relative to its binary, so both trees are
+# extracted side by side.
+- name: Extract vcsa-cli-installer and the appliance OVA
+  ansible.builtin.script:
+    cmd: >-
+      iso_extract.py {{ (vcsa_work_dir ~ '/' ~ vcsa_iso_name) | quote }} {{ vcsa_work_dir | quote }}
+      /vcsa-cli-installer /vcsa
+    executable: "{{ ansible_playbook_python }}"
+  changed_when: true
+
+- name: Remove the ISO
+  ansible.builtin.file:
+    path: "{{ vcsa_work_dir }}/{{ vcsa_iso_name }}"
+    state: absent

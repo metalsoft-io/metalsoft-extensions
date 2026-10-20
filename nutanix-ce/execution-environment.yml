@@ -1,0 +1,41 @@
+---
+version: 3
+# https://docs.ansible.com/projects/builder/en/stable/definition/#images
+images:
+  base_image:
+    name: redhat/ubi10-minimal:10.1
+
+# The playbooks use ansible.builtin only. Password SSH to AHV hosts and CVMs needs sshpass.
+# On EL10 sshpass is in RHEL AppStream (not UBI, not EPEL), so it is installed from CentOS Stream 10 below.
+dependencies:
+  ansible_core:
+    package_pip: ansible-core==2.20.1
+  ansible_runner:
+    package_pip: ansible-runner
+  system:
+    - shadow-utils [platform:rpm]
+    - openssh-clients [platform:rpm]
+    - python3.13 [platform:rpm]
+  python_interpreter:
+    package_system: "python3.13"
+    python_path: "/usr/bin/python3.13"
+  exclude:
+    python:
+      - docker
+    system:
+      - python3-Cython
+
+build_arg_defaults:
+  PKGMGR_PRESERVE_CACHE: 'always'
+
+additional_build_steps:
+  prepend_base:
+    # EPEL (for python3.13) and dnf on the minimal base
+    - RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm || true
+    - RUN /bin/sh -c "if [ ! -x /usr/bin/dnf ]; then ln -s /usr/bin/microdnf /usr/bin/dnf || true; fi"
+  append_final:
+    - RUN rpm -Uvh https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/Packages/sshpass-1.09-9.el10.x86_64.rpm
+    - RUN useradd -u 1000 -g 0 -m runner || echo "User 1000 already exists"
+    - RUN mkdir -p /runner/project/.ansible/tmp && chmod 1777 /runner/project/.ansible/tmp
+    - RUN if [ -x /usr/bin/python3.13 ] && [ ! -x /usr/bin/python3 ]; then ln -s /usr/bin/python3.13 /usr/bin/python3 || true; fi
+    - RUN sshpass -V | head -1

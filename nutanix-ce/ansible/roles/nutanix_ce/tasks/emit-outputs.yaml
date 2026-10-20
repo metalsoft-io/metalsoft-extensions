@@ -1,0 +1,14 @@
+---
+# The platform REPLACES the stored outputs with every successful run's context.json; a run that writes
+# none wipes them. Guarded so an earlier play of the same run that already wrote one is kept.
+- name: Check if this run already wrote a context JSON
+  ansible.builtin.stat:
+    path: "{{ context_json_file_path }}"
+  register: _ntnx_context_artifact
+
+- name: Write outputs context JSON artifact
+  ansible.builtin.copy:
+    content: "{{ ntnx_ce_outputs_payload | to_nice_json }}"
+    dest: "{{ context_json_file_path }}"
+    mode: "0644"
+  when: not _ntnx_context_artifact.stat.exists

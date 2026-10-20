@@ -1,0 +1,17 @@
+---
+# Static inventory mirroring the platform-generated groups. The platform names groups after the
+# instance-array label with '-' -> '_' (ansibleNameEscape): array 'ntnx-ce' -> group 'ntnx_ce',
+# plus the _scale_out/_scale_in edit groups (empty; `groups` is a magic var and cannot be faked).
+# Host names are the instances' permanent subdomains (FQDNs on us06).
+all:
+  children:
+    ntnx_ce:
+      hosts:
+        instance-1201:
+          ansible_host: 10.20.30.41
+        instance-1202:
+          ansible_host: 10.20.30.42
+        instance-1203:
+          ansible_host: 10.20.30.43
+    ntnx_ce_scale_out:
+    ntnx_ce_scale_in:

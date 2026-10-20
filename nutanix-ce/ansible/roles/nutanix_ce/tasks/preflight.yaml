@@ -1,0 +1,47 @@
+---
+# Fail fast on anything the cluster build would trip over later.
+- name: Debug | nutanix-ce extension bundle version
+  ansible.builtin.debug:
+    msg: "nutanix-ce extension bundle v{{ ntnx_ce_bundle_version }}"
+
+- name: Preflight | record set provides what the cluster needs
+  ansible.builtin.assert:
+    that:
+      - ntnx_ce_hosts | length in [1, 3, 4]
+      - ntnx_ce_vip | length > 0
+      - ntnx_ce_dsip | length > 0
+      - _ntnx_cvm_range.startIp is defined
+      - (_ntnx_cvm_start_int | int) + (ntnx_ce_hosts | length) - 1 <= (_ntnx_cvm_end_int | int)
+      - ntnx_ce_netmask | length > 0
+      - ntnx_ce_gateway | length > 0
+      - ntnx_ce_nodes | map(attribute='ahv_ip') | select | list | length == ntnx_ce_hosts | length
+    fail_msg: >-
+      Missing or inconsistent allocations on network '{{ ntnx_ce_network }}': nodes={{ ntnx_ce_hosts }},
+      vip='{{ ntnx_ce_vip }}', dsip='{{ ntnx_ce_dsip }}', cvm range={{ _ntnx_cvm_range }},
+      netmask='{{ ntnx_ce_netmask }}', gateway='{{ ntnx_ce_gateway }}'. CE supports 1, 3 or 4 nodes.
+
+- name: Preflight | no address in the Nutanix-reserved 192.168.5.0/24
+  ansible.builtin.assert:
+    that:
+      - (ntnx_ce_cvm_ips + (ntnx_ce_nodes | map(attribute='ahv_ip') | list) + [ntnx_ce_vip, ntnx_ce_dsip])
+        | select('match', '^192\.168\.5\.') | list | length == 0
+    fail_msg: "192.168.5.0/24 is used internally by Nutanix between each host and its CVM; use another subnet."
+
+- name: Preflight | Prism admin password policy
+  ansible.builtin.assert:
+    that:
+      - ntnx_ce_admin_password | length >= 8
+      - ntnx_ce_forbidden_password_words | select('in', ntnx_ce_admin_password | lower) | list | length == 0
+    fail_msg: "prism_admin_password must be 8+ chars and must not contain {{ ntnx_ce_forbidden_password_words }}."
+  no_log: true
+
+- name: Debug | cluster plan
+  ansible.builtin.debug:
+    msg:
+      cluster_name: "{{ ntnx_ce_cluster_name }}"
+      redundancy_factor: "{{ ntnx_ce_redundancy_factor }}"
+      prism: "{{ ntnx_ce_prism_host }} ({{ ntnx_ce_vip }})"
+      data_services_ip: "{{ ntnx_ce_dsip }}"
+      nodes: "{{ ntnx_ce_nodes }}"
+      dns: "{{ ntnx_ce_dns_servers }}"
+      ntp: "{{ ntnx_ce_ntp_servers }}"

@@ -1,0 +1,111 @@
+---
+# Offline render/contract test for the nutanix-ce bundle.
+# Run: cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
+- name: Render nutanix-ce plan, templates and outputs from fixture
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/nutanix_ce/defaults
+
+    - name: Assert | cluster plan from the record set
+      ansible.builtin.assert:
+        that:
+          # node order follows serverInstanceId, not record-set order
+          - ntnx_ce_hosts == ['instance-1201', 'instance-1202', 'instance-1203']
+          - ntnx_ce_cvm_ips == ['10.20.30.250', '10.20.30.251', '10.20.30.252']
+          - "ntnx_ce_nodes[0] == {'host': 'instance-1201', 'ahv_ip': '10.20.30.41', 'cvm_ip': '10.20.30.250'}"
+          - ntnx_ce_nodes[2].ahv_ip == '10.20.30.43'
+          - ntnx_ce_vip == '10.20.30.60'
+          - ntnx_ce_vip_fqdn == 'prism.ntnxlab.lab.example.com'
+          - ntnx_ce_dsip == '10.20.30.61'
+          - ntnx_ce_netmask == '255.255.255.0'
+          - ntnx_ce_gateway == '10.20.30.1'
+          # configVars comma string (with spaces) beats record-set resolvers; empty NTP configVar falls back
+          - ntnx_ce_dns_servers == ['10.0.0.10', '10.0.0.11']
+          - ntnx_ce_ntp_servers == ['10.0.0.12']
+          - ntnx_ce_cluster_name == 'ntnxlab'
+          - ntnx_ce_redundancy_factor | int == 2
+
+    - name: Assert | cluster create command
+      ansible.builtin.assert:
+        that:
+          - >-
+            ntnx_ce_cluster_create_cmd == 'cluster -s 10.20.30.250,10.20.30.251,10.20.30.252
+            --cluster_name=ntnxlab --cluster_external_ip=10.20.30.60
+            --dns_servers=10.0.0.10,10.0.0.11 --ntp_servers=10.0.0.12 --redundancy_factor=2 create'
+        fail_msg: "{{ ntnx_ce_cluster_create_cmd }}"
+
+    - name: Preflight tasks pass on the fixture
+      ansible.builtin.include_tasks: ../ansible/roles/nutanix_ce/tasks/preflight.yaml
+
+    - name: Render CVM ifcfg-eth0
+      ansible.builtin.set_fact:
+        _ifcfg: "{{ lookup('template', '../ansible/roles/nutanix_ce/templates/ifcfg-eth0.j2') }}"
+      vars:
+        ntnx_ce_cvm_ip: 10.20.30.251
+
+    - name: Assert | ifcfg-eth0
+      ansible.builtin.assert:
+        that:
+          - "'IPADDR=10.20.30.251' in _ifcfg"
+          - "'NETMASK=255.255.255.0' in _ifcfg"
+          - "'GATEWAY=10.20.30.1' in _ifcfg"
+          - "'BOOTPROTO=none' in _ifcfg"
+
+    - name: Assert | outputs payload
+      ansible.builtin.assert:
+        that:
+          - ntnx_ce_outputs_payload.prism_element_url == 'https://prism.ntnxlab.lab.example.com:9440'
+          - ntnx_ce_outputs_payload.cluster_name == 'ntnxlab'
+          - ntnx_ce_outputs_payload.cluster_vip == '10.20.30.60'
+          - ntnx_ce_outputs_payload.data_services_ip == '10.20.30.61'
+          - ntnx_ce_outputs_payload.cvm_ips == '10.20.30.250,10.20.30.251,10.20.30.252'
+          - ntnx_ce_outputs_payload.ahv_host_ips == '10.20.30.41,10.20.30.42,10.20.30.43'
+          # every declared output label on every write
+          - ntnx_ce_outputs_payload | length == 6
+
+- name: Single-node plan uses RF1 and rejects a bad password
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - fixtures/sample-variables.json
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        dir: ../ansible/roles/nutanix_ce/defaults
+
+    # set_fact (not task vars): include_vars-loaded defaults outrank task vars
+    - name: Override | one node
+      ansible.builtin.set_fact:
+        ntnx_ce_hosts: ['instance-1201']
+
+    - name: Assert | RF1 for one node
+      ansible.builtin.assert:
+        that:
+          - ntnx_ce_redundancy_factor | int == 1
+          - ntnx_ce_cvm_ips == ['10.20.30.250']
+          - ntnx_ce_outputs_payload.ahv_host_ips == '10.20.30.41'
+
+    - name: Override | password containing a forbidden word
+      ansible.builtin.set_fact:
+        ntnx_ce_admin_password: "MyNutanix1!"
+
+    - name: Password containing a forbidden word fails preflight
+      block:
+        - name: Run preflight with a bad password
+          ansible.builtin.include_tasks: ../ansible/roles/nutanix_ce/tasks/preflight.yaml
+        - name: Should not get here
+          ansible.builtin.set_fact:
+            _bad_password_accepted: true
+      rescue:
+        - name: Preflight rejected the password
+          ansible.builtin.debug:
+            msg: "rejected as expected"
+      always:
+        - name: Assert | bad password rejected
+          ansible.builtin.assert:
+            that: not (_bad_password_accepted | default(false))

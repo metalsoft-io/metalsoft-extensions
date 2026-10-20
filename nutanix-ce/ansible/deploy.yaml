@@ -1,0 +1,64 @@
+---
+# onCreate/postDeploy. The OS template has already installed CE on every node (AHV + an unconfigured
+# CVM with no external IP). This playbook waits for firstboot, gives each CVM its IP, creates the cluster.
+
+- name: Preflight
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Preflight checks and cluster plan
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: preflight.yaml
+
+# The platform names the inventory group after the instance-array label with '-' -> '_'
+# (ansibleNameEscape): array 'ntnx-ce' -> group 'ntnx_ce'. Both spellings are listed in case that changes.
+- name: Prepare AHV hosts
+  hosts: "ntnx_ce:ntnx-ce"
+  gather_facts: false
+  tasks:
+    - name: Wait for AHV firstboot
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: wait-ahv.yaml
+
+    - name: Configure the CVM external address
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: cvm-network.yaml
+
+- name: Register CVMs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Add each CVM to the in-memory inventory
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: register-cvms.yaml
+
+- name: Read CVM state
+  hosts: ntnx_ce_cvms
+  gather_facts: false
+  tasks:
+    - name: Wait for genesis
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: cvm-state.yaml
+
+- name: Create the cluster
+  hosts: ntnx_ce_cvms[0]
+  gather_facts: false
+  tasks:
+    - name: Create and configure the cluster
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: cluster-create.yaml
+
+- name: Publish extension outputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Emit outputs context JSON
+      ansible.builtin.include_role:
+        name: nutanix_ce
+        tasks_from: emit-outputs.yaml

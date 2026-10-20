@@ -1,0 +1,110 @@
+---
+# Runs once, on the first CVM.
+# The CVM's external interface (and its DNS) has only just come up when this runs - a single probe
+# reported '000' on every deploy although the CVM reached the internet seconds later. Retry briefly
+# and only warn when it still fails.
+- name: Check outbound internet access (CE needs it for cluster create and the first Prism login)
+  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://my.nutanix.com/"
+  register: _ntnx_internet
+  until: (_ntnx_internet.stdout | default('000')) != '000'
+  retries: 6
+  delay: 10
+  failed_when: false
+  changed_when: false
+
+- name: Warn when the CVM has no internet access
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: CVM {{ inventory_hostname }} cannot reach https://my.nutanix.com (got
+      '{{ _ntnx_internet.stdout | default('') }}'). Community Edition needs internet access for cluster
+      creation and for the first Prism login with a NEXT account.
+  when: (_ntnx_internet.stdout | default('000')) == '000'
+
+- name: Create the cluster
+  ansible.builtin.shell: |
+    source /etc/profile >/dev/null 2>&1
+    echo Y | {{ ntnx_ce_cluster_create_cmd }}
+  args:
+    executable: /bin/bash
+  async: "{{ ntnx_ce_cluster_create_timeout | int }}"
+  poll: 30
+  register: _ntnx_create
+  when: not (groups['ntnx_ce_cvms'] | map('extract', hostvars, 'ntnx_ce_cvm_in_cluster') | map('bool') | select | list | length > 0)
+
+- name: Wait for the cluster to start
+  ansible.builtin.shell: "source /etc/profile >/dev/null 2>&1; cluster status 2>&1 | grep -iE 'state of the cluster|unconfigured' || true"
+  args:
+    executable: /bin/bash
+  register: _ntnx_started
+  until: "'the state of the cluster: start' in (_ntnx_started.stdout | default('') | lower)"
+  retries: 60
+  delay: 30
+  changed_when: false
+
+- name: Read the data services IP
+  ansible.builtin.shell: "source /etc/profile >/dev/null 2>&1; ncli cluster info"
+  args:
+    executable: /bin/bash
+  register: _ntnx_cluster_info
+  failed_when: false
+  changed_when: false
+
+- name: Set the data services IP
+  ansible.builtin.shell: >-
+    source /etc/profile >/dev/null 2>&1;
+    ncli cluster edit-params external-data-services-ip-address={{ ntnx_ce_dsip }}
+  args:
+    executable: /bin/bash
+  register: _ntnx_dsip_set
+  failed_when: false
+  when: ntnx_ce_dsip not in (_ntnx_cluster_info.stdout | default(''))
+
+- name: Warn when the data services IP could not be set
+  ansible.builtin.debug:
+    msg: "WARNING: setting the data services IP failed: {{ _ntnx_dsip_set.stdout | default('') }} {{ _ntnx_dsip_set.stderr | default('') }}"
+  when: (_ntnx_dsip_set.rc | default(0)) != 0
+
+- name: Wait for the Prism API
+  ansible.builtin.shell: >-
+    curl -sk -o /dev/null -w '%{http_code}' --max-time 15
+    https://127.0.0.1:9440/PrismGateway/services/rest/v2.0/cluster
+  register: _ntnx_prism
+  until: _ntnx_prism.stdout in ['200', '401', '403']
+  retries: 60
+  delay: 20
+  failed_when: false
+  changed_when: false
+
+# Idempotent: skip when the new password already works. ncli first; the REST call the Prism UI uses
+# for the forced first-login change is the fallback (CE docs give the default as 'nutanix/4u',
+# Nutanix generally uses 'Nutanix/4u' - try both). The input regex excludes quotes and backslashes.
+- name: Set the Prism admin password
+  ansible.builtin.shell: |
+    source /etc/profile >/dev/null 2>&1
+    api=https://127.0.0.1:9440/PrismGateway/services/rest/v2.0/cluster
+    code() { curl -sk -o /dev/null -w '%{http_code}' --max-time 15 -u "admin:$1" "$api"; }
+    [ "$(code "$NTNX_NEW_PW")" = 200 ] && { echo UNCHANGED; exit 0; }
+    ncli user reset-password user-name=admin password="$NTNX_NEW_PW" >/dev/null 2>&1 || true
+    [ "$(code "$NTNX_NEW_PW")" = 200 ] && { echo CHANGED; exit 0; }
+    for old in 'nutanix/4u' 'Nutanix/4u'; do
+      curl -sk -o /dev/null --max-time 15 -u "admin:$old" -H 'Content-Type: application/json' -X POST \
+        -d "{\"oldPassword\":\"$old\",\"newPassword\":\"$NTNX_NEW_PW\"}" \
+        https://127.0.0.1:9440/PrismGateway/services/rest/v1/utils/change_default_system_password
+      [ "$(code "$NTNX_NEW_PW")" = 200 ] && { echo CHANGED; exit 0; }
+    done
+    echo FAILED
+  args:
+    executable: /bin/bash
+  environment:
+    NTNX_NEW_PW: "{{ ntnx_ce_admin_password }}"
+  register: _ntnx_admin_pw
+  changed_when: "'CHANGED' in _ntnx_admin_pw.stdout"
+  failed_when: false
+  no_log: true
+
+- name: Warn when the Prism admin password could not be set
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: could not set the Prism admin password automatically. Log in to Prism once with
+      admin / nutanix/4u, set it to the prism_admin_password input, then sign in with your NEXT account.
+  when: "'FAILED' in (_ntnx_admin_pw.stdout | default('FAILED'))"

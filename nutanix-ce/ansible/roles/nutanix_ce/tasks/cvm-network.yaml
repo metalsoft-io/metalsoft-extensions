@@ -1,0 +1,78 @@
+---
+# The OS template installs the CVM without an external IP (the platform only knows the host IP at
+# install time). Give the CVM its address from the extension's 'cvm' range, from the AHV host over
+# the internal link, before the cluster is created.
+#
+# AHV only has Python 3.6 (platform-python); ansible-core 2.20 modules need 3.7+ and fail there with
+# "SyntaxError: future feature annotations". So every task on the AHV host is `raw` (no Python), and
+# ifcfg-eth0 is rendered here on the controller and decoded on the CVM.
+- name: Select this node's CVM address
+  ansible.builtin.set_fact:
+    ntnx_ce_cvm_ip: "{{ (ntnx_ce_nodes | selectattr('host', 'equalto', inventory_hostname) | first).cvm_ip }}"
+
+# Re-runs: once the cluster exists, cluster create has replaced the CVM's authorized keys and the
+# host's firstboot key no longer gets in over the internal link - but then the CVM already has its
+# address, so the internal-link steps are skipped. Only when the address is held by THIS host's CVM:
+# the MAC answering ARP for it must be one of the local CVM's bridged NICs (virsh domiflist). Anything
+# else holding the address (another deployment re-using the IP, a stale run) stops the play.
+- name: Check who answers on the CVM address
+  ansible.builtin.raw: >-
+    ping -c1 -W2 {{ ntnx_ce_cvm_ip }} >/dev/null 2>&1;
+    got=$(ip neigh show {{ ntnx_ce_cvm_ip }} | awk '{for(i=1;i<NF;i++) if($i=="lladdr") print tolower($(i+1))}');
+    cvm=$(virsh list --name | grep -- '-CVM$' | head -1);
+    own=$(virsh domiflist "$cvm" | awk '$2=="bridge"{print tolower($5)}' | tr '\n' ' ');
+    if [ -z "$got" ]; then echo "NTNX_CVM_IP_FREE";
+    elif echo " $own" | grep -q " $got "; then echo "NTNX_CVM_IP_OURS $got";
+    else echo "NTNX_CVM_IP_FOREIGN answered-by=$got local-cvm-nics=$own"; fi
+  register: _ntnx_cvm_ipcheck
+  changed_when: false
+
+- name: Fail when another machine holds the CVM address
+  ansible.builtin.fail:
+    msg: >-
+      {{ ntnx_ce_cvm_ip }} (CVM address for {{ inventory_hostname }}) is answered by a different machine
+      than this host's CVM: {{ _ntnx_cvm_ipcheck.stdout | trim }}. Another deployment or a stale run holds
+      the address - free it before re-running.
+  when: "'NTNX_CVM_IP_FOREIGN' in _ntnx_cvm_ipcheck.stdout"
+
+- name: Record whether the CVM already has its address
+  ansible.builtin.set_fact:
+    _ntnx_cvm_has_ip: "{{ 'NTNX_CVM_IP_OURS' in _ntnx_cvm_ipcheck.stdout }}"
+
+# `|| exit 1`: an ssh failure exits 255, which Ansible treats as "host unreachable" for raw and
+# never retries; map it to a plain failure so `until` retries.
+- name: Wait for the local CVM to answer on the internal link
+  ansible.builtin.raw: "{{ ntnx_ce_host_to_cvm_ssh }} true || exit 1"
+  register: _ntnx_cvm_internal
+  until: _ntnx_cvm_internal.rc == 0
+  retries: 60
+  delay: 20
+  changed_when: false
+  when: not (_ntnx_cvm_has_ip | bool)
+
+- name: Read the CVM external interface address
+  ansible.builtin.raw: "{{ ntnx_ce_host_to_cvm_ssh }} 'ip -4 -o addr show dev eth0' || exit 1"
+  register: _ntnx_cvm_eth0
+  changed_when: false
+  when: _ntnx_cvm_internal is not skipped
+
+- name: Configure the CVM external interface
+  when:
+    - _ntnx_cvm_internal is not skipped
+    - (' ' ~ ntnx_ce_cvm_ip ~ '/') not in _ntnx_cvm_eth0.stdout
+  ansible.builtin.raw: >-
+    {{ ntnx_ce_host_to_cvm_ssh }}
+    'echo {{ lookup("template", "ifcfg-eth0.j2") | b64encode }} | base64 -d
+    | sudo tee /etc/sysconfig/network-scripts/ifcfg-eth0 >/dev/null
+    && (sudo ifdown eth0 >/dev/null 2>&1; sudo ifup eth0)
+    && (source /etc/profile >/dev/null 2>&1; genesis restart || true)'
+  register: _ntnx_cvm_ifcfg
+  failed_when: _ntnx_cvm_ifcfg.rc != 0
+  changed_when: true
+
+- name: Wait for the CVM on its external address
+  ansible.builtin.wait_for:
+    host: "{{ ntnx_ce_cvm_ip }}"
+    port: 22
+    timeout: 900
+  delegate_to: localhost

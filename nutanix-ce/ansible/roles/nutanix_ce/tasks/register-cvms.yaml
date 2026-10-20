@@ -1,0 +1,15 @@
+---
+- name: Add each CVM to the in-memory inventory
+  ansible.builtin.add_host:
+    name: "{{ item.cvm_ip }}"
+    groups: ntnx_ce_cvms
+    ansible_host: "{{ item.cvm_ip }}"
+    ansible_user: "{{ ntnx_ce_cvm_user }}"
+    ansible_password: "{{ ntnx_ce_cvm_password }}"
+    # The CVM (Rocky 8) has python3 = 3.9 but interpreter discovery picks platform-python 3.6,
+    # which ansible-core 2.20 modules cannot run on.
+    ansible_python_interpreter: /usr/bin/python3
+  loop: "{{ ntnx_ce_nodes }}"
+  loop_control:
+    label: "{{ item.host }} -> {{ item.cvm_ip }}"
+  changed_when: false

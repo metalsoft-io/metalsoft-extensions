@@ -1,0 +1,67 @@
+{
+  "siteConfig": {
+    "repoURL": "https://repo.example.com",
+    "dnsZoneName": "lab.example.com",
+    "DNSServers": ["10.0.0.10", "10.0.0.11"],
+    "NTPServers": ["10.0.0.12"]
+  },
+  "serverInstance": {
+    "id": 1201,
+    "label": "instance-1201",
+    "hostname": "instance-1201",
+    "fqdn": "instance-1201.lab.example.com",
+    "customVariables": {
+      "ce_hyp_boot_disk": "sda",
+      "ce_cvm_boot_disks": "nvme0n1",
+      "ce_cvm_data_disks": "sdb,sdc"
+    },
+    "osCredentials": {
+      "initialUser": "root",
+      "initialPasswordEncrypted": "nutanix/4u"
+    }
+  },
+  "serverInstanceGroup": {
+    "label": "ntnx-ce",
+    "subdomainPermanent": "ntnx-ce-1",
+    "customVariables": {}
+  },
+  "network": {
+    "interfaces": [
+      {
+        "interfaceType": "physical",
+        "typeInterfaceId": 1,
+        "logicalNetworkId": 7,
+        "logicalNetworkName": "ntnx-ce-mgmt",
+        "logicalNetworkLabel": "ntnx-ce-mgmt",
+        "macAddress": "b4:96:91:00:00:01",
+        "mtu": 1500,
+        "vlanId": null,
+        "ipv4Addresses": [
+          {
+            "ip": "10.20.30.41",
+            "cidr": "10.20.30.41/24",
+            "gateway": "10.20.30.1",
+            "isDefaultGateway": true,
+            "netmask": "255.255.255.0",
+            "maskBits": 24
+          }
+        ],
+        "ipv6Addresses": [],
+        "routes": [{ "to": "0.0.0.0/0", "via": "10.20.30.1" }]
+      },
+      {
+        "interfaceType": "physical",
+        "typeInterfaceId": 2,
+        "logicalNetworkId": 7,
+        "logicalNetworkName": "ntnx-ce-mgmt",
+        "logicalNetworkLabel": "ntnx-ce-mgmt",
+        "macAddress": "b4:96:91:00:00:02",
+        "mtu": 1500,
+        "vlanId": null,
+        "ipv4Addresses": [],
+        "ipv6Addresses": [],
+        "routes": []
+      }
+    ]
+  }
+}

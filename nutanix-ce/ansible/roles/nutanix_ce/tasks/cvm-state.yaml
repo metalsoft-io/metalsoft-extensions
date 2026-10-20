@@ -1,0 +1,25 @@
+---
+# Runs on every CVM: wait until genesis answers and record whether a cluster already exists
+# (a retried deploy must not try to create it twice).
+- name: Wait for genesis and read the cluster state
+  ansible.builtin.shell: "source /etc/profile >/dev/null 2>&1; cluster status 2>&1 | grep -iE 'state of the cluster|unconfigured' || true"
+  args:
+    executable: /bin/bash
+  register: _ntnx_cluster_status
+  until: >-
+    'unconfigured' in (_ntnx_cluster_status.stdout | default('') | lower)
+    or 'state of the cluster' in (_ntnx_cluster_status.stdout | default('') | lower)
+  retries: 60
+  delay: 30
+  failed_when: false
+  changed_when: false
+
+- name: Record the cluster state
+  ansible.builtin.set_fact:
+    ntnx_ce_cvm_unconfigured: "{{ 'unconfigured' in (_ntnx_cluster_status.stdout | default('') | lower) }}"
+    ntnx_ce_cvm_in_cluster: "{{ 'state of the cluster' in (_ntnx_cluster_status.stdout | default('') | lower) }}"
+
+- name: Fail when genesis never answered
+  ansible.builtin.fail:
+    msg: "CVM {{ inventory_hostname }}: 'cluster status' gave no usable answer: {{ _ntnx_cluster_status.stdout | default('') }}"
+  when: not (ntnx_ce_cvm_unconfigured | bool) and not (ntnx_ce_cvm_in_cluster | bool)

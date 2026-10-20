@@ -1,0 +1,46 @@
+---
+# On el8 AHV (CE 2.1: 20230302) firstboot is done by the ahv-* systemd units; the legacy Python
+# ahv_first_boot.service is Python 2 code (#!/usr/bin/env python, 'from urlparse') that cannot run there
+# and never writes .firstboot_success. So AHV is ready when the CVM units have completed and the CVM
+# domain is running - or when the legacy marker exists (older AHV).
+- name: Probe AHV firstboot state
+  ansible.builtin.raw: >-
+    cvm_units=$(for u in ahv-define-cvm ahv-install-cvm ahv-configure-cvm ahv-status-cvm;
+    do systemctl is-active $u 2>/dev/null; done | sort -u | tr '\n' ' ');
+    cvm_dom=$(virsh list --name 2>/dev/null | grep -c -- '-CVM$');
+    if [ -f /root/.firstboot_success ]; then echo NTNX_READY marker;
+    elif [ "$cvm_units" = "active " ] && [ "$cvm_dom" -ge 1 ]; then echo NTNX_READY cvm-units;
+    elif [ -f /root/.firstboot_fail ]; then echo NTNX_FAILED;
+    else echo NTNX_WAIT cvm-units: $cvm_units cvm-domains: $cvm_dom
+    done-phases: $(ls /root/firstboot/phases 2>/dev/null | tr '\n' ' '); fi
+  register: _ntnx_probe
+  ignore_unreachable: true
+  failed_when: false
+  changed_when: false
+  when: not (ntnx_ce_ahv_ready | default(false))
+
+- name: Record AHV ready
+  ansible.builtin.set_fact:
+    ntnx_ce_ahv_ready: true
+  when:
+    - not (ntnx_ce_ahv_ready | default(false))
+    - "'NTNX_READY' in (_ntnx_probe.stdout | default(''))"
+
+- name: Fail on AHV firstboot failure
+  ansible.builtin.fail:
+    msg: "AHV firstboot failed on {{ inventory_hostname }} (/root/.firstboot_fail). See /root/firstboot/ on the host."
+  when: "'NTNX_FAILED' in (_ntnx_probe.stdout | default(''))"
+
+- name: Progress
+  ansible.builtin.debug:
+    msg: >-
+      [{{ _ntnx_cycle + 1 }}/{{ ntnx_ce_ahv_wait_cycles }}] {{ inventory_hostname }}:
+      {{ 'unreachable or not AHV yet (installer running?)' if (_ntnx_probe.unreachable | default(false))
+         else (_ntnx_probe.stdout | default('') | trim) }}
+  when: not (ntnx_ce_ahv_ready | default(false))
+
+- name: Sleep before next probe
+  ansible.builtin.wait_for:
+    timeout: "{{ ntnx_ce_ahv_wait_delay | int }}"
+  delegate_to: localhost
+  when: not (ntnx_ce_ahv_ready | default(false))

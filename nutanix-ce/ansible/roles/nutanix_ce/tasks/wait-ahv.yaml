@@ -1,0 +1,18 @@
+---
+# The platform marks the OS "ready" as soon as anything answers SSH on the node IP, which can be the
+# CE installer itself. Wait for the installed AHV to finish firstboot (CVM units done + CVM running, or
+# the legacy marker - see wait-ahv-cycle.yaml), polling once per cycle so progress is visible and a
+# reboot mid-wait is harmless.
+- name: Wait for AHV firstboot to complete
+  ansible.builtin.include_tasks: wait-ahv-cycle.yaml
+  loop: "{{ range(0, ntnx_ce_ahv_wait_cycles | int) | list }}"
+  loop_control:
+    loop_var: _ntnx_cycle
+
+- name: Assert AHV is installed and firstboot succeeded
+  ansible.builtin.assert:
+    that: ntnx_ce_ahv_ready | default(false)
+    fail_msg: >-
+      AHV on {{ inventory_hostname }} ({{ ansible_host }}) did not report firstboot success within
+      {{ (ntnx_ce_ahv_wait_cycles | int) * (ntnx_ce_ahv_wait_delay | int) // 60 }} min. Check the server
+      console: installer progress is in 'screen -r' on the installer, firstboot logs in /root/firstboot/ on AHV.

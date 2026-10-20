@@ -1,0 +1,218 @@
+{
+    "kind": "ExtensionDefinition",
+    "schemaVersion": "1.1",
+    "name": "Nutanix Community Edition",
+    "label": "nutanix_ce",
+    "extensionType": "application",
+    "vendor": "MetalSoft",
+    "extensionVersion": "0.1.1",
+    "description": "LAB USE ONLY - installs Nutanix Community Edition (AOS + AHV) unattended on bare-metal servers and creates a 1, 3 or 4 node cluster",
+    "icon": "https://github.com/nutanix.png",
+    "dependencies": {
+        "controllerVersion": "release-v7.2",
+        "osTemplates": [
+            "nutanix-ce-2-1-cluster-node"
+        ]
+    },
+    "inputs": [
+        {
+            "label": "node_server_type",
+            "name": "node_server_type",
+            "helpText": "Server type for the CE nodes (32 GB RAM minimum, 64 GB recommended).",
+            "inputType": "ExtensionInputServerType",
+            "options": {
+                "minRamGb": 32
+            }
+        },
+        {
+            "label": "node_count",
+            "name": "node_count",
+            "helpText": "Number of CE nodes: 1, 3 or 4 (CE does not support 2-node clusters). Cannot be changed after creation.",
+            "inputType": "ExtensionInputInteger",
+            "setOnly": true,
+            "defaultValue": 3,
+            "options": {
+                "minValue": 1,
+                "maxValue": 4,
+                "deniedValues": [
+                    2
+                ]
+            }
+        },
+        {
+            "label": "node_os_template",
+            "name": "node_os_template",
+            "helpText": "OS template that installs CE on the nodes (nutanix-ce-2-1-cluster-node).",
+            "inputType": "ExtensionInputOsTemplate",
+            "options": {
+                "osFamily": "Nutanix CE"
+            }
+        },
+        {
+            "label": "prism_admin_password",
+            "name": "prism_admin_password",
+            "helpText": "New Prism 'admin' password, 8-32 chars. Must not contain 'nutanix', 'ntnx' or 'password'.",
+            "inputType": "ExtensionInputString",
+            "isPassword": true,
+            "options": {
+                "validationRegEx": "^[A-Za-z0-9!@#%^&*+._-]{8,32}$"
+            }
+        }
+    ],
+    "outputs": [
+        {
+            "label": "prism_element_url",
+            "name": "prism_element_url",
+            "outputType": "url"
+        },
+        {
+            "label": "cluster_name",
+            "name": "cluster_name",
+            "outputType": "string"
+        },
+        {
+            "label": "cluster_vip",
+            "name": "cluster_vip",
+            "outputType": "string"
+        },
+        {
+            "label": "data_services_ip",
+            "name": "data_services_ip",
+            "outputType": "string"
+        },
+        {
+            "label": "cvm_ips",
+            "name": "cvm_ips",
+            "outputType": "string"
+        },
+        {
+            "label": "ahv_host_ips",
+            "name": "ahv_host_ips",
+            "outputType": "string"
+        }
+    ],
+    "infrastructure": {
+        "instanceArrays": [
+            {
+                "label": "ntnx-ce",
+                "instanceCount": "#/input/node_count",
+                "serverType": "#/input/node_server_type",
+                "osTemplate": "#/input/node_os_template",
+                "logicalNetworks": [
+                    {
+                        "label": "ntnx-ce-mgmt",
+                        "networkConnection": {
+                            "tagged": false,
+                            "accessMode": "l2",
+                            "redundancy": {
+                                "mode": "active-backup"
+                            },
+                            "providesDefaultRoute": true,
+                            "dns": {
+                                "provisionInstanceDnsRecords": true
+                            }
+                        }
+                    }
+                ],
+                "tags": [
+                    "nutanix_ce"
+                ]
+            }
+        ],
+        "logicalNetworks": [
+            {
+                "label": "ntnx-ce-mgmt",
+                "profileLabel": "simple-vlan-network",
+                "ipAllocations": [
+                    {
+                        "tags": {
+                            "role": "prism-vip"
+                        },
+                        "ipVersion": "ipv4",
+                        "dnsRecords": [
+                            {
+                                "name": "prism.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                                "recordType": "A",
+                                "generatePtrRecord": true
+                            }
+                        ]
+                    },
+                    {
+                        "tags": {
+                            "role": "data-services"
+                        },
+                        "ipVersion": "ipv4"
+                    }
+                ],
+                "ipRanges": [
+                    {
+                        "tags": {
+                            "role": "cvm"
+                        },
+                        "ipVersion": "ipv4",
+                        "ipCount": 4
+                    }
+                ]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "label": "nutanix-ce-ansible-bundle",
+            "name": "nutanix-ce-ansible-bundle",
+            "assetType": "AnsibleBundle",
+            "url": "https://repo.metalsoft.io/.extensions_ms/nutanix-ce/nutanix-ce-v0.1.1.zip"
+        },
+        {
+            "label": "ee-nutanix-ce-0-1-0",
+            "name": "ee-nutanix-ce-0-1-0",
+            "assetType": "OciImage",
+            "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-nutanix-ce-0.1.0.tar.gz",
+            "repositoryRegistry": "registry.metalsoft.dev",
+            "namespaceRegistry": "ee-nutanix-ce",
+            "tagRegistry": "0.1.0"
+        }
+    ],
+    "onCreate": [
+        {
+            "stage": "preDeploy",
+            "tasks": []
+        },
+        {
+            "stage": "postDeploy",
+            "tasks": [
+                {
+                    "label": "nutanix-ce-cluster-create",
+                    "taskType": "ExtensionTaskAnsible",
+                    "options": {
+                        "asset": "nutanix-ce-ansible-bundle",
+                        "playbook": "deploy.yaml",
+                        "ee": "ee-nutanix-ce-0-1-0",
+                        "executionTimeout": 21600,
+                        "executionTimeoutTick": 30
+                    }
+                }
+            ]
+        }
+    ],
+    "onEdit": [],
+    "onDelete": [],
+    "configVars": [
+        {
+            "label": "DNSResolvers",
+            "name": "DNSResolvers",
+            "helpText": "Comma-separated DNS servers for the cluster (empty = site resolvers from the record set).",
+            "inputType": "ExtensionInputString",
+            "defaultValue": "",
+            "options": {}
+        },
+        {
+            "label": "NTPServers",
+            "name": "NTPServers",
+            "helpText": "Comma-separated NTP servers for the cluster (empty = site NTP servers, else pool.ntp.org).",
+            "inputType": "ExtensionInputString",
+            "defaultValue": "",
+            "options": {}
+        }
+    ]
+}

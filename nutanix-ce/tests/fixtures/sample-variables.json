@@ -1,0 +1,114 @@
+{
+    "configVars": {
+        "DNSResolvers": "10.0.0.10, 10.0.0.11",
+        "NTPServers": ""
+    },
+    "extensionInstanceVariables": {
+        "node_server_type": "dell-r650",
+        "node_count": 3,
+        "node_os_template": "nutanix-ce-2-1-cluster-node",
+        "prism_admin_password": "Lab-Prism-2026!"
+    },
+    "extensionInstanceRecordSet": {
+        "deploymentId": 1,
+        "extensionInstanceId": 77,
+        "extensionInstanceName": "ntnxlab",
+        "siteLabel": "lab-site",
+        "baseDomain": "lab.example.com.",
+        "dnsResolverIp": "8.8.8.8",
+        "dnsResolvers": [
+            "8.8.8.8"
+        ],
+        "ntpServers": [
+            "10.0.0.12"
+        ],
+        "serverInstanceGroups": [
+            {
+                "serverInstanceGroupId": 300,
+                "serverInstanceGroupLabel": "ntnx-ce",
+                "tags": [
+                    "nutanix_ce"
+                ],
+                "logicalNetworks": [
+                    {
+                        "id": 9,
+                        "name": "ntnx-ce-mgmt",
+                        "label": "ntnx-ce-mgmt",
+                        "vlan_id": 120,
+                        "subnets": [
+                            {
+                                "subnet": "10.20.30.0",
+                                "netmask": "255.255.255.0",
+                                "gateway": "10.20.30.1",
+                                "mtu": 1500,
+                                "ipType": "ipv4",
+                                "ipAllocations": [
+                                    {
+                                        "ip": "10.20.30.60",
+                                        "cidr": "10.20.30.60/24",
+                                        "gateway": "10.20.30.1",
+                                        "netmask": "255.255.255.0",
+                                        "maskBits": 24,
+                                        "networkAddress": "10.20.30.0",
+                                        "fqdn": "prism.ntnxlab.lab.example.com.",
+                                        "tags": {
+                                            "role": "prism-vip"
+                                        }
+                                    },
+                                    {
+                                        "ip": "10.20.30.61",
+                                        "cidr": "10.20.30.61/24",
+                                        "gateway": "10.20.30.1",
+                                        "netmask": "255.255.255.0",
+                                        "maskBits": 24,
+                                        "networkAddress": "10.20.30.0",
+                                        "tags": {
+                                            "role": "data-services"
+                                        }
+                                    }
+                                ],
+                                "ipRanges": [
+                                    {
+                                        "startIp": "10.20.30.250",
+                                        "endIp": "10.20.30.253",
+                                        "gateway": "10.20.30.1",
+                                        "netmask": "255.255.255.0",
+                                        "tags": {
+                                            "role": "cvm"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "serverInstances": [
+            {
+                "serverInstanceId": 1203,
+                "serverInstanceGroupId": 300,
+                "host": "instance-1203",
+                "ipv4Ips": [
+                    "10.20.30.43"
+                ]
+            },
+            {
+                "serverInstanceId": 1201,
+                "serverInstanceGroupId": 300,
+                "host": "instance-1201",
+                "ipv4Ips": [
+                    "10.20.30.41"
+                ]
+            },
+            {
+                "serverInstanceId": 1202,
+                "serverInstanceGroupId": 300,
+                "host": "instance-1202",
+                "ipv4Ips": [
+                    "10.20.30.42"
+                ]
+            }
+        ]
+    }
+}

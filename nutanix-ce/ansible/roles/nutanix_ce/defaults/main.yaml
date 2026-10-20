@@ -1,0 +1,114 @@
+---
+ntnx_ce_bundle_version: "0.1.1-cvm-owner-check"
+
+# Platform contract: instance-array label (record set) and its inventory group ('-' -> '_'), network name.
+ntnx_ce_group: ntnx-ce
+ntnx_ce_inventory_group: ntnx_ce
+ntnx_ce_network: ntnx-ce-mgmt
+
+# Nutanix CE 2.1 factory credentials (documented defaults; lab use only).
+ntnx_ce_cvm_user: nutanix
+ntnx_ce_cvm_password: "nutanix/4u"
+# The AHV host reaches its local CVM over the internal virbr0 link, whatever the CVM's external IP is.
+ntnx_ce_cvm_internal_ip: 192.168.5.254
+
+# Wait budgets. Install (6+ GB download + imaging) plus AHV firstboot (15-20 min) usually takes
+# 45-90 min; the platform may hand over as soon as the installer answers on SSH, so budget 3 h.
+ntnx_ce_ahv_wait_cycles: 180
+ntnx_ce_ahv_wait_delay: 60
+ntnx_ce_cluster_create_timeout: 3600
+
+ntnx_ce_admin_password: "{{ extensionInstanceVariables.prism_admin_password | default('') }}"
+ntnx_ce_forbidden_password_words: ["nutanix", "ntnx", "password"]
+
+# --- Record-set lookups ---------------------------------------------------------------------------
+_ntnx_rs: "{{ extensionInstanceRecordSet | default({}) }}"
+_ntnx_group: >-
+  {{ _ntnx_rs.serverInstanceGroups | default([])
+     | selectattr('serverInstanceGroupLabel', 'equalto', ntnx_ce_group) | first | default({}) }}
+_ntnx_network: >-
+  {{ _ntnx_group.logicalNetworks | default([])
+     | selectattr('name', 'equalto', ntnx_ce_network) | first | default({}) }}
+_ntnx_subnet: "{{ _ntnx_network.subnets | default([]) | first | default({}) }}"
+_ntnx_allocations: >-
+  {{ _ntnx_network.subnets | default([]) | map(attribute='ipAllocations', default=[]) | flatten }}
+_ntnx_ranges: >-
+  {{ _ntnx_network.subnets | default([]) | map(attribute='ipRanges', default=[]) | flatten }}
+_ntnx_vip_alloc: "{{ _ntnx_allocations | selectattr('tags.role', 'equalto', 'prism-vip') | first | default({}) }}"
+_ntnx_dsip_alloc: "{{ _ntnx_allocations | selectattr('tags.role', 'equalto', 'data-services') | first | default({}) }}"
+_ntnx_cvm_range: "{{ _ntnx_ranges | selectattr('tags.role', 'equalto', 'cvm') | first | default({}) }}"
+
+ntnx_ce_vip: "{{ _ntnx_vip_alloc.ip | default('') }}"
+ntnx_ce_vip_fqdn: "{{ _ntnx_vip_alloc.fqdn | default('', true) | regex_replace('\\.$', '') }}"
+ntnx_ce_dsip: "{{ _ntnx_dsip_alloc.ip | default('') }}"
+ntnx_ce_netmask: "{{ _ntnx_subnet.netmask | default(_ntnx_vip_alloc.netmask | default(''), true) }}"
+ntnx_ce_gateway: "{{ _ntnx_subnet.gateway | default(_ntnx_vip_alloc.gateway | default(''), true) }}"
+
+# Nodes in a stable order (serverInstanceId); the inventory hostname is the instance's permanent subdomain.
+_ntnx_instances: >-
+  {{ _ntnx_rs.serverInstances | default([])
+     | selectattr('serverInstanceGroupId', 'equalto', _ntnx_group.serverInstanceGroupId | default(-1))
+     | sort(attribute='serverInstanceId') | list }}
+ntnx_ce_hosts: >-
+  {{ (_ntnx_instances | map(attribute='host') | list) or (groups[ntnx_ce_inventory_group] | default([]) | sort) }}
+
+# CVM IPs: consecutive addresses from the start of the 'cvm' range, one per node in node order.
+_ntnx_cvm_start_int: >-
+  {%- set o = (_ntnx_cvm_range.startIp | default('0.0.0.0')).split('.') | map('int') | list -%}
+  {{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}
+_ntnx_cvm_end_int: >-
+  {%- set o = (_ntnx_cvm_range.endIp | default('0.0.0.0')).split('.') | map('int') | list -%}
+  {{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}
+ntnx_ce_cvm_ips: >-
+  {%- set out = [] -%}
+  {%- for i in range(ntnx_ce_hosts | length) -%}
+  {%- set v = (_ntnx_cvm_start_int | int) + i -%}
+  {%- set _ = out.append([v // 16777216 % 256, v // 65536 % 256, v // 256 % 256, v % 256] | map('string') | join('.')) -%}
+  {%- endfor -%}
+  {{ out }}
+
+ntnx_ce_nodes: >-
+  {%- set out = [] -%}
+  {%- for h in ntnx_ce_hosts -%}
+  {%- set _ = out.append({'host': h, 'ahv_ip': hostvars[h].ansible_host | default(''), 'cvm_ip': ntnx_ce_cvm_ips[loop.index0]}) -%}
+  {%- endfor -%}
+  {{ out }}
+
+# Site config first (configVars may be comma-separated strings), then record set, then public defaults.
+ntnx_ce_dns_servers: >-
+  {{ (((configVars | default({})).get('DNSResolvers', '') ~ '').split(',') | map('trim') | reject('equalto', '') | list)
+     or (_ntnx_rs.dnsResolvers | default([], true)) or ['1.1.1.1'] }}
+ntnx_ce_ntp_servers: >-
+  {{ (((configVars | default({})).get('NTPServers', '') ~ '').split(',') | map('trim') | reject('equalto', '') | list)
+     or (_ntnx_rs.ntpServers | default([], true)) or ['pool.ntp.org'] }}
+
+ntnx_ce_cluster_name: "{{ _ntnx_rs.extensionInstanceName | default('ntnx-ce', true) }}"
+ntnx_ce_redundancy_factor: "{{ 1 if (ntnx_ce_hosts | length) == 1 else 2 }}"
+ntnx_ce_prism_host: "{{ ntnx_ce_vip_fqdn or ntnx_ce_vip }}"
+
+ntnx_ce_cluster_create_cmd: >-
+  cluster -s {{ ntnx_ce_cvm_ips | join(',') }}
+  --cluster_name={{ ntnx_ce_cluster_name | quote }}
+  --cluster_external_ip={{ ntnx_ce_vip }}
+  --dns_servers={{ ntnx_ce_dns_servers | join(',') }}
+  --ntp_servers={{ ntnx_ce_ntp_servers | join(',') }}
+  --redundancy_factor={{ ntnx_ce_redundancy_factor }}
+  create
+
+# Run a command on the local CVM from its AHV host (root's key, or the firstboot key, is trusted by the CVM).
+ntnx_ce_host_to_cvm_ssh: >-
+  ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+  $(for k in /root/.ssh/id_rsa /root/firstboot/ssh_keys/nutanix; do [ -f "$k" ] && printf -- '-i %s ' "$k"; done)
+  {{ ntnx_ce_cvm_user }}@{{ ntnx_ce_cvm_internal_ip }}
+
+# --- Extension outputs (context.json) -------------------------------------------------------------
+# Everything is derivable from the record set, so every run re-emits the full payload (outputs are
+# REPLACED by each successful run's context.json).
+context_json_file_path: "/runner/artifacts/{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') }}/context.json"
+ntnx_ce_outputs_payload:
+  prism_element_url: "{{ ('https://' ~ ntnx_ce_prism_host ~ ':9440') if ntnx_ce_prism_host else '' }}"
+  cluster_name: "{{ ntnx_ce_cluster_name }}"
+  cluster_vip: "{{ ntnx_ce_vip }}"
+  data_services_ip: "{{ ntnx_ce_dsip }}"
+  cvm_ips: "{{ ntnx_ce_cvm_ips | join(',') }}"
+  ahv_host_ips: "{{ ntnx_ce_nodes | map(attribute='ahv_ip') | join(',') }}"

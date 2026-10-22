@@ -4,7 +4,7 @@
 # Runs the real render-template.yaml against the template shipped in the 9.1 ISO
 # (fixtures/embedded_vCSA_on_ESXi-9.1.0.0.json) and asserts the spec handed to vcsa-deploy.
 - name: Render and validate the vcsa-deploy install spec
-  hosts: esxi[0]
+  hosts: esxi_1[0]
   connection: local
   gather_facts: false
   vars:
@@ -32,7 +32,7 @@
     - name: Assert | inventory group matches the instance array label
       ansible.builtin.assert:
         that:
-          - groups['esxi'] | length == 1
+          - groups['esxi_1'] | length == 1
           - vcsa_host == inventory_hostname
         quiet: true
 

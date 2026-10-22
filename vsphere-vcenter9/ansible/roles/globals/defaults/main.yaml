@@ -16,29 +16,44 @@ dns_servers: >-
     or ['1.1.1.1', '8.8.8.8']
   }}
 
-# The 'esxi' instance array (one or more hosts)
+# Host groups: one instance array per group, labelled esxi-<n> (tools/set-host-groups.py writes them).
+# Groups are found by name, so the definition can have any number of them. The record set keeps the array
+# label (esxi-1) but the inventory turns '-' into '_' (esxi_1, esxi_1_scale_out, esxi_1_scale_in), so the
+# inventory patterns accept both. A group with host count 0 is an empty inventory group.
+esxi_group_regex: '^esxi[-_][0-9]+$'
+esxi_inventory_groups: "{{ groups.keys() | select('match', esxi_group_regex) | sort | list }}"
+
+# vCenter lives in group 1, which always has at least one host.
+vcsa_group_label: esxi-1
+vcsa_inventory_group: "{{ groups.keys() | select('match', '^esxi[-_]1$') | first | default('esxi_1') }}"
 esxi_group_base: >-
   {{ extensionInstanceRecordSet.serverInstanceGroups | default([])
-     | selectattr('serverInstanceGroupLabel', 'equalto', 'esxi') | first | default({}) }}
+     | selectattr('serverInstanceGroupLabel', 'equalto', vcsa_group_label) | first | default({}) }}
 
-# Hosts of the array in instance-id order. Inventory hostnames are the instances' subdomainPermanent,
+# Hosts of group 1 in instance-id order. Inventory hostnames are the instances' subdomainPermanent,
 # which is serverInstances[].host in the record set.
 esxi_record_instances: >-
   {{ extensionInstanceRecordSet.serverInstances | default([])
      | selectattr('serverInstanceGroupId', 'equalto', esxi_group_base.serverInstanceGroupId | default(-1))
      | sort(attribute='serverInstanceId') | list }}
 
-# vCenter is installed on the lowest-numbered instance: MetalSoft removes the highest-numbered
-# instances on scale-in, so this host stays as long as the array exists. Falls back to the first
-# inventory host if the record set and inventory names ever disagree.
+# vCenter is installed on the lowest-numbered instance of group 1: MetalSoft removes the highest-numbered
+# instances on scale-in, and group 1 never goes below one host, so this host stays. Falls back to the
+# first inventory host of group 1 if the record set and inventory names ever disagree.
 vcsa_host: >-
-  {{ ((esxi_record_instances | map(attribute='host') | select('in', groups['esxi'] | default([])) | list)
-      + (groups['esxi'] | default([]))) | first | default('') }}
+  {{ ((esxi_record_instances | map(attribute='host') | select('in', groups[vcsa_inventory_group] | default([])) | list)
+      + (groups[vcsa_inventory_group] | default([]))) | first | default('') }}
 
-# Every host that should be in the vCenter cluster: on create the whole array, on an edit the
-# survivors plus the hosts being added (scale-in hosts are already excluded from 'esxi').
-esxi_cluster_members: "{{ (groups['esxi'] | default([])) | union(groups['esxi_scale_out'] | default([])) }}"
-esxi_scale_in_hosts: "{{ groups['esxi_scale_in'] | default([]) }}"
+# Every host that should be in the vCenter cluster, over all groups: on create every group's hosts, on an
+# edit the survivors plus the hosts being added (scale-in hosts are already excluded from each main group).
+esxi_hosts: "{{ groups | dict2items | selectattr('key', 'match', esxi_group_regex) | map(attribute='value') | flatten | unique | list }}"
+esxi_scale_out_hosts: >-
+  {{ groups | dict2items | selectattr('key', 'match', '^esxi[-_][0-9]+_scale_out$') | map(attribute='value')
+     | flatten | unique | list }}
+esxi_cluster_members: "{{ esxi_hosts | union(esxi_scale_out_hosts) }}"
+esxi_scale_in_hosts: >-
+  {{ groups | dict2items | selectattr('key', 'match', '^esxi[-_][0-9]+_scale_in$') | map(attribute='value')
+     | flatten | unique | list }}
 
 # Build an index (name -> logical network object)
 logical_networks_index: >-
@@ -62,7 +77,25 @@ vcenter_gateway: "{{ vcenter_allocation.gateway | default(mgmt_subnet.gateway | 
 
 vcenter_sso_domain: "{{ extensionInstanceVariables.sso_domain_name | default('vsphere.local', true) }}"
 vcenter_sso_username: "administrator@{{ vcenter_sso_domain }}"
-vcenter_admin_password: "{{ extensionInstanceVariables.vcenter_admin_password | default('') }}"
+# vcenter_admin_password is the input, or, when the input is 'auto' (its default; the platform refuses an
+# empty password input) or empty, a password generated for this
+# instance. The generated one is derived from the vCenter host's ESXi root password and the instance id,
+# so every retry and every later run of the instance gets the same value without anything stored first.
+# Each successful run writes it back under the input's label (stored like any isPassword input, so later
+# runs keep it even if the ESXi password changes) and publishes it as the vcenter_generated_password output.
+vcenter_admin_password_input: "{{ extensionInstanceVariables.vcenter_admin_password | default('', true) }}"
+vcenter_admin_password_seed: "{{ (hostvars[vcsa_host].ansible_password | default('')) if vcsa_host else '' }}"
+# 'V', 'c', '-' and the trailing '7' cover vCenter's four classes; runs of 3+ identical characters are
+# shortened first (vCenter's default policy allows at most 3 adjacent identical characters).
+vcenter_admin_password_generated: >-
+  {{ ('Vc-' ~ ((vcenter_admin_password_seed ~ ':' ~ extension_instance_id ~ ':vcsa') | hash('sha512')
+     | regex_replace('(.)\\1\\1+', '\\1\\1'))[:16] ~ '7') if vcenter_admin_password_seed else '' }}
+vcenter_admin_password_is_generated: >-
+  {{ vcenter_admin_password_input in ['', 'auto']
+     or vcenter_admin_password_input == vcenter_admin_password_generated }}
+vcenter_admin_password: >-
+  {{ vcenter_admin_password_generated if vcenter_admin_password_is_generated | bool
+     else vcenter_admin_password_input }}
 
 # ESXi connection (inventory host vars from the OS template credentials) — used by both roles
 esxi_username: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"

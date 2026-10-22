@@ -1,9 +1,9 @@
 ---
-# onEdit postDeploy. New hosts (esxi_scale_out) are installed by now and leaving hosts are gone.
+# onEdit postDeploy. New hosts (esxi_<n>_scale_out) are installed by now and leaving hosts are gone.
 # Converge: prepare every host (DNS, NTP, VM port group) and keep every host in the vCenter cluster.
 # Idempotent, so an edit without a host-count change or a retry is a no-op.
 - name: Prepare the ESXi hosts
-  hosts: esxi:esxi_scale_out
+  hosts: "~^esxi[-_][0-9]+(_scale_out)?$"
   gather_facts: false
   roles:
     - role: esxi

@@ -1,6 +1,8 @@
 ---
 - name: Prepare the ESXi hosts
-  hosts: esxi
+  # every host group: a regex over group names, so any number of groups works. The inventory names the
+  # esxi-<n> arrays esxi_<n> ('-' becomes '_'); both forms match.
+  hosts: "~^esxi[-_][0-9]+$"
   gather_facts: false
   pre_tasks:
     - name: Note execution start time
@@ -21,7 +23,7 @@
     - name: Assert a vCenter host was found
       ansible.builtin.assert:
         that: vcsa_host | length > 0
-        fail_msg: "No host in the 'esxi' group — the inventory has no ESXi hosts."
+        fail_msg: "No host in group 1 (esxi_1), which carries vCenter. Inventory groups: {{ groups.keys() | list }}"
         quiet: true
 
     - name: Target the vCenter host

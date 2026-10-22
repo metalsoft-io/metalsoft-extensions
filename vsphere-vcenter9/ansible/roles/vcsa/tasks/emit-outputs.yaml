@@ -9,7 +9,8 @@
 
 - name: Write outputs context JSON artifact
   ansible.builtin.copy:
-    content: "{{ vcsa_outputs_payload | to_nice_json }}"
+    content: "{{ vcsa_outputs_payload | combine(vcsa_outputs_password) | to_nice_json }}"
     dest: "{{ context_json_file_path }}"
-    mode: "0644"
+    mode: "0600"
   when: not _context_artifact.stat.exists
+  no_log: true

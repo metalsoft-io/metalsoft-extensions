@@ -1,5 +1,5 @@
 ---
-# onEdit preDeploy. Hosts leaving the 'esxi' array (esxi_scale_in) are still installed: check that
+# onEdit preDeploy. Hosts leaving any host group (esxi_<n>_scale_in) are still installed: check that
 # none carries vCenter or running VMs, then remove them from vCenter before MetalSoft wipes them.
 # No-op when nothing is removed.
 - name: Remove leaving ESXi hosts from vCenter
@@ -10,7 +10,7 @@
       ansible.builtin.include_role:
         name: vcsa
         tasks_from: scale-in.yaml
-      when: groups['esxi_scale_in'] | default([]) | length > 0
+      when: groups | dict2items | selectattr('key', 'match', '^esxi[-_][0-9]+_scale_in$') | map(attribute='value') | flatten | length > 0
 
 # A run that writes no context.json wipes the stored outputs — re-emit them.
 - name: Publish extension outputs

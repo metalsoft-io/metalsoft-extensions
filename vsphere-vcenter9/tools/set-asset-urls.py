@@ -5,7 +5,7 @@ Asset URLs must be literal URLs in the definition (the platform rejects template
 {{configVars.x}}), so they are set when the extension is registered, not per site. The vCSA ISO
 URL is the site config `vcsa_iso_url`.
 
-  tools/set-asset-urls.py --bundle-url https://mirror/vsphere-vcenter9-v1.1.0.zip \
+  tools/set-asset-urls.py --bundle-url https://mirror/vsphere-vcenter9-v2.0.2.zip \
       --ee-url https://mirror/ee-vsphere-vcenter9.1.0.1.tar.gz > extension.mirror.json
 
 Either option may be omitted to keep the current URL. URLs are limited to 128 characters.

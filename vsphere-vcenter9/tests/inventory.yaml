@@ -1,6 +1,6 @@
 all:
   children:
-    esxi:
+    esxi_1:
       hosts:
         instance-31.example.com:
           ansible_host: 10.0.20.11

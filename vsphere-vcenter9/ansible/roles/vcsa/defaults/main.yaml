@@ -55,3 +55,9 @@ vcsa_outputs_payload:
   vcenter_fqdn: "{{ vcenter_fqdn }}"
   vcenter_ip: "{{ vcenter_ip }}"
   vcenter_sso_username: "{{ vcenter_sso_username }}"
+# A generated password is written under the input's label, so the platform keeps it with the instance's
+# inputs (later runs read it back), and under the vcenter_generated_password output, which shows it.
+# (An output can't share the input's label.) A password the user typed is never published.
+vcsa_outputs_password: >-
+  {{ {'vcenter_admin_password': vcenter_admin_password, 'vcenter_generated_password': vcenter_admin_password}
+     if (vcenter_admin_password_is_generated | bool) and vcenter_admin_password else {} }}

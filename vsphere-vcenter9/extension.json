@@ -5,8 +5,8 @@
   "label": "vsphere_vcenter9",
   "extensionType": "application",
   "vendor": "MetalSoft",
-  "extensionVersion": "1.3.0",
-  "description": "Installs ESXi 9 on one or more bare-metal servers, deploys a vCenter Server Appliance 9 on the first and adds every host to a vCenter cluster. Scale by changing the host count.",
+  "extensionVersion": "2.0.2",
+  "description": "Installs ESXi 9 on bare-metal servers, deploys vCenter Server Appliance 9 on the first host and adds every host to one cluster. Hosts can be split into groups with their own server type. Scale by changing a host count.",
   "icon": "https://www.vmware.com/media/blt8c9a8aaca0ffd4ac/blt457d6175bb71af84/66bb256a1257f5d926b3e22e/vmw-prod-icon-cloud-foundation1.svg",
   "dependencies": {
     "controllerVersion": "release-v7.2",
@@ -16,13 +16,24 @@
   },
   "inputs": [
     {
-      "label": "server_type",
-      "name": "server_type",
-      "helpText": "Server type for the ESXi hosts (the first also runs vCenter: 'small' needs 4 vCPU / 21 GB RAM on top of ESXi).",
+      "label": "server_type_1",
+      "name": "server_type_1",
+      "helpText": "Server type for host group 1. Its first host also runs vCenter ('small': 4 vCPU / 21 GB RAM on top of ESXi).",
       "inputType": "ExtensionInputServerType",
       "options": {
         "minCpu": 1,
         "minRamGb": 32
+      }
+    },
+    {
+      "label": "host_count_1",
+      "name": "host_count_1",
+      "helpText": "ESXi hosts in group 1. vCenter runs on the first. Edit later to add/remove hosts (removed hosts: no powered-on VMs).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 32
       }
     },
     {
@@ -32,17 +43,6 @@
       "inputType": "ExtensionInputOsTemplate",
       "options": {
         "osFamily": "ESXi"
-      }
-    },
-    {
-      "label": "esxi_host_count",
-      "name": "esxi_host_count",
-      "helpText": "ESXi host count; vCenter runs on the first. Edit later to add/remove hosts (removed hosts: no powered-on VMs).",
-      "inputType": "ExtensionInputInteger",
-      "defaultValue": 1,
-      "options": {
-        "minValue": 1,
-        "maxValue": 32
       }
     },
     {
@@ -56,12 +56,13 @@
     {
       "label": "vcenter_admin_password",
       "name": "vcenter_admin_password",
-      "helpText": "Appliance root and administrator@<SSO domain> password: 8-20 chars, upper, lower, digit, special other than _ (! @ - .)",
+      "helpText": "auto: generate one (see output vcenter_generated_password). Else 8-20 chars, no spaces: upper, lower, digit, special (not _)",
       "inputType": "ExtensionInputString",
       "isPassword": true,
       "options": {
-        "validationRegEx": "^[A-Za-z0-9!@#$%^&*()+=._-]{8,20}$"
-      }
+        "validationRegEx": "^(auto|(?=.*[A-Z])(?=.*[a-z])(?=.*\\d)(?=.*\\W)[!-~]{8,20})$"
+      },
+      "defaultValue": "auto"
     },
     {
       "label": "sso_domain_name",
@@ -218,14 +219,20 @@
       "label": "vcenter_sso_username",
       "name": "vcenter_sso_username",
       "outputType": "string"
+    },
+    {
+      "label": "vcenter_generated_password",
+      "name": "vcenter_generated_password",
+      "outputType": "password",
+      "helpText": "Generated vCenter root and administrator password; empty when you set your own"
     }
   ],
   "infrastructure": {
     "instanceArrays": [
       {
-        "label": "esxi",
-        "instanceCount": "#/input/esxi_host_count",
-        "serverType": "#/input/server_type",
+        "label": "esxi-1",
+        "instanceCount": "#/input/host_count_1",
+        "serverType": "#/input/server_type_1",
         "osTemplate": "#/input/os_template",
         "logicalNetworks": [
           {
@@ -276,7 +283,7 @@
       "label": "vsphere-vcenter9-bundle",
       "name": "vsphere-vcenter9-bundle",
       "assetType": "AnsibleBundle",
-      "url": "https://repo.metalsoft.io/.extensions_ms/vsphere-vcenter9/vsphere-vcenter9-v1.3.0.zip"
+      "url": "https://repo.metalsoft.io/.extensions_ms/vsphere-vcenter9/vsphere-vcenter9-v2.0.2.zip"
     },
     {
       "label": "ee-vsphere-vcenter9-1-0-1",

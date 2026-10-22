@@ -23,23 +23,41 @@
       An empty fqdn means no DNS provisioning extension handled the record at this site.
     quiet: true
 
-# The input regex can only check charset and length (no lookahead); the class rules
-# are vCenter's own policy, checked here so the failure is immediate.
+# The input's validationRegEx enforces the same rule when the value is saved; this check
+# covers values that reach the playbook any other way, and the failure is immediate. The checks run in a
+# no_log task and only their names reach the assert, so its message is visible without the password.
+- name: Assert a vCenter password is set or can be generated
+  ansible.builtin.assert:
+    that: vcenter_admin_password | length > 0
+    fail_msg: >-
+      vcenter_admin_password is empty and no password could be generated: the vCenter host
+      ({{ vcsa_host | default('none', true) }}) has no ESXi root password in the inventory.
+      Set vcenter_admin_password on the extension instance instead of 'auto'.
+    quiet: true
+
+- name: Check vCenter password policy
+  ansible.builtin.set_fact:
+    vcsa_password_problems: >-
+      {{
+        ([] if vcenter_admin_password | length >= 8 else ['shorter than 8 characters'])
+        + ([] if vcenter_admin_password | length <= 20 else ['longer than 20 characters'])
+        + ([] if vcenter_admin_password is regex('[A-Z]') else ['no uppercase letter'])
+        + ([] if vcenter_admin_password is regex('[a-z]') else ['no lowercase letter'])
+        + ([] if vcenter_admin_password is regex('[0-9]') else ['no digit'])
+        + ([] if vcenter_admin_password is regex('[^A-Za-z0-9_]')
+           else ["no special character ('_' does not count)"])
+      }}
+  # vCenter does not count '_' as special (verified with vcsa-deploy 9.1 --verify-template-only)
+  no_log: true
+
 - name: Assert vCenter password policy
   ansible.builtin.assert:
-    that:
-      - vcenter_admin_password | length >= 8
-      - vcenter_admin_password | length <= 20
-      - vcenter_admin_password is regex('[A-Z]')
-      - vcenter_admin_password is regex('[a-z]')
-      - vcenter_admin_password is regex('[0-9]')
-      # vCenter does not count '_' as special (verified with vcsa-deploy 9.1 --verify-template-only)
-      - vcenter_admin_password is regex('[^A-Za-z0-9_]')
+    that: vcsa_password_problems | length == 0
     fail_msg: >-
-      vcenter_admin_password must be 8-20 characters with at least one uppercase letter,
-      one lowercase letter, one digit and one special character other than '_' (vCenter does not count it).
+      vcenter_admin_password does not meet vCenter's policy: {{ vcsa_password_problems | join(', ') }}.
+      It needs 8-20 characters with at least one uppercase letter, one lowercase letter, one digit and
+      one special character other than '_'.
     quiet: true
-  no_log: true
 
 # vCenter firstboot needs forward AND reverse resolution of its own FQDN.
 - name: Resolve vCenter FQDN (forward)

@@ -28,7 +28,7 @@
     "serverInstanceGroups": [
       {
         "serverInstanceGroupId": 7,
-        "serverInstanceGroupLabel": "esxi",
+        "serverInstanceGroupLabel": "esxi-1",
         "tags": [],
         "logicalNetworks": [
           {

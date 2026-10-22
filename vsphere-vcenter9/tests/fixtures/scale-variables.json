@@ -32,7 +32,7 @@
     "serverInstanceGroups": [
       {
         "serverInstanceGroupId": 7,
-        "serverInstanceGroupLabel": "esxi",
+        "serverInstanceGroupLabel": "esxi-1",
         "tags": [],
         "logicalNetworks": [
           {
@@ -61,6 +61,54 @@
                     }
                   }
                 ],
+                "ipRanges": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "serverInstanceGroupId": 8,
+        "serverInstanceGroupLabel": "esxi-2",
+        "tags": [],
+        "logicalNetworks": [
+          {
+            "id": 3,
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "subnets": [
+              {
+                "subnet": "10.0.20.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.20.1",
+                "mtu": 1500,
+                "ipType": "ipv4",
+                "ipAllocations": [],
+                "ipRanges": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "serverInstanceGroupId": 9,
+        "serverInstanceGroupLabel": "esxi-3",
+        "tags": [],
+        "logicalNetworks": [
+          {
+            "id": 3,
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "subnets": [
+              {
+                "subnet": "10.0.20.0/24",
+                "netmask": "255.255.255.0",
+                "gateway": "10.0.20.1",
+                "mtu": 1500,
+                "ipType": "ipv4",
+                "ipAllocations": [],
                 "ipRanges": []
               }
             ]
@@ -109,7 +157,7 @@
       },
       {
         "serverInstanceId": 32,
-        "serverInstanceGroupId": 7,
+        "serverInstanceGroupId": 8,
         "host": "instance-32.example.com",
         "logicalNetworks": [
           {
@@ -127,22 +175,41 @@
         ]
       },
       {
-        "serverInstanceId": 34,
-        "serverInstanceGroupId": 7,
-        "host": "instance-34.example.com",
+        "serverInstanceId": 30,
+        "serverInstanceGroupId": 8,
+        "host": "instance-30.example.com",
         "logicalNetworks": [
           {
             "name": "vcenter-mgmt",
             "label": "vcenter-mgmt",
             "vlan_id": 120,
             "uplinks": [
-              "aa:bb:cc:00:22:01",
-              "aa:bb:cc:00:22:02"
+              "aa:bb:cc:00:1e:01",
+              "aa:bb:cc:00:1e:02"
             ]
           }
         ],
         "ipv4Ips": [
-          "10.0.20.14"
+          "10.0.20.10"
+        ]
+      },
+      {
+        "serverInstanceId": 35,
+        "serverInstanceGroupId": 8,
+        "host": "instance-35.example.com",
+        "logicalNetworks": [
+          {
+            "name": "vcenter-mgmt",
+            "label": "vcenter-mgmt",
+            "vlan_id": 120,
+            "uplinks": [
+              "aa:bb:cc:00:23:01",
+              "aa:bb:cc:00:23:02"
+            ]
+          }
+        ],
+        "ipv4Ips": [
+          "10.0.20.15"
         ]
       }
     ]

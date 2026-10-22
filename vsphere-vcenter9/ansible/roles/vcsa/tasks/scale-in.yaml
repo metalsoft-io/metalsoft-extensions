@@ -1,5 +1,5 @@
 ---
-# onEdit preDeploy, run from localhost: the hosts in esxi_scale_in are still installed and reachable;
+# onEdit preDeploy, run from localhost: the hosts in the esxi_<n>_scale_in groups are still installed and reachable;
 # MetalSoft wipes them after this stage. Refuse to remove a host that carries vCenter or runs VMs,
 # then take each one out of vCenter (maintenance mode, remove) so vCenter keeps no stale host.
 - name: List VMs known to vCenter

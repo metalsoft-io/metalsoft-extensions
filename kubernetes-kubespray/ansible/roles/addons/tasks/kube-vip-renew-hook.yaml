@@ -1,0 +1,40 @@
+---
+# Every CP (become). kube-vip loads its kubeconfig (client cert) once at start and is restarted
+# neither by kubespray's monthly k8s-certs-renew.service nor by kubeadm upgrades. Followers with an
+# expired in-memory cert can never take over the VIP. After every renewal run, restart the local
+# kube-vip container (kubelet starts it again from the static manifest with the renewed file).
+- name: kube-vip | drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/k8s-certs-renew.service.d
+    state: directory
+    mode: "0755"
+
+- name: kube-vip | restart after certificate renewal (drop-in)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k8s-certs-renew.service.d/10-metalsoft-kube-vip.conf
+    mode: "0644"
+    content: |
+      # Managed by kubernetes-kubespray: reload kube-vip's kubeconfig after certificate renewal
+      [Service]
+      ExecStartPost=/bin/sh -c 'id=$(/usr/local/bin/crictl ps -q --name kube-vip 2>/dev/null); [ -n "$id" ] && /usr/local/bin/crictl stop $id || true'
+  register: _k8s_vip_dropin
+
+- name: kube-vip | reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _k8s_vip_dropin is changed
+
+# After upgrades/refreshes (kubeadm renews certs) restart kube-vip where its container predates
+# the current admin.conf (followers first; the lease holder last, so the VIP moves at most once).
+- name: kube-vip | container older than its kubeconfig?
+  ansible.builtin.shell: |
+    id=$(/usr/local/bin/crictl ps -q --name kube-vip 2>/dev/null | head -1)
+    [ -z "$id" ] && { echo none; exit 0; }
+    started=$(/usr/local/bin/crictl inspect -o go-template --template '{{ "{{" }}.status.startedAt{{ "}}" }}' "$id" 2>/dev/null)
+    conf=/etc/kubernetes/admin.conf; [ -f /etc/kubernetes/super-admin.conf ] && conf=/etc/kubernetes/super-admin.conf
+    if [ "$(date -d "$started" +%s 2>/dev/null || echo 0)" -lt "$(stat -c %Y "$conf")" ]; then echo stale; else echo fresh; fi
+  args:
+    executable: /bin/bash
+  register: _k8s_vip_age
+  changed_when: false
+  failed_when: false

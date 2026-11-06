@@ -1,0 +1,104 @@
+---
+# Offline render test (localhost only, no SSH): globals + plan + overlay for a fresh 3 CP + 2 worker
+# create, using the same roles as production. Run from kubernetes-kubespray/tests:
+#   ANSIBLE_CONFIG=ansible.cfg ansible-playbook -i inventory.yaml -e @fixtures/sample-variables.json render-spec.yaml
+# Output: tests/out/create/inventory (fed to the in-EE contract check, contract/run-contract.sh).
+- name: Render | create overlay
+  hosts: localhost
+  gather_facts: false
+  vars:
+    k8s_stage: post
+    k8s_ks_dir: "{{ playbook_dir }}/out/create"
+    k8s_up_hosts: "{{ groups['k8scp'] + groups['k8sworker'] }}"
+  roles:
+    - role: globals
+  tasks:
+    - name: Render | static preflight pieces that need no EE
+      ansible.builtin.assert:
+        that:
+          - k8s_vip == '10.20.30.50'
+          - k8s_api_fqdn_candidate == 'api.k8s1.site1.example.com'
+          - "k8s_lb_ranges == [{'start': '10.20.30.60', 'end': '10.20.30.63', 'count': 4}]"
+          - k8s_worker_count == 2
+          - k8s_addons.local_path_provisioner
+          - k8s_site_dns_servers == ['8.8.8.8', '1.1.1.1']
+          - "k8s_site_overrides == {'kubelet_max_pods': 200}"
+          - (k8s_site_overrides | k8s_overrides_check(false)).errors == []
+        quiet: true
+
+    - name: Render | plan (fresh create; no state, nothing initialised)
+      ansible.builtin.set_fact:
+        k8s_state: {}
+        k8s_cluster_id: k8s-fixture0001
+        k8s_view_cluster_ids: {}
+        k8s_view_initialised: {}
+        k8s_anchor: instance-101.site1.example.com
+
+    - name: Render | plan.yaml (production code path)
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: plan.yaml
+
+    - name: Render | plan as expected
+      ansible.builtin.assert:
+        that:
+          - k8s_plan.action == 'create'
+          - k8s_plan.cp_order == ['instance-101.site1.example.com', 'instance-102', 'instance-103']
+          - k8s_plan.w_joining == ['instance-201', 'instance-202']
+          - k8s_etcd_member_names['instance-101.site1.example.com'] == 'etcd-instance-101'
+          - k8s_effective_site.dns == ['8.8.8.8', '1.1.1.1']
+        quiet: true
+
+    - name: Render | run hosts
+      ansible.builtin.set_fact:
+        k8s_run_cp: "{{ k8s_plan.cp_order }}"
+        k8s_run_workers: "{{ k8s_plan.w_joining }}"
+        k8s_run_hostvars: {}
+
+    - name: Render | overlay.yaml (production code path)
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: overlay.yaml
+
+    - name: Render | read back
+      ansible.builtin.set_fact:
+        _hosts: "{{ lookup('file', k8s_ks_dir ~ '/inventory/hosts.yaml') | from_yaml }}"
+        _owned: "{{ lookup('file', k8s_ks_dir ~ '/inventory/group_vars/all/zz-owned.yml') | from_yaml }}"
+        _hv102: "{{ lookup('file', k8s_ks_dir ~ '/inventory/host_vars/instance-102.yml', rstrip=false) }}"
+        _ovr: "{{ lookup('file', k8s_ks_dir ~ '/inventory/group_vars/all/90-site-overrides.yml') | from_yaml }}"
+
+    - name: Render | overlay content
+      ansible.builtin.assert:
+        that:
+          - _hosts.all.children.kube_control_plane.hosts.keys() | list == k8s_plan.cp_order
+          - _hosts.all.children.etcd.hosts.keys() | list == k8s_plan.cp_order
+          - _hosts.all.children.kube_node.hosts.keys() | list == ['instance-201', 'instance-202']
+          - _owned.kube_vip_address == '10.20.30.50'
+          - "_owned.loadbalancer_apiserver == {'address': '10.20.30.50', 'port': 6443}"
+          - _owned.supplementary_addresses_in_ssl_keys == ['10.20.30.50', 'api.k8s1.site1.example.com']
+          - _owned.kube_proxy_mode == 'iptables'
+          - _owned.calico_nftable_mode == 'Disabled'
+          - _owned.upstream_dns_servers == ['8.8.8.8', '1.1.1.1']
+          - _owned.metallb_enabled is false
+          - _owned.local_path_provisioner_enabled is true
+          - _owned.local_path_provisioner_is_default_storageclass == 'true'
+          - _owned.kube_encrypt_secret_data is true
+          - "'ansible_become_exe: /usr/bin/sudo.ws' in _hv102"
+          - _hv102 is search('ansible_become_password. .\\{\\{ ansible_password \\}\\}')
+          - "'fixture-pass' not in _hv102"
+          - "'etcd_member_name: etcd-instance-102' in _hv102"
+          - "'kube_vip_interface: eno1' in _hv102"
+          - "_ovr == {'kubelet_max_pods': 200}"
+        quiet: true
+
+    - name: Render | expectations for the in-EE hostvars probe
+      ansible.builtin.copy:
+        dest: "{{ k8s_ks_dir }}/expect.json"
+        mode: "0644"
+        content: "{{ {'vip': k8s_vip, 'cp_order': k8s_plan.cp_order, 'workers': k8s_plan.w_joining, 'kube_version': k8s_plan.kube_version} | to_json }}"
+
+    - name: Render | run.json as production writes it (kube_version only)
+      ansible.builtin.copy:
+        dest: "{{ k8s_ks_dir }}/run-contract.json"
+        mode: "0644"
+        content: "{{ {'kube_version': k8s_plan.kube_version} | to_json }}"

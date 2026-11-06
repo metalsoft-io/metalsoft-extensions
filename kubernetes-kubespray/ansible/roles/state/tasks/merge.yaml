@@ -1,0 +1,58 @@
+---
+# localhost: merge the CP copies of the state (highest serial wins), fix the cluster id, pick the
+# anchor CP (first reachable, initialised, NOT leaving member of the recorded order; at create the
+# first CP). kubectl/etcdctl/addons/identity all run there.
+- name: State | copies from reachable control-plane nodes
+  ansible.builtin.set_fact:
+    _k8s_copies: >-
+      {{ (k8s_cp_hosts + k8s_cp_scale_in) | select('in', k8s_up_hosts)
+         | map('extract', hostvars, 'k8s_node_state') | select('mapping') | select | list }}
+
+- name: State | winner
+  ansible.builtin.set_fact:
+    k8s_state: "{{ _k8s_copies | sort(attribute='serial') | last | default({}) }}"
+
+- name: State | conflicting copies at the same serial
+  ansible.builtin.assert:
+    that:
+      - >-
+        _k8s_copies | selectattr('serial', 'equalto', k8s_state.serial | default(-1))
+        | map('to_json', sort_keys=true) | unique | list | length <= 1
+    fail_msg: >-
+      Control-plane nodes hold different cluster states with the same serial ({{ k8s_state.serial | default('') }}).
+      Manual inspection needed: compare {{ k8s_state_file }} on the control-plane nodes.
+    quiet: true
+
+- name: State | cluster id (recorded, or a new one for a fresh create)
+  ansible.builtin.set_fact:
+    k8s_cluster_id: >-
+      {{ k8s_state.cluster_id | default('k8s-' ~ lookup('ansible.builtin.password', '/dev/null',
+         length=12, chars=['ascii_lowercase', 'digits']), true) }}
+    k8s_view_initialised: >-
+      {{ dict((k8s_cp_hosts + k8s_cp_scale_in) | select('in', k8s_up_hosts)
+         | zip((k8s_cp_hosts + k8s_cp_scale_in) | select('in', k8s_up_hosts)
+               | map('extract', hostvars, ['k8s_node_ident', 'admin_conf']))) }}
+    k8s_view_cluster_ids: >-
+      {{ dict(k8s_up_hosts | zip(k8s_up_hosts | map('extract', hostvars, ['k8s_node_ident', 'cluster_id']))) }}
+
+- name: State | anchor control-plane node
+  ansible.builtin.set_fact:
+    k8s_anchor: >-
+      {{ ((k8s_state.control_plane.order | default([])) | reject('in', k8s_cp_scale_in)
+          | select('in', k8s_up_hosts) | select('in', k8s_view_initialised | dict2items
+          | selectattr('value') | map(attribute='key') | list) | list
+          + (k8s_cp_hosts | select('in', k8s_up_hosts) | list)) | first | default('') }}
+
+- name: State | anchor into its group
+  ansible.builtin.add_host:
+    name: "{{ k8s_anchor }}"
+    groups: [k8s_anchor]
+  changed_when: false
+  when: k8s_anchor | length > 0
+
+- name: State | summary
+  ansible.builtin.debug:
+    msg: >-
+      STATE phase={{ k8s_state.phase | default('none') }} serial={{ k8s_state.serial | default('-') }}
+      cluster_id={{ k8s_cluster_id }} kube_version={{ k8s_state.kube_version | default('-') }}
+      order={{ k8s_state.control_plane.order | default([]) | join(',') }} anchor={{ k8s_anchor | default('-') }}

@@ -1,0 +1,39 @@
+---
+# In-EE contract probe: what kubespray v2.32.0 itself resolves from platform inventory + overlay
+# (no SSH: gather_facts false, only kubespray_defaults is loaded).
+- name: Contract | kubespray view of the overlay
+  hosts: k8s_cluster
+  gather_facts: false
+  roles:
+    - role: kubespray_defaults
+  vars:
+    _expect: "{{ lookup('file', expect_file) | from_json }}"
+  tasks:
+    - name: Contract | resolved variables
+      ansible.builtin.assert:
+        that:
+          - kube_version == _expect.kube_version
+          - kube_apiserver_endpoint == 'https://' ~ _expect.vip ~ ':6443'
+          - loadbalancer_apiserver_localhost | bool == false
+          - apiserver_loadbalancer_domain_name == _expect.vip
+          - kube_vip_enabled | bool and kube_vip_arp_enabled | bool and not (kube_vip_services_enabled | bool)
+          - kube_proxy_strict_arp | bool
+          - groups['kube_control_plane'] == _expect.cp_order
+          - groups['etcd'] == _expect.cp_order
+          - groups['kube_node'] == _expect.workers
+          - kube_override_hostname == inventory_hostname
+          - ip == ansible_host
+          - metallb_enabled | bool == false
+          - local_path_provisioner_enabled | bool
+          - credentials_dir is match('^/')
+          - ansible_password == 'fixture-pass'
+          - (inventory_hostname not in groups['etcd']) or (etcd_member_name == 'etcd-' ~ inventory_hostname.split('.')[0])
+        fail_msg: "kubespray resolves the overlay differently than the wrapper expects on {{ inventory_hostname }}"
+        quiet: true
+
+    - name: Contract | become per host (sudo.ws only where the probe said SUDOWS)
+      ansible.builtin.assert:
+        that:
+          - (ansible_become_exe | default('sudo')) == ('/usr/bin/sudo.ws' if (_sl_sudo_probe.stdout == 'SUDOWS') else 'sudo')
+          - (_sl_sudo_probe.stdout != 'SUDOWS') or (ansible_become_password == 'fixture-pass')
+        quiet: true

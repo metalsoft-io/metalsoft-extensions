@@ -1,0 +1,148 @@
+---
+# kubernetes-kubespray — onEdit preDeploy.
+#
+# Runs before the platform adds or removes servers. Every guard of the whole edit runs here
+# (including the postDeploy preconditions), so an illegal edit is refused before any server is
+# touched. Then removals happen while the leaving servers still exist: workers (cordon, bounded
+# drain, kubespray remove_node.yml) or control-plane nodes (kube-vip moved, drain, etcd member
+# removal, survivors refreshed). Scale-out servers are not provisioned yet and are never probed.
+
+- name: K8s | banner and static preflight
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: pre
+  roles:
+    - role: globals
+  tasks:
+    - name: Banner | bundle version
+      ansible.builtin.debug:
+        msg: >-
+          kubernetes-kubespray bundle v{{ k8s_ext_version }} (kubespray {{ k8s_kubespray_tag }}, EE {{ k8s_ee_tag }})
+          stage=pre cp={{ k8s_cp_hosts | length }} workers={{ k8s_worker_hosts | length }}
+          cp_in={{ k8s_cp_scale_in | join(',') or '-' }} w_in={{ k8s_worker_scale_in | join(',') or '-' }}
+          cp_out={{ k8s_cp_scale_out | join(',') or '-' }} w_out={{ k8s_worker_scale_out | join(',') or '-' }}
+
+    - name: Preflight | EE, inputs, site config, allocations
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: preflight-static.yaml
+
+- name: K8s | probe reachability and become (servers being added are skipped)
+  hosts: k8scp:k8sworker:k8scp_scale_in:k8sworker_scale_in
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: pre
+  roles:
+    - role: globals
+  tasks:
+    - name: Probe | reachability, sudo
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: probe.yaml
+
+- name: K8s | node identity and state copies
+  hosts: k8s_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Identity | read
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: read-identity.yaml
+
+- name: K8s | merge state, pick the anchor (never a leaving node)
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: pre
+  roles:
+    - role: globals
+  tasks:
+    - name: State | merge
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: merge.yaml
+
+- name: K8s | API and etcd snapshot
+  hosts: k8s_anchor
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: API | snapshot
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: apisnap.yaml
+      when: k8s_node_ident.admin_conf | default(false)
+
+- name: K8s | plan, guards and removals
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: pre
+  roles:
+    - role: globals
+  tasks:
+    - name: Plan | compute and refuse illegal edits (whole edit)
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: plan.yaml
+
+    - name: Plan | anchor after the action
+      ansible.builtin.set_fact:
+        k8s_anchor_after: "{{ k8s_anchor }}"
+
+    - name: Removal | workers
+      ansible.builtin.include_role:
+        name: ops
+        tasks_from: worker-scale-in.yaml
+      when: k8s_plan.action == 'worker-scale-in'
+
+    - name: Removal | control-plane nodes
+      ansible.builtin.include_role:
+        name: ops
+        tasks_from: cp-scale-in.yaml
+      when: k8s_plan.action == 'cp-scale-in'
+
+    - name: Outputs | anything published yet?
+      ansible.builtin.set_fact:
+        k8s_emit_outputs: "{{ (k8s_state.phase | default('')) == 'ready' and k8s_anchor | length > 0 }}"
+
+    - name: Outputs | nothing to publish before the first successful create
+      ansible.builtin.debug:
+        msg: "The cluster has not finished its first deployment; no outputs to re-publish."
+      when: not k8s_emit_outputs
+
+- name: K8s | collect outputs
+  hosts: k8s_anchor
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | collect
+      ansible.builtin.include_role:
+        name: outputs
+        tasks_from: collect.yaml
+      when: hostvars['localhost'].k8s_emit_outputs | bool
+
+- name: K8s | publish outputs
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | emit
+      ansible.builtin.include_role:
+        name: outputs
+        tasks_from: emit.yaml
+      when: k8s_emit_outputs | bool

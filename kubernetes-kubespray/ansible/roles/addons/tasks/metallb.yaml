@@ -1,0 +1,93 @@
+---
+# MetalLB v0.16.1 (upstream native manifest, vendored and sha256-checked; images pinned by digest)
+# on the anchor CP (become). L2 pool = every lb-pool range allocated to this instance. Idempotent:
+# re-applied on every converge/create; skipped when metallb_enabled is false (never uninstalled).
+- name: MetalLB | directory
+  ansible.builtin.file:
+    path: "{{ k8s_state_dir }}/addons/metallb"
+    state: directory
+    mode: "0700"
+
+- name: MetalLB | files
+  ansible.builtin.copy:
+    src: "metallb/{{ item }}"
+    dest: "{{ k8s_state_dir }}/addons/metallb/{{ item }}"
+    mode: "0600"
+  loop: [metallb-native-v0.16.1.yaml, SHA256SUMS]
+
+- name: MetalLB | kustomization (images by digest)
+  ansible.builtin.copy:
+    dest: "{{ k8s_state_dir }}/addons/metallb/kustomization.yaml"
+    mode: "0600"
+    content: |
+      resources: [metallb-native-v0.16.1.yaml]
+      images:
+        - name: quay.io/metallb/controller
+          digest: sha256:f51ab515de9ccd20dc3dccb093e48df8adddac019326c456f449e55ba91b6420
+        - name: quay.io/metallb/speaker
+          digest: sha256:16561e96531e1852d5c229ad7fae6e994dcfa983ff7f4de6b6208b34a4e2ddbc
+
+- name: MetalLB | verify the vendored manifest
+  ansible.builtin.command: sha256sum -c SHA256SUMS
+  args:
+    chdir: "{{ k8s_state_dir }}/addons/metallb"
+  changed_when: false
+
+- name: MetalLB | apply
+  ansible.builtin.command: >-
+    {{ k8s_kubectl }} apply --server-side --force-conflicts -k {{ k8s_state_dir }}/addons/metallb/
+  register: _k8s_mlb_apply
+  changed_when: "'serverside-applied' in _k8s_mlb_apply.stdout"
+  retries: 3
+  delay: 10
+  until: _k8s_mlb_apply is succeeded
+
+- name: MetalLB | controller ready
+  ansible.builtin.command: "{{ k8s_kubectl }} -n metallb-system rollout status deployment/controller --timeout=300s"
+  changed_when: false
+
+- name: MetalLB | speakers (warning only, an unreachable worker must not block)
+  ansible.builtin.command: "{{ k8s_kubectl }} -n metallb-system rollout status daemonset/speaker --timeout=600s"
+  register: _k8s_mlb_speaker
+  changed_when: false
+  failed_when: false
+
+- name: MetalLB | speaker warning
+  ansible.builtin.debug:
+    msg: "WARNING: MetalLB speakers not all ready: {{ _k8s_mlb_speaker.stderr | default('') | trim }}"
+  when: _k8s_mlb_speaker.rc != 0
+
+- name: MetalLB | address pool + L2 advertisement
+  ansible.builtin.copy:
+    dest: "{{ k8s_state_dir }}/addons/metallb/pool.yaml"
+    mode: "0600"
+    content: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: metalsoft-lb
+        namespace: metallb-system
+        labels: {app.kubernetes.io/managed-by: metalsoft-kubernetes-kubespray}
+      spec:
+        autoAssign: true
+        addresses:
+      {% for r in hostvars['localhost'].k8s_effective_lb_ranges %}
+          - {{ r.start }}-{{ r.end }}
+      {% endfor %}
+      ---
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: metalsoft-lb
+        namespace: metallb-system
+        labels: {app.kubernetes.io/managed-by: metalsoft-kubernetes-kubespray}
+      spec:
+        ipAddressPools: [metalsoft-lb]
+
+- name: MetalLB | apply pool (webhook may need a moment)
+  ansible.builtin.command: "{{ k8s_kubectl }} apply --server-side --force-conflicts -f {{ k8s_state_dir }}/addons/metallb/pool.yaml"
+  register: _k8s_mlb_pool
+  retries: 30
+  delay: 10
+  until: _k8s_mlb_pool is succeeded
+  changed_when: "'serverside-applied' in _k8s_mlb_pool.stdout"

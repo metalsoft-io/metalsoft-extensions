@@ -1,0 +1,23 @@
+---
+# etcd snapshot on the anchor (localhost orchestrates; delegated, become). Kept on-node only.
+- name: Snapshot | take
+  ansible.builtin.shell: |
+    set -eo pipefail
+    export ETCDCTL_API=3 ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 ETCDCTL_CACERT=/etc/ssl/etcd/ssl/ca.pem \
+      ETCDCTL_CERT=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor }}.pem ETCDCTL_KEY=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor }}-key.pem
+    mkdir -p {{ k8s_backup_dir }} && chmod 700 {{ k8s_backup_dir }}
+    f={{ k8s_backup_dir }}/etcd-$(date -u +%Y%m%dT%H%M%SZ)-{{ k8s_snapshot_reason }}.db
+    /usr/local/bin/etcdctl snapshot save "$f" >/dev/null
+    /usr/local/bin/etcdutl snapshot status "$f" -w json >/dev/null
+    ls -1t {{ k8s_backup_dir }}/etcd-*.db | tail -n +{{ k8s_backup_retention + 1 }} | xargs -r rm -f
+    echo "$f"
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  register: _k8s_snap
+  changed_when: true
+
+- name: Snapshot | record
+  ansible.builtin.set_fact:
+    k8s_last_snapshot: "{{ k8s_anchor }}:{{ _k8s_snap.stdout | trim }} ({{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }})"

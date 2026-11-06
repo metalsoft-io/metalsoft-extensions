@@ -1,0 +1,228 @@
+---
+# control-plane scale-in 5→3 / 3→1 (localhost, preDeploy). Never leave this task with an even
+# number of voting etcd members:
+#   A. no membership change: quorum check, snapshot, kube-vip moved off every leaver, leavers drained
+#   B. `etcdctl member remove` from the anchor, back-to-back, unreachable leavers first
+#   C. Node objects deleted, leavers quiesced, survivors refreshed (same-version
+#      upgrade_cluster.yml limited to the CPs: --etcd-servers, etcd.env, kubeadm-config)
+# The anchor is a survivor (merge picks the first reachable initialised CP of the order, and the
+# planner refuses unreachable survivors).
+- name: CP scale-in | members leaving, unreachable first
+  ansible.builtin.set_fact:
+    _k8s_cp_leavers: >-
+      {{ (k8s_plan.cp_leaving | reject('in', k8s_up_hosts) | list) + (k8s_plan.cp_vanished)
+         + (k8s_plan.cp_leaving | select('in', k8s_up_hosts) | list) }}
+    _k8s_cp_survivors: "{{ k8s_plan.cp_order_after }}"
+    _k8s_etcd_env: >-
+      ETCDCTL_API=3 ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 ETCDCTL_CACERT=/etc/ssl/etcd/ssl/ca.pem
+      ETCDCTL_CERT=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor }}.pem ETCDCTL_KEY=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor }}-key.pem
+
+- name: CP scale-in | anchor must be a survivor
+  ansible.builtin.assert:
+    that: k8s_anchor in _k8s_cp_survivors
+    fail_msg: "E-K8S-020: no reachable surviving control-plane node to run the removal from."
+    quiet: true
+
+- name: CP scale-in | etcd quorum now (all survivors healthy)
+  ansible.builtin.shell: |
+    export {{ _k8s_etcd_env }}
+    /usr/local/bin/etcdctl endpoint health --cluster -w json 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  register: _k8s_health
+  changed_when: false
+
+- name: CP scale-in | survivors healthy
+  vars:
+    _h: "{{ _k8s_health.stdout | default('[]', true) | from_json }}"
+    _surv_ips: "{{ _k8s_cp_survivors | map('extract', hostvars, 'ansible_host') | list }}"
+  ansible.builtin.assert:
+    that:
+      - _h | selectattr('health') | list | length >= ((_h | length) // 2 + 1)
+      # a bare `that:` expression unescapes '\1' to \x01: back-references need '\\1' here (not in {{ }})
+      - _surv_ips | reject('in', _h | selectattr('health') | map(attribute='endpoint') | map('regex_replace', '^https://([^:]+):.*$', '\\1') | list) | list | length == 0
+    fail_msg: >-
+      E-K8S-019/020: etcd is not healthy enough to remove members
+      ({{ _h | selectattr('health') | list | length }}/{{ _h | length }} healthy; survivors must all be healthy).
+    quiet: true
+
+- name: CP scale-in | etcd snapshot
+  ansible.builtin.include_tasks: etcd-snapshot.yaml
+  vars:
+    k8s_snapshot_reason: cp-scale-in
+
+- name: CP scale-in | record intent
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation:
+        kind: cp-scale-in
+        leavers: "{{ _k8s_cp_leavers }}"
+        removed: "{{ k8s_state.operation.removed | default([]) if (k8s_state.operation.kind | default('')) == 'cp-scale-in' else [] }}"
+      etcd_last_snapshot: "{{ k8s_last_snapshot }}"
+
+# ---- A: kube-vip off every reachable leaver (lease moves to a survivor), drain leavers
+- name: CP scale-in | stop kube-vip on reachable leavers
+  ansible.builtin.shell: |
+    mkdir -p {{ k8s_state_dir }}/removed-manifests
+    [ -f /etc/kubernetes/manifests/kube-vip.yml ] && mv /etc/kubernetes/manifests/kube-vip.yml {{ k8s_state_dir }}/removed-manifests/ || true
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ item }}"
+  become: true
+  loop: "{{ k8s_plan.cp_leaving | select('in', k8s_up_hosts) | list }}"
+  changed_when: true
+
+- name: CP scale-in | VIP lease held by a survivor and API answers on the VIP
+  ansible.builtin.shell: |
+    h=$({{ k8s_kubectl }} -n kube-system get lease plndr-cp-lock -o jsonpath='{.spec.holderIdentity}' 2>/dev/null)
+    code=$(curl -sk -o /dev/null -w '%{http_code}' https://{{ k8s_vip }}:6443/readyz)
+    echo "$h $code"
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  register: _k8s_vip_holder
+  until: >-
+    (_k8s_vip_holder.stdout.split() | first | default('')) in _k8s_cp_survivors
+    and (_k8s_vip_holder.stdout.split() | last | default('')) in ['200', '401', '403']
+  retries: 45
+  delay: 2
+  changed_when: false
+
+- name: CP scale-in | unreachable leavers (no drain; out-of-service taint, pods cleared)
+  ansible.builtin.include_tasks: dead-node-pods.yaml
+  vars:
+    _k8s_dead_nodes: "{{ k8s_plan.cp_leaving | select('in', k8s_registered_cps) | reject('in', k8s_up_hosts) | list }}"
+
+- name: CP scale-in | cordon + drain reachable leaving control-plane nodes
+  ansible.builtin.shell: |
+    {{ k8s_kubectl }} cordon {{ item | quote }} >/dev/null 2>&1 || true
+    {{ k8s_kubectl }} drain {{ item | quote }} --ignore-daemonsets --delete-emptydir-data --force \
+      --grace-period=-1 --timeout={{ k8s_drain_timeout_min * 60 }}s{{ ' --disable-eviction' if k8s_drain_policy == 'force-after-timeout' else '' }}
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ k8s_plan.cp_leaving | select('in', k8s_registered_cps) | select('in', k8s_up_hosts) | list }}"
+  register: _k8s_cp_drain
+  changed_when: true
+  failed_when: false
+
+- name: CP scale-in | drain must succeed under respect-pdb (nothing removed yet)
+  ansible.builtin.assert:
+    that: >-
+      k8s_drain_policy == 'force-after-timeout'
+      or (_k8s_cp_drain.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'equalto', 0) | list | length == 0)
+    fail_msg: >-
+      E-K8S-028: draining leaving control-plane node(s)
+      {{ _k8s_cp_drain.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'equalto', 0) | map(attribute='item') | join(', ') }} failed.
+      No etcd member was removed. Fix the blocking pods or use drain_policy=force-after-timeout and retry.
+    quiet: true
+
+# ---- B: membership changes back-to-back from the anchor
+- name: CP scale-in | remove etcd members (unreachable first; idempotent)
+  ansible.builtin.shell: |
+    set -o pipefail
+    export {{ _k8s_etcd_env }}
+    # match by peer IP (member names are not trusted to be unique); by name only for a leaver
+    # that has no IP any more, and only when exactly one member carries that name
+    id=$(/usr/local/bin/etcdctl member list -w json | python3 -c 'import json,re,sys
+    d=json.load(sys.stdin); ip, n = sys.argv[1], sys.argv[2]
+    host = lambda u: re.sub(r"^https?://\[?([^\]/]+?)\]?:\d+$", r"\1", u)
+    ms = d.get("members", [])
+    hit = [m for m in ms if ip and ip in [host(u) for u in m.get("peerURLs", [])]] if ip else \
+          [m for m in ms if m.get("name") == n]
+    print("AMBIGUOUS" if len(hit) > 1 else ("%x" % hit[0]["ID"] if hit else ""))' \
+      {{ (hostvars[item] | default({})).ansible_host | default('') | quote }} {{ k8s_etcd_member_names[item] | default('') | quote }})
+    if [ "$id" = AMBIGUOUS ]; then echo "E-K8S-021: several etcd members match {{ item }}; remove it by hand" >&2; exit 1; fi
+    if [ -z "$id" ]; then echo "already-removed"; exit 0; fi
+    for i in 1 2 3 4 5 6; do
+      /usr/local/bin/etcdctl member remove "$id" && { echo removed; exit 0; }
+      sleep $((i * 5))
+    done
+    exit 1
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_cp_leavers }}"
+  register: _k8s_member_rm
+  changed_when: "'removed' == _k8s_member_rm.stdout | trim"
+
+- name: CP scale-in | record removed members
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: "{{ k8s_state.operation | combine({'removed': _k8s_cp_leavers}) }}"
+      control_plane: >-
+        {{ k8s_state.control_plane | combine({'order': _k8s_cp_survivors + (_k8s_cp_leavers | reject('in', k8s_plan.cp_vanished) | list)}) }}
+
+# ---- C: Nodes, quiesce, refresh survivors
+- name: CP scale-in | delete Node objects
+  ansible.builtin.command: "{{ k8s_kubectl }} delete node {{ item | quote }} --ignore-not-found --wait=false"
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_cp_leavers }}"
+  changed_when: true
+
+- name: CP scale-in | quiesce leavers
+  ansible.builtin.include_tasks: quiesce.yaml
+  loop: "{{ k8s_plan.cp_leaving | select('in', k8s_up_hosts) | list }}"
+  loop_control:
+    loop_var: _k8s_quiesce_host
+
+- name: CP scale-in | run hosts (survivors only)
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ _k8s_cp_survivors }}"
+    k8s_run_workers: "{{ k8s_registered_workers | select('in', k8s_up_hosts) | list }}"
+    k8s_run_hostvars: {}
+
+- name: CP scale-in | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: CP scale-in | facts
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "60-facts"
+    ks_playbook: playbooks/facts.yml
+    ks_vars: {kube_version: "{{ k8s_state.kube_version }}"}
+    ks_budget_s: 1800
+    ks_allow_fail: true
+
+- name: CP scale-in | refresh survivors (same version, no drain)
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "61-cp-refresh"
+    ks_playbook: upgrade_cluster.yml
+    ks_limit: "etcd:kube_control_plane"
+    ks_vars:
+      kube_version: "{{ k8s_state.kube_version }}"
+      drain_nodes: false
+      etcd_retries: 10
+      control_plane_node_become_ready_tries: 72
+    ks_budget_s: 7200
+
+- name: CP scale-in | record
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: {}
+      control_plane: >-
+        {{ k8s_state.control_plane | combine({'order': _k8s_cp_survivors,
+           'members': k8s_state.control_plane.members | default({}) | dict2items | selectattr('key', 'in', _k8s_cp_survivors) | items2dict,
+           'etcd_member_names': k8s_state.control_plane.etcd_member_names | default({}) | dict2items | selectattr('key', 'in', _k8s_cp_survivors) | items2dict}) }}

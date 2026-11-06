@@ -1,0 +1,166 @@
+---
+# worker scale-in (localhost, preDeploy — the leaving servers still exist):
+# cordon ALL leavers first, bounded drains in parallel (PDB-aware), then kubespray remove_node.yml
+# with reset_nodes=false (leavers are never reset over SSH; the platform wipes them), then quiesce.
+- name: Scale-in | leavers registered in the API
+  ansible.builtin.set_fact:
+    _k8s_leavers_reg: "{{ k8s_plan.w_leaving | select('in', k8s_registered_workers) | list }}"
+    # only reachable leavers are drained; a dead kubelet never confirms pod exit (dead-node-pods.yaml)
+    _k8s_leavers_drain: "{{ k8s_plan.w_leaving | select('in', k8s_registered_workers) | select('in', k8s_up_hosts) | list }}"
+    _k8s_drain_s: "{{ k8s_drain_timeout_min * 60 }}"
+
+- name: Scale-in | record intent
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: {kind: worker-scale-in, leavers: "{{ k8s_plan.w_leaving }}"}
+
+- name: Scale-in | cordon every leaver before any drain
+  ansible.builtin.shell: |
+    {% for n in _k8s_leavers_reg %}
+    {{ k8s_kubectl }} label node {{ n | quote }} metalsoft.io/leaving=true --overwrite >/dev/null
+    {{ k8s_kubectl }} cordon {{ n | quote }}
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  changed_when: true
+  when: _k8s_leavers_reg | length > 0
+
+- name: Scale-in | unreachable leavers (no drain; out-of-service taint, pods cleared)
+  ansible.builtin.include_tasks: dead-node-pods.yaml
+  vars:
+    _k8s_dead_nodes: "{{ _k8s_leavers_reg | reject('in', k8s_up_hosts) | list }}"
+
+- name: Scale-in | drain (bounded, respects PodDisruptionBudgets)
+  ansible.builtin.command: >-
+    {{ k8s_kubectl }} drain {{ item | quote }} --ignore-daemonsets --delete-emptydir-data --force
+    --grace-period=-1 --timeout={{ _k8s_drain_s }}s
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_leavers_drain }}"
+  async: "{{ _k8s_drain_s | int + 300 }}"
+  poll: 0
+  register: _k8s_drain_jobs
+  changed_when: true
+
+- name: Scale-in | wait for drains
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_drain_jobs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: _k8s_drains
+  until: _k8s_drains.finished | default(0) | int == 1
+  retries: "{{ ((_k8s_drain_s | int + 300) / 15) | int }}"
+  delay: 15
+  failed_when: false
+
+- name: Scale-in | drain failures
+  ansible.builtin.set_fact:
+    # a drain that did not finish has no rc: count it as failed
+    _k8s_drain_failed: >-
+      {{ (_k8s_drains.results | default([]) | rejectattr('rc', 'defined') | map(attribute='item') | map(attribute='item') | list)
+         + (_k8s_drains.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'equalto', 0)
+            | map(attribute='item') | map(attribute='item') | list) }}
+
+- name: Scale-in | pods still blocking (diagnostics)
+  ansible.builtin.shell: >-
+    {{ k8s_kubectl }} get pods -A --field-selector spec.nodeName={{ item | quote }} -o wide 2>&1 | head -30;
+    {{ k8s_kubectl }} get pdb -A 2>&1 | awk 'NR==1 || $5=="0"' | head -20
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_drain_failed }}"
+  register: _k8s_drain_diag
+  changed_when: false
+  failed_when: false
+
+- name: Scale-in | respect-pdb → stop, nothing removed
+  ansible.builtin.fail:
+    msg: >-
+      E-K8S-028: drain of {{ _k8s_drain_failed | join(', ') }} did not finish within {{ k8s_drain_timeout_min }} min
+      (PodDisruptionBudgets or slow pods; see the pod/PDB lists above). No server was removed; the
+      nodes stay cordoned. Fix the blocking workloads, raise drain_timeout_minutes, or set
+      drain_policy=force-after-timeout, then retry.
+  when:
+    - _k8s_drain_failed | length > 0
+    - k8s_drain_policy == 'respect-pdb'
+
+- name: Scale-in | force-after-timeout → delete remaining pods without eviction
+  ansible.builtin.command: >-
+    {{ k8s_kubectl }} drain {{ item | quote }} --ignore-daemonsets --delete-emptydir-data --force
+    --disable-eviction --grace-period=30 --timeout=600s
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  loop: "{{ _k8s_drain_failed }}"
+  changed_when: true
+  when: k8s_drain_policy == 'force-after-timeout'
+
+- name: Scale-in | run hosts (leavers stay in kube_node for their own removal)
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_state.control_plane.order }}"
+    k8s_run_workers: "{{ _k8s_leavers_reg }}"
+    # unreachable leavers: no drain wait on a dead kubelet, no graceful VolumeAttachment wait
+    k8s_run_hostvars: >-
+      {{ dict(_k8s_leavers_reg | reject('in', k8s_up_hosts)
+         | product([{'allow_ungraceful_removal': true, 'drain_timeout': '60s'}])) }}
+  when: _k8s_leavers_reg | length > 0
+
+- name: Scale-in | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+  when: _k8s_leavers_reg | length > 0
+
+- name: Scale-in | remove_node.yml (Node objects deleted; leavers not reset)
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "50-remove-workers"
+    ks_playbook: remove_node.yml
+    ks_vars:
+      kube_version: "{{ k8s_state.kube_version }}"
+      node: "{{ _k8s_leavers_reg | join(',') }}"
+      skip_confirmation: true
+      reset_nodes: false
+      drain_grace_period: 300
+      drain_timeout: "{{ _k8s_drain_s }}s"
+      drain_retries: 0
+    ks_budget_s: 3600
+  when: _k8s_leavers_reg | length > 0
+
+- name: Scale-in | quiesce leavers (kubelet cannot re-register the Node)
+  ansible.builtin.include_tasks: quiesce.yaml
+  loop: "{{ k8s_plan.w_leaving | select('in', k8s_up_hosts) | list }}"
+  loop_control:
+    loop_var: _k8s_quiesce_host
+
+- name: Scale-in | Nodes gone (delete again if a kubelet re-registered)
+  ansible.builtin.shell: |
+    for n in {{ _k8s_leavers_reg | map('quote') | join(' ') }}; do
+      {{ k8s_kubectl }} delete node "$n" --ignore-not-found --wait=false >/dev/null && echo "ok $n"
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  changed_when: false
+  when: _k8s_leavers_reg | length > 0
+
+- name: Scale-in | record
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      workers: "{{ k8s_registered_workers | reject('in', k8s_plan.w_leaving) | list }}"
+      pending: {workers: "{{ k8s_state.pending.workers | default([]) | reject('in', k8s_plan.w_leaving) | list }}"}
+      operation: {}

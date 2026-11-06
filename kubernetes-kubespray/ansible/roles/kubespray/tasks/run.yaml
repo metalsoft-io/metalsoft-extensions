@@ -1,0 +1,68 @@
+---
+# One nested kubespray run (localhost): extra-vars file → ks-run.sh (async) → watch cycles →
+# summary → fail on rc != 0. The overlay (overlay.yaml) must be rendered first.
+#
+# Caller vars: ks_label (unique per task), ks_playbook (path relative to the kubespray tree),
+#              ks_vars (dict; kube_version is ALWAYS passed explicitly), ks_limit (optional),
+#              ks_budget_s (soft budget: a warning only; the hard ceiling is the task timeout)
+- name: "Kubespray {{ ks_label }} | extra-vars (real JSON booleans for ansible-core 2.19)"
+  ansible.builtin.copy:
+    dest: "{{ k8s_ks_dir }}/run-{{ ks_label }}.json"
+    content: "{{ ks_vars | to_json }}"
+    mode: "0600"
+
+- name: "Kubespray {{ ks_label }} | start {{ ks_playbook }}{{ ' --limit ' ~ ks_limit if ks_limit | default('') else '' }}"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['/bin/bash', role_path ~ '/files/ks-run.sh', k8s_ks_dir, ks_label, ks_playbook]
+         + (['--limit', ks_limit] if ks_limit | default('') else []) }}
+  environment:
+    KS_FORKS: "{{ k8s_forks }}"
+  async: "{{ [k8s_task_timeout_s | int - 900, 1800] | max }}"
+  poll: 0
+  register: _k8s_ks_job
+  changed_when: true
+
+- name: "Kubespray {{ ks_label }} | watch until it ends"
+  ansible.builtin.include_tasks: watch.yaml
+
+- name: "Kubespray {{ ks_label }} | result code"
+  ansible.builtin.slurp:
+    src: "{{ k8s_ks_dir }}/logs/{{ ks_label }}.rc"
+  register: _k8s_ks_rc_file
+  failed_when: false
+
+- name: "Kubespray {{ ks_label }} | summarise"
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/files/ks-summary.py"
+      - "{{ k8s_ks_dir }}/logs/{{ ks_label }}.log"
+      - "{{ (_k8s_ks_rc_file.content | default('OTk5') | b64decode | trim) or '999' }}"
+  register: _k8s_ks_summary
+  changed_when: false
+
+- name: "Kubespray {{ ks_label }} | summary"
+  ansible.builtin.debug:
+    msg: "{{ _k8s_ks_summary.stdout_lines }}"
+
+- name: "Kubespray {{ ks_label }} | duration vs budget"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ ks_label }} took {{ (now(utc=true).timestamp() | int) - (_k8s_ks_started | int) }}s,
+      over its {{ ks_budget_s }}s budget.
+  when: ((now(utc=true).timestamp() | int) - (_k8s_ks_started | int)) > (ks_budget_s | default(999999) | int)
+
+- name: "Kubespray {{ ks_label }} | result"
+  ansible.builtin.set_fact:
+    k8s_ks_last_ok: "{{ (_k8s_ks_summary.stdout_lines | first | default('')) is match('class=ok') }}"
+
+- name: "Kubespray {{ ks_label }} | must succeed"
+  when: not (ks_allow_fail | default(false) | bool)
+  ansible.builtin.assert:
+    that:
+      - (_k8s_ks_summary.stdout_lines | first | default('')) is match('class=ok')
+    fail_msg: >-
+      kubespray {{ ks_playbook }} failed ({{ _k8s_ks_summary.stdout_lines | first | default('no result') }}).
+      See the RECAP/FATAL lines above. A retry of this task resumes from the recorded state.
+    quiet: true

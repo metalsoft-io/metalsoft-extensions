@@ -1,0 +1,77 @@
+---
+# In-EE runner test (no SSH): the production overlay + run.yaml + watch-cycle.yaml + ks-summary.py
+# drive kubespray's offline playbooks/boilerplate.yml (version gate, validate_inventory).
+#   case ok   : 3 CP + 2 workers  -> class=ok
+#   case fail : 2 CP (even etcd)  -> class=failed, summary names the assert, ks_allow_fail keeps going
+# Run inside the EE from a writable copy of the bundle (see tests/contract/run-runner.sh).
+- name: Runner | nested kubespray through the production roles
+  hosts: localhost
+  gather_facts: false
+  vars:
+    k8s_stage: post
+    k8s_task_timeout_s: 2700
+    k8s_ks_dir: /tmp/k8s-ks-runner
+    k8s_up_hosts: "{{ groups['k8scp'] + groups['k8sworker'] }}"
+    k8s_cluster_id: k8s-runner0001
+    k8s_effective_create_only: "{{ k8s_create_only }}"
+    k8s_effective_site: {dns: [], renew: true, overrides: {}, sha: x}
+    k8s_effective_addons: "{{ k8s_addons }}"
+    k8s_etcd_member_names: "{{ dict(groups['k8scp'] | zip(groups['k8scp'] | map('regex_replace', '^([^.]+).*$', 'etcd-\\1'))) }}"
+  roles:
+    - role: globals
+  tasks:
+    - name: Runner | ok case overlay
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: overlay.yaml
+      vars:
+        k8s_run_cp: "{{ groups['k8scp'] }}"
+        k8s_run_workers: "{{ groups['k8sworker'] }}"
+        k8s_run_hostvars: {}
+
+    - name: Runner | ok case run
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: run.yaml
+      vars:
+        ks_label: "01-boilerplate-ok"
+        ks_playbook: playbooks/boilerplate.yml
+        ks_vars: {kube_version: "1.36.4"}
+        ks_budget_s: 600
+
+    - name: Runner | ok case result
+      ansible.builtin.assert:
+        that: k8s_ks_last_ok | bool
+        quiet: true
+
+    - name: Runner | fail case overlay (even etcd count)
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: overlay.yaml
+      vars:
+        k8s_run_cp: "{{ groups['k8scp'][:2] }}"
+        k8s_run_workers: "{{ groups['k8sworker'] }}"
+        k8s_run_hostvars: {}
+
+    - name: Runner | fail case run
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: run.yaml
+      vars:
+        ks_label: "02-boilerplate-even"
+        ks_playbook: playbooks/boilerplate.yml
+        ks_vars: {kube_version: "1.36.4"}
+        ks_budget_s: 600
+        ks_allow_fail: true
+
+    - name: Runner | fail case classified
+      ansible.builtin.assert:
+        that:
+          - not (k8s_ks_last_ok | bool)
+          - (_k8s_ks_summary.stdout_lines | first) is match('class=failed')
+          - _k8s_ks_summary.stdout_lines | select('search', 'even number of etcd') | list | length > 0
+        quiet: true
+
+    - name: Runner | done
+      ansible.builtin.debug:
+        msg: RUNNER-SPEC-OK

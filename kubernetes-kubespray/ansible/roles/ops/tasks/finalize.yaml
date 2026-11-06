@@ -1,0 +1,46 @@
+---
+# localhost after the action, add-ons and identity: commit what is now true (W2). Re-read CA hashes
+# from CP[0] (hostvars refreshed by the post-action identity play).
+- name: Finalize | registered workers now
+  ansible.builtin.set_fact:
+    _k8s_workers_now: >-
+      {{ (k8s_registered_workers + (k8s_plan.w_joining if k8s_plan.action in
+          ['create', 'resume-create', 'converge', 'worker-scale-out', 'cp-scale-out'] else [])) | unique | list }}
+    _k8s_order_now: >-
+      {{ k8s_plan.cp_order_after if k8s_plan.action in ['create', 'resume-create', 'cp-scale-out']
+         else k8s_state.control_plane.order | default(k8s_plan.cp_order) }}
+
+- name: Finalize | commit
+  vars:
+    _cp0: "{{ _k8s_order_now[0] }}"
+    _base:
+      phase: ready
+      cluster_id: "{{ k8s_cluster_id }}"
+      kube_version: "{{ k8s_plan.kube_version }}"
+      ca_sha: "{{ hostvars[_cp0].k8s_node_ident.ca_sha | default(k8s_state.ca_sha | default('')) }}"
+      etcd_ca_sha: "{{ hostvars[_cp0].k8s_node_ident.etcd_ca_sha | default(k8s_state.etcd_ca_sha | default('')) }}"
+      workers: "{{ _k8s_workers_now }}"
+      pending:
+        workers: "{{ k8s_plan.w_excluded if k8s_plan.mode in ['create', 'resume'] else [] }}"
+        control_plane: []
+      operation: {}
+      admin_identity: "{{ hostvars[k8s_anchor_after].k8s_identity_new | default(k8s_state.admin_identity | default({})) }}"
+      admin_generation_input: "{{ k8s_admin_generation_input }}"
+      lb_ranges: "{{ k8s_effective_lb_ranges }}"
+      etcd_last_snapshot: "{{ k8s_last_snapshot | default(k8s_state.etcd_last_snapshot | default('')) }}"
+      control_plane: >-
+        {{ k8s_state.control_plane | default({}) | combine({'order': _k8s_order_now,
+           'etcd_member_names': dict(_k8s_order_now | zip(_k8s_order_now | map('extract', k8s_etcd_member_names))),
+           'members': (k8s_state.control_plane.members | default({})) | combine(_k8s_order_now | k8s_members(k8s_server_ids))
+                      | dict2items | selectattr('key', 'in', _k8s_order_now) | items2dict}) }}
+    _converged:
+      converge_generation: "{{ k8s_converge_generation }}"
+      addons: "{{ k8s_addons }}"
+      site: "{{ k8s_effective_site }}"
+      create_only: "{{ k8s_effective_create_only }}"
+      kube_version_target: null
+    k8s_state_patch: >-
+      {{ _base | combine(_converged if k8s_plan.action in ['create', 'resume-create', 'converge'] else {}) }}
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml

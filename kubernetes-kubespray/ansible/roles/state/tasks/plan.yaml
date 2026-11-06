@@ -1,0 +1,88 @@
+---
+# localhost: desired vs recorded vs actual → k8s_plan (filter_plugins/k8s_ext.py). Fails with the
+# message catalog on any refusal BEFORE anything changes. Also derives every per-run value.
+- name: Plan | API facts from the anchor
+  ansible.builtin.set_fact:
+    _k8s_api_nodes: "{{ hostvars[k8s_anchor].k8s_api_nodes | default([]) if k8s_anchor else [] }}"
+    _k8s_api_ok: "{{ hostvars[k8s_anchor].k8s_api_ok | default(false) if k8s_anchor else false }}"
+
+- name: Plan | compute
+  ansible.builtin.set_fact:
+    k8s_plan: >-
+      {{ k8s_state | k8s_plan(
+           {'cp_count': k8s_cp_count, 'worker_count': k8s_worker_count,
+            'kube_version': k8s_kube_version_input, 'create_only': k8s_create_only, 'addons': k8s_addons,
+            'converge_generation': k8s_converge_generation, 'admin_generation': k8s_admin_generation_input,
+            'offered_versions': k8s_offered_versions, 'site_config_sha': k8s_site_config_sha},
+           {'cp_hosts': k8s_cp_hosts, 'worker_hosts': k8s_worker_hosts,
+            'cp_scale_in': k8s_cp_scale_in, 'cp_scale_out': k8s_cp_scale_out,
+            'worker_scale_in': k8s_worker_scale_in, 'worker_scale_out': k8s_worker_scale_out,
+            'up_hosts': k8s_up_hosts, 'server_ids': k8s_server_ids,
+            'node_cluster_ids': k8s_view_cluster_ids, 'cp_initialised': k8s_view_initialised,
+            'api_workers': (_k8s_api_nodes | rejectattr('cp') | map(attribute='name') | list) if _k8s_api_ok else none,
+            'ready_schedulable_workers': (_k8s_api_nodes | rejectattr('cp') | selectattr('ready')
+                                          | rejectattr('unschedulable') | map(attribute='name') | list) if _k8s_api_ok else none},
+           k8s_stage) }}
+
+- name: Plan | banner
+  ansible.builtin.debug:
+    msg: >-
+      PLAN({{ k8s_stage }}) mode={{ k8s_plan.mode }} action={{ k8s_plan.action }}
+      kube_version={{ k8s_plan.kube_version }} cp_order={{ k8s_plan.cp_order | join(',') }}
+      cp_after={{ k8s_plan.cp_order_after | join(',') }}
+      cp+={{ k8s_plan.cp_joining | join(',') or '-' }} cp-={{ k8s_plan.cp_leaving | join(',') or '-' }}
+      w+={{ k8s_plan.w_joining | join(',') or '-' }} w-={{ k8s_plan.w_leaving | join(',') or '-' }}
+      converge={{ k8s_plan.converge_reasons | join(',') or '-' }}
+
+- name: Plan | warnings
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item }}"
+  loop: "{{ k8s_plan.warnings }}"
+
+- name: Plan | refused
+  ansible.builtin.fail:
+    msg: "{{ k8s_plan.errors | join(' | ') }}"
+  when: k8s_plan.errors | length > 0
+
+# Values every nested run uses. Create-only settings come from the recorded snapshot after
+# create; the site settings from the recorded copy unless this run creates or converges.
+- name: Plan | effective settings
+  vars:
+    _applies_site: "{{ k8s_plan.action in ['create', 'resume-create', 'converge'] }}"
+    _ovr: "{{ k8s_site_overrides | k8s_overrides_check(k8s_plan.mode == 'edit') }}"
+    _site_now: {dns: "{{ k8s_site_dns_servers }}", renew: "{{ k8s_auto_renew_certificates }}",
+                overrides: "{{ _ovr.vars }}", sha: "{{ k8s_site_config_sha }}"}
+  ansible.builtin.set_fact:
+    k8s_effective_create_only: "{{ k8s_state.create_only | default(k8s_create_only, true) }}"
+    k8s_effective_site: "{{ _site_now if (_applies_site | bool or not (k8s_state.site | default({}))) else k8s_state.site }}"
+    k8s_effective_addons: >-
+      {{ k8s_addons if k8s_plan.action in ['create', 'resume-create', 'converge'] else (k8s_state.addons | default(k8s_addons, true)) }}
+    k8s_task_timeout_s: >-
+      {{ 14400 if k8s_stage == 'pre' else (18000 if k8s_plan.mode in ['create', 'resume'] else 46800) }}
+
+# The platform may add another lb-pool range on later deploys (verified live: an empty redeploy allocated a
+# second range for the same instance). The MetalLB pool stays on the range(s) recorded at create
+# (still allocated), so it never grows or moves by itself; first range at create.
+- name: Plan | LoadBalancer ranges
+  vars:
+    _rec: "{{ k8s_state.lb_ranges | default([]) }}"
+    _still: "{{ _rec | selectattr('start', 'in', k8s_lb_ranges | map(attribute='start') | list) | list }}"
+  ansible.builtin.set_fact:
+    k8s_effective_lb_ranges: "{{ _still if _still else (k8s_lb_ranges[:1]) }}"
+
+- name: Plan | registered nodes (API; recorded list when the API is down)
+  ansible.builtin.set_fact:
+    k8s_registered_workers: >-
+      {{ (_k8s_api_nodes | rejectattr('cp') | map(attribute='name') | list) if _k8s_api_ok
+         else (k8s_state.workers | default([])) }}
+    k8s_registered_cps: >-
+      {{ (_k8s_api_nodes | selectattr('cp') | map(attribute='name') | list) if _k8s_api_ok
+         else (k8s_state.control_plane.order | default([])) }}
+
+- name: Plan | etcd member names (recorded; new members get etcd-<short name>)
+  ansible.builtin.set_fact:
+    k8s_etcd_member_names: >-
+      {{ dict(k8s_plan.cp_order_after | union(k8s_plan.cp_order)
+              | zip(k8s_plan.cp_order_after | union(k8s_plan.cp_order)
+                    | map('regex_replace', '^([^.]+).*$', 'etcd-\1')))
+         | combine(k8s_state.control_plane.etcd_member_names | default({})) }}

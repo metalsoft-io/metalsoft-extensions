@@ -1,0 +1,12 @@
+---
+# Ten watch cycles of a nested kubespray run; skipped as a whole once the run has ended.
+- name: "Kubespray {{ ks_label }} | block {{ _k8s_ks_b }}"
+  when: not (_k8s_ks_done | bool)
+  block:
+    - name: "Kubespray {{ ks_label }} | watch cycles"
+      ansible.builtin.include_tasks: watch-cycle.yaml
+      loop: "{{ range(0, 10) | list }}"
+      loop_control:
+        loop_var: _k8s_ks_i
+        label: "{{ _k8s_ks_b | int * 10 + _k8s_ks_i | int }}"
+      # stops early through the block-level `when` inside watch-cycle.yaml

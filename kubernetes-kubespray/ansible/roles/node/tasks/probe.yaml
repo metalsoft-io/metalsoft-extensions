@@ -1,0 +1,28 @@
+---
+# Reachability + privilege escalation. At onEdit preDeploy, scale-out servers are not provisioned
+# yet: they are skipped (never probed, never in k8s_up).
+- name: Probe | not provisioned yet?
+  ansible.builtin.set_fact:
+    _k8s_not_provisioned: >-
+      {{ (k8s_stage | default('post')) == 'pre' and inventory_hostname in (k8s_cp_scale_out + k8s_worker_scale_out) }}
+
+- name: Probe | wait for SSH
+  ansible.builtin.wait_for_connection:
+    timeout: 300
+  register: _k8s_conn
+  ignore_errors: true
+  ignore_unreachable: true
+  when: not (_k8s_not_provisioned | bool)
+
+- name: Probe | group reachable hosts
+  ansible.builtin.group_by:
+    key: k8s_up
+  changed_when: false
+  when:
+    - not (_k8s_not_provisioned | bool)
+    - not (_k8s_conn.failed | default(false))
+    - not (_k8s_conn.unreachable | default(false))
+
+- name: Probe | privilege escalation (sudo-rs aware)
+  ansible.builtin.include_tasks: become-probe.yaml
+  when: inventory_hostname in groups.get('k8s_up', [])

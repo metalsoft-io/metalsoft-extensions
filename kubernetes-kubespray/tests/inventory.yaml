@@ -1,0 +1,20 @@
+# Static stand-in for the platform inventory (render tests + in-EE contract check).
+# Host facts that production collects at runtime are host vars here.
+all:
+  hosts:
+    localhost: {ansible_connection: local, ansible_python_interpreter: "{{ ansible_playbook_python }}"}
+  children:
+    k8scp:
+      hosts:
+        instance-101.site1.example.com: {ansible_host: 10.20.30.101, ansible_user: ubuntu, ansible_password: fixture-pass,
+                                         k8s_default_if: eno1, _sl_sudo_probe: {stdout: NOPASSWD}}
+        instance-102: {ansible_host: 10.20.30.102, ansible_user: ubuntu, ansible_password: fixture-pass,
+                       k8s_default_if: eno1, _sl_sudo_probe: {stdout: SUDOWS}}
+        instance-103: {ansible_host: 10.20.30.103, ansible_user: ubuntu, ansible_password: fixture-pass,
+                       k8s_default_if: eno1, _sl_sudo_probe: {stdout: NOPASSWD}}
+    k8sworker:
+      hosts:
+        instance-201: {ansible_host: 10.20.30.201, ansible_user: ubuntu, ansible_password: fixture-pass,
+                       _sl_sudo_probe: {stdout: NOPASSWD}}
+        instance-202: {ansible_host: 10.20.30.202, ansible_user: ubuntu, ansible_password: fixture-pass,
+                       _sl_sudo_probe: {stdout: SUDOWS}}

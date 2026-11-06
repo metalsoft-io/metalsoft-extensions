@@ -1,0 +1,123 @@
+---
+# ee-kubernetes-kubespray — execution environment for the MetalSoft Kubernetes (kubespray)
+# extension. Build/publish: see README.md "Execution environment image". The image must be
+# linux/amd64 (build on the x86-64-v3 build host; arm64 emulation fails on UBI10); treat
+# tags as immutable (bump tagRegistry AND the tarball name on every rebuild).
+#
+# Tag scheme: ks<kubespray tag>-b<build>, e.g. ks2.32.0-b1 — independent of the extension
+# version, so wrapper-only releases reuse the image.
+#
+# Two Ansible installs that never mix:
+#   wrapper  : system python3.13 + ansible-core 2.21.5 + ansible-runner (runs the bundle;
+#              core >= 2.20 is needed for the Ubuntu 26.04 / Python 3.14 nodes)
+#   kubespray: /opt/kubespray/venv from the pinned tag's requirements.txt (ansible 12.3.0,
+#              ansible-core 2.19.x — kubespray hard-gates 2.19.0 <= core < 2.20.0), tree at
+#              /opt/kubespray/src, run nested by roles/kubespray (env -i, own ansible.cfg).
+#
+# Patches (ee/patches, applied to the tag at build time and listed in BUILDINFO.json):
+#   0001  kubernetes-sigs/kubespray#13580 — static pods set priorityClassName again, so the
+#         kube-vip mirror pod is admitted (regression #13573 in v2.32.0). Drop when the pin
+#         moves to a tag that contains it (v2.32.1+).
+version: 3
+images:
+  base_image:
+    name: redhat/ubi10-minimal:10.1
+
+dependencies:
+  ansible_core:
+    package_pip: ansible-core==2.21.5
+  ansible_runner:
+    package_pip: ansible-runner==2.4.3
+  python:
+    - netaddr==1.3.0
+  galaxy:
+    collections:
+      - name: ansible.utils
+        version: "6.1.1"
+  system:
+    - shadow-utils [platform:rpm]
+    - openssh-clients [platform:rpm]
+    - python3.13 [platform:rpm]
+    - python3.13-pip-wheel [platform:rpm]
+    - curl [platform:rpm]
+    - tar [platform:rpm]
+    - gzip [platform:rpm]
+    - patch [platform:rpm]
+    - findutils [platform:rpm]
+    - procps-ng [platform:rpm]
+    - python3.13-devel [platform:rpm compile]
+    - gcc [platform:rpm compile]
+    - make [platform:rpm compile]
+    - libffi-devel [platform:rpm compile]
+    - openssl-devel [platform:rpm compile]
+  python_interpreter:
+    package_system: "python3.13"
+    python_path: "/usr/bin/python3.13"
+  exclude:
+    python:
+      - docker
+    system:
+      - python3-Cython
+
+build_arg_defaults:
+  PKGMGR_PRESERVE_CACHE: 'always'
+
+additional_build_files:
+  - src: ee
+    dest: ee
+
+additional_build_steps:
+  prepend_base:
+    - RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm || true
+    - RUN /bin/sh -c "if [ ! -x /usr/bin/dnf ]; then ln -s /usr/bin/microdnf /usr/bin/dnf || true; fi"
+  prepend_final: |
+    RUN cat /etc/os-release
+  append_final:
+    - ARG KUBESPRAY_TAG=v2.32.0
+    - ARG KUBESPRAY_COMMIT=9751ea6f63244e433a7a6263d9ecf381e57bb8e9
+    - ARG KUBESPRAY_ARCHIVE_SHA256=2e53d89caff02c63c9e158fec2a78a887cc07a64c8d1a14c05800d36ee5650fd
+    - ARG KUBESPRAY_ANSIBLE_CORE=2.19.14
+    - ARG EE_TAG=ks2.32.0-b1
+    - COPY _build/ee /opt/kubespray/ee
+    # kubespray tree: GitHub archive of the tag's commit, sha256-verified, symlinks kept
+    - >-
+      RUN set -eux; mkdir -p /opt/kubespray/src /opt/kubespray/collections;
+      curl -fsSL --retry 5 -o /tmp/ks.tgz "https://github.com/kubernetes-sigs/kubespray/archive/${KUBESPRAY_COMMIT}.tar.gz";
+      echo "${KUBESPRAY_ARCHIVE_SHA256}  /tmp/ks.tgz" | sha256sum -c -;
+      tar -xzf /tmp/ks.tgz -C /opt/kubespray/src --strip-components=1 --no-same-owner; rm -f /tmp/ks.tgz;
+      test -L /opt/kubespray/src/library/kube.py
+    # backports (fail the build if a patch no longer applies)
+    - >-
+      RUN set -eux; cd /opt/kubespray/src;
+      for p in /opt/kubespray/ee/patches/*.diff; do patch -p1 --forward --no-backup-if-mismatch < "$p"; done;
+      grep -q 'priorityClassName: system-node-critical' roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2
+    # kubespray venv: the tag's exact requirements.txt, wheels only, core pinned by constraint
+    - >-
+      RUN set -eux; /usr/bin/python3.13 -m venv /opt/kubespray/venv;
+      printf 'ansible-core==%s\n' "${KUBESPRAY_ANSIBLE_CORE}" > /opt/kubespray/constraints.txt;
+      /opt/kubespray/venv/bin/pip install --no-cache-dir --disable-pip-version-check --only-binary=:all:
+      -r /opt/kubespray/src/requirements.txt -c /opt/kubespray/constraints.txt;
+      /opt/kubespray/venv/bin/pip check;
+      /opt/kubespray/venv/bin/pip freeze > /opt/kubespray/pip-freeze.txt;
+      /opt/kubespray/venv/bin/ansible --version | grep -E '^ansible \[core 2\.19\.'
+    # smoke: kubespray's own cfg + venv parse every entry playbook the wrapper runs
+    - >-
+      RUN set -eux; cd /opt/kubespray/src && env -i HOME=/tmp PATH=/opt/kubespray/venv/bin:/usr/bin:/bin LANG=C.UTF-8
+      ANSIBLE_CONFIG=/opt/kubespray/src/ansible.cfg ANSIBLE_COLLECTIONS_PATH=/opt/kubespray/collections
+      ANSIBLE_LOCAL_TEMP=/tmp/kss
+      /opt/kubespray/venv/bin/ansible-playbook --syntax-check -i inventory/sample/inventory.ini
+      cluster.yml scale.yml remove_node.yml upgrade_cluster.yml playbooks/facts.yml playbooks/boilerplate.yml;
+      rm -rf /tmp/kss
+    - >-
+      RUN set -eux; /opt/kubespray/venv/bin/python -I /opt/kubespray/ee/buildinfo.py /opt/kubespray/src
+      /opt/kubespray/BUILDINFO.json kubespray_tag="${KUBESPRAY_TAG}" kubespray_commit="${KUBESPRAY_COMMIT}"
+      kubespray_archive_sha256="${KUBESPRAY_ARCHIVE_SHA256}"
+      kubespray_ansible_core="$(/opt/kubespray/venv/bin/python -c 'import ansible.release as r; print(r.__version__)')"
+      wrapper_ansible_core="$(python3.13 -c 'import ansible.release as r; print(r.__version__)')"
+      patches="$(cd /opt/kubespray/ee/patches && ls *.diff | tr '\n' ' ' | sed 's/ $//')"
+      ee_tag="${EE_TAG}";
+      cat /opt/kubespray/BUILDINFO.json; chmod -R a+rX,go-w /opt/kubespray
+    - RUN useradd -u 1000 -g 0 -m runner || echo "User 1000 already exists"
+    - RUN mkdir -p /runner/project/.ansible/tmp && chmod 1777 /runner/project/.ansible/tmp
+    - RUN if [ -x /usr/bin/python3.13 ] && [ ! -x /usr/bin/python3 ]; then ln -s /usr/bin/python3.13 /usr/bin/python3 || true; fi
+    - RUN echo "--- Final Image ---" && $PYCMD --version && ansible --version && /opt/kubespray/venv/bin/ansible --version

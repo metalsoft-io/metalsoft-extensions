@@ -1,0 +1,47 @@
+---
+# create / resume-create (localhost). The state is recorded as `bootstrapping` BEFORE cluster.yml
+# so a retried create keeps the same cluster id, CP order and etcd member names.
+- name: Create | record intent (phase bootstrapping)
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      phase: bootstrapping
+      cluster_id: "{{ k8s_cluster_id }}"
+      kube_version_target: "{{ k8s_plan.kube_version }}"
+      create_only: "{{ k8s_create_only }}"
+      addons: "{{ k8s_addons }}"
+      site: "{{ k8s_effective_site }}"
+      converge_generation: "{{ k8s_converge_generation }}"
+      admin_generation_input: "{{ k8s_admin_generation_input }}"
+      control_plane:
+        order: "{{ k8s_plan.cp_order }}"
+        etcd_member_names: "{{ k8s_etcd_member_names }}"
+        members: "{{ k8s_plan.cp_order | k8s_members(k8s_server_ids) }}"
+      pending:
+        workers: "{{ k8s_plan.w_excluded }}"
+  when: k8s_plan.action == 'create'
+
+- name: Create | run hosts
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_plan.cp_order }}"
+    k8s_run_workers: "{{ k8s_plan.w_joining }}"
+    k8s_run_hostvars: {}
+
+- name: Create | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: Create | cluster.yml
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "01-cluster"
+    ks_playbook: cluster.yml
+    ks_vars:
+      kube_version: "{{ k8s_plan.kube_version }}"
+      control_plane_node_become_ready_tries: 72
+    ks_budget_s: 14400

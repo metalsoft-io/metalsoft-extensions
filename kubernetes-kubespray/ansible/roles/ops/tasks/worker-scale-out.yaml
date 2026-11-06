@@ -1,0 +1,45 @@
+---
+# worker scale-out (localhost, postDeploy): facts for every host (scale.yml --limit asserts that
+# excluded hosts have cached facts), then scale.yml limited to the joiners. Same effective
+# settings as the existing nodes (recorded site config), deployed kube_version.
+- name: Scale-out | run hosts
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_state.control_plane.order }}"
+    k8s_run_workers: "{{ (k8s_registered_workers | select('in', k8s_up_hosts) | list) + k8s_plan.w_joining | unique }}"
+    k8s_run_hostvars: {}
+
+- name: Scale-out | record pending joiners
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      pending: {control_plane: "{{ k8s_state.pending.control_plane | default([]) }}", workers: "{{ k8s_plan.w_joining }}"}
+      operation: {kind: worker-scale-out, joiners: "{{ k8s_plan.w_joining }}"}
+
+- name: Scale-out | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: Scale-out | facts (all hosts; per-host failures tolerated, scale.yml checks its own needs)
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "10-facts"
+    ks_playbook: playbooks/facts.yml
+    ks_vars: {kube_version: "{{ k8s_state.kube_version }}"}
+    ks_budget_s: 1800
+    ks_allow_fail: true
+
+- name: Scale-out | scale.yml
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "11-scale"
+    ks_playbook: scale.yml
+    ks_limit: "{{ k8s_plan.w_joining | join(',') }}"
+    ks_vars: {kube_version: "{{ k8s_state.kube_version }}"}
+    ks_budget_s: 7200

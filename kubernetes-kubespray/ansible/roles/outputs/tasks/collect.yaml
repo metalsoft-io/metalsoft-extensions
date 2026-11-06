@@ -1,0 +1,63 @@
+---
+# Anchor CP (become): every output value, re-read from the cluster each run (the platform REPLACES
+# stored outputs on every successful run, so every playbook re-emits all of them).
+- name: Outputs | cluster facts
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ k8s_kubectl }} version -o json --request-timeout=30s | python3 -c 'import json,sys; print(json.load(sys.stdin)["serverVersion"]["gitVersion"].lstrip("v"))'
+    {{ k8s_kubectl }} get nodes -o json --request-timeout=30s | python3 -c 'import json,sys
+    d=json.load(sys.stdin); cp=[]; w=[]; bad=[]
+    for n in d["items"]:
+        name=n["metadata"]["name"]; lab=n["metadata"].get("labels",{})
+        (cp if "node-role.kubernetes.io/control-plane" in lab else w).append(name)
+        if not any(c["type"]=="Ready" and c["status"]=="True" for c in n["status"].get("conditions",[])): bad.append(name)
+    print(",".join(sorted(cp))); print(",".join(sorted(w))); print(",".join(sorted(bad)))'
+  args:
+    executable: /bin/bash
+  register: _k8s_out_facts
+  changed_when: false
+
+- name: Outputs | CA and admin kubeconfig
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop:
+    - /etc/kubernetes/ssl/ca.crt
+    - "{{ k8s_state_dir }}/admin/metalsoft-admin.kubeconfig"
+  register: _k8s_out_files
+  no_log: true
+
+- name: Outputs | admin certificate expiry
+  ansible.builtin.shell: >-
+    grep 'client-certificate-data' {{ k8s_state_dir }}/admin/metalsoft-admin.kubeconfig | awk '{print $2}'
+    | base64 -d | openssl x509 -noout -enddate -subject
+  register: _k8s_out_cert
+  changed_when: false
+
+- name: Outputs | values
+  vars:
+    _lines: "{{ _k8s_out_facts.stdout_lines }}"
+    _kc: "{{ _k8s_out_files.results[1].content | b64decode }}"
+    _server: "{{ (_kc | from_yaml).clusters[0].cluster.server }}"
+    _cn: "{{ _k8s_out_cert.stdout | regex_search('CN *= *([^,\\n]+)', '\\1') | first | default('') }}"
+    _o: "{{ _k8s_out_cert.stdout | regex_search('O *= *([^,\\n]+)', '\\1') | first | default('') }}"
+    _exp: "{{ _k8s_out_cert.stdout | regex_search('notAfter=(.*)', '\\1') | first | default('') }}"
+  ansible.builtin.set_fact:
+    k8s_outputs_payload:
+      api_url: "{{ _server }}"
+      api_vip: "{{ k8s_vip }}"
+      api_fqdn: "{{ k8s_api_fqdn_candidate if (k8s_api_fqdn_candidate ~ ':6443') in _server else '' }}"
+      ca_cert: "{{ _k8s_out_files.results[0].content | b64decode }}"
+      admin_kubeconfig: "{{ _kc }}"
+      admin_kubeconfig_expires: "{{ (_exp | trim | to_datetime('%b %d %H:%M:%S %Y GMT')).strftime('%Y-%m-%dT%H:%M:%SZ') if _exp else '' }}"
+      admin_credential: "{{ _cn }} (group {{ _o }}); revoke: kubectl delete clusterrolebinding {{ _cn }}"
+      kubernetes_version: "{{ _lines[0] | trim }}"
+      kubespray_version: "{{ k8s_kubespray_tag }} ({{ k8s_kubespray_commit[:10] }}, EE {{ k8s_ee_tag }})"
+      control_plane_nodes: "{{ _lines[1] | default('') | trim }}"
+      worker_nodes: "{{ _lines[2] | default('') | trim }}"
+      lb_pool_ranges: >-
+        {{ hostvars['localhost'].k8s_effective_lb_ranges | map(attribute='start')
+           | zip(hostvars['localhost'].k8s_effective_lb_ranges | map(attribute='end')) | map('join', '-') | join(',') }}
+      cluster_id: "{{ hostvars['localhost'].k8s_cluster_id }}"
+      cluster_status: "{{ 'ready' if not (_lines[3] | default('') | trim) else 'degraded: NotReady ' ~ (_lines[3] | trim) }}"
+      etcd_last_snapshot: "{{ hostvars['localhost'].k8s_state.etcd_last_snapshot | default('none', true) }}"
+  no_log: true

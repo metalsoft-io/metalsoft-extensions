@@ -1,0 +1,46 @@
+---
+# localhost: write ALL output labels to the artifacts context.json (the platform REPLACES stored
+# outputs with whatever a successful run writes). Fail-closed: a run that cannot produce complete
+# outputs fails instead of wiping the stored ones. Never emits platform action keys.
+- name: Outputs | payload from the anchor
+  ansible.builtin.set_fact:
+    _k8s_payload: "{{ hostvars[k8s_anchor].k8s_outputs_payload | default({}) if k8s_anchor else {} }}"
+  no_log: true
+
+- name: Outputs | complete and well-formed (fail-closed)
+  ansible.builtin.assert:
+    that:
+      - _k8s_payload.admin_kubeconfig | default('') | length > 0
+      - (_k8s_payload.admin_kubeconfig | from_yaml).users[0].user['client-certificate-data'] is defined
+      - (_k8s_payload.admin_kubeconfig | from_yaml)['current-context'] == (_k8s_payload.admin_kubeconfig | from_yaml).contexts[0].name
+      - _k8s_payload.api_url is match('^https://')
+      - _k8s_payload.kubernetes_version is match('^\d+\.\d+\.\d+$')
+      - _k8s_payload.ca_cert is search('BEGIN CERTIFICATE')
+      - _k8s_payload.api_vip | length > 0
+      - _k8s_payload.control_plane_nodes | length > 0
+      - _k8s_payload.cluster_id | length > 0
+      - _k8s_payload.lb_pool_ranges | length > 0
+    fail_msg: "Outputs are incomplete; the previously stored outputs are kept. Check the collect step above."
+    quiet: true
+  no_log: true
+
+- name: Outputs | already written by this run?
+  ansible.builtin.stat:
+    path: "{{ k8s_context_json_path }}"
+  register: _k8s_ctx
+
+- name: Outputs | write context.json
+  ansible.builtin.copy:
+    content: "{{ _k8s_payload | to_nice_json }}"
+    dest: "{{ k8s_context_json_path }}"
+    mode: "0600"
+  when: not _k8s_ctx.stat.exists
+  no_log: true
+
+- name: Outputs | summary
+  ansible.builtin.debug:
+    msg: >-
+      Outputs published: api_url={{ _k8s_payload.api_url }} version={{ _k8s_payload.kubernetes_version }}
+      control_plane={{ _k8s_payload.control_plane_nodes }} workers={{ _k8s_payload.worker_nodes }}
+      lb={{ _k8s_payload.lb_pool_ranges }} status={{ _k8s_payload.cluster_status }}
+      admin={{ _k8s_payload.admin_credential.split(';') | first }} expires={{ _k8s_payload.admin_kubeconfig_expires }}

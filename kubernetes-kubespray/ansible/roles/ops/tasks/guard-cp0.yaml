@@ -1,0 +1,24 @@
+---
+# Second-cluster guard (localhost), right before any nested cluster.yml / upgrade_cluster.yml on an
+# existing cluster: kubespray runs `kubeadm init` on kube_control_plane[0] whenever its kubelet
+# config is absent, and mints a new etcd CA on etcd[0] when ca-key.pem is absent. CP[0] of the run
+# order must therefore be initialised with this cluster's CAs.
+- name: Guard | CP[0] of the run order
+  vars:
+    _cp0: "{{ k8s_run_cp[0] }}"
+    _id: "{{ hostvars[k8s_run_cp[0]].k8s_node_ident | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - _cp0 in k8s_up_hosts
+      - _id.kubelet_config | default(false)
+      - _id.admin_conf | default(false)
+      - (_id.ca_sha | default('')) == (k8s_state.ca_sha | default(_id.ca_sha | default('')))
+      - (_id.etcd_ca_sha | default('')) == (k8s_state.etcd_ca_sha | default(_id.etcd_ca_sha | default('')))
+    fail_msg: >-
+      E-K8S-021: Control-plane node {{ _cp0 }} is expected to be initialised (state says so) but
+      {{ 'is unreachable' if _cp0 not in k8s_up_hosts else ('has no kubelet config / admin.conf'
+         if not (_id.kubelet_config | default(false) and _id.admin_conf | default(false))
+         else 'its cluster/etcd CA differs from the recorded one') }}. Refusing to run kubespray: it
+      would create a second cluster or re-key etcd.
+    quiet: true
+  when: k8s_plan.mode == 'edit'

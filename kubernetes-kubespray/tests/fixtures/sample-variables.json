@@ -1,0 +1,26 @@
+{
+  "extensionInstanceVariables": {
+    "control_plane_count": 3, "worker_count": "2", "kube_version": "1.36.4", "kube_proxy_mode": "iptables",
+    "pod_network_cidr": "10.233.64.0/18", "service_network_cidr": "10.233.0.0/18", "cluster_dns_domain": "cluster.local",
+    "metrics_server_enabled": true, "local_path_provisioner_enabled": "true", "gateway_api_crds_enabled": false,
+    "metallb_enabled": true, "drain_timeout_minutes": 10, "drain_policy": "respect-pdb",
+    "converge_generation": 0, "admin_credential_generation": 1
+  },
+  "configVars": {
+    "site_kubespray_overrides": "kubelet_max_pods: 200\n", "site_dns_servers": "8.8.8.8, 1.1.1.1",
+    "site_ntp_servers": "", "site_admin_cert_validity_days": 365, "site_auto_renew_certificates": true,
+    "site_backup_retention_count": 5, "site_ansible_forks": 50
+  },
+  "context": {"some": "platform value that must never reach kubespray"},
+  "extensionInstanceRecordSet": {
+    "baseDomain": "site1.example.com", "extensionInstanceName": "k8s1",
+    "clusterIpv4Ips": [{"ip": "10.20.30.50", "tags": {"role": "api-vip"}, "fqdn": "api.k8s1.site1.example.com."}],
+    "serverInstanceGroups": [{"serverInstanceGroupLabel": "k8scp", "logicalNetworks": [{"name": "k8s-net", "subnets": [
+      {"prefix": "10.20.30.0/24", "gateway": "10.20.30.1", "ipAllocations": [],
+       "ipRanges": [{"startIp": "10.20.30.60", "endIp": "10.20.30.63", "tags": {"role": "lb-pool"}}]}]}]}],
+    "serverInstances": [
+      {"host": "instance-101.site1.example.com", "serverInstanceId": 101}, {"host": "instance-102", "serverInstanceId": 102},
+      {"host": "instance-103", "serverInstanceId": 103}, {"host": "instance-201", "serverInstanceId": 201},
+      {"host": "instance-202", "serverInstanceId": 202}]
+  }
+}

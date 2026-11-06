@@ -1,0 +1,43 @@
+---
+# localhost, before any node is touched: the EE, the inputs/site config and the allocations.
+# Fails with the offending label named; never rewrites a value.
+- name: Preflight | EE build info
+  ansible.builtin.slurp:
+    src: /opt/kubespray/BUILDINFO.json
+  register: _k8s_buildinfo
+  failed_when: false
+
+- name: Preflight | this bundle runs in its own EE
+  ansible.builtin.assert:
+    that:
+      - _k8s_buildinfo.content is defined
+      - (_k8s_buildinfo.content | b64decode | from_json).kubespray_commit == k8s_kubespray_commit
+    fail_msg: >-
+      This task did not run in the {{ k8s_ee_tag }} execution environment (missing or different
+      /opt/kubespray/BUILDINFO.json). Check the task's `ee` option and the site's cached EE images.
+    quiet: true
+
+- name: Preflight | build info
+  ansible.builtin.set_fact:
+    k8s_buildinfo: "{{ _k8s_buildinfo.content | b64decode | from_json }}"
+
+- name: Preflight | inputs, site config and allocations
+  vars:
+    _ovr_check: "{{ k8s_site_overrides | k8s_overrides_check(false) }}"
+    _net_errors: >-
+      {{ {'pod_cidr': k8s_pod_cidr, 'service_cidr': k8s_service_cidr, 'vip': k8s_vip,
+          'lb_ranges': k8s_lb_ranges, 'dns': k8s_site_dns_servers} | k8s_net_errors }}
+    _problems: >-
+      {{ (['kube_version ' ~ k8s_kube_version_input ~ ' is not in this EE (' ~ (k8s_buildinfo.kube_versions | join(',')) ~ ')']
+          if k8s_kube_version_input not in k8s_buildinfo.kube_versions else [])
+         + (['control_plane_count must be 1, 3 or 5'] if (k8s_cp_count | int) not in [1, 3, 5] else [])
+         + (['kube_proxy_mode must be iptables or nftables'] if k8s_kube_proxy_mode not in ['iptables', 'nftables'] else [])
+         + (['drain_policy must be respect-pdb or force-after-timeout']
+            if k8s_drain_policy not in ['respect-pdb', 'force-after-timeout'] else [])
+         + _net_errors + _ovr_check.errors
+         + (['no api-vip allocation in the record set (k8s-net)'] if not k8s_vip else [])
+         + (['no lb-pool range in the record set (k8s-net)'] if not k8s_lb_ranges else []) }}
+  ansible.builtin.assert:
+    that: _problems | length == 0
+    fail_msg: "Preflight failed: {{ _problems | join('; ') }}"
+    quiet: true

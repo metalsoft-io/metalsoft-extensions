@@ -1,0 +1,56 @@
+---
+# localhost after a nested run: the nodes this action added are Ready, every node of ours reports
+# the expected kubelet version, etcd has exactly the expected members and is healthy.
+- name: Verify | expected nodes Ready
+  ansible.builtin.shell: |
+    set -o pipefail
+    for n in {{ (k8s_run_cp + k8s_run_workers) | map('quote') | join(' ') }}; do
+      {{ k8s_kubectl }} wait --for=condition=Ready node/"$n" --timeout=20s >/dev/null 2>&1 || echo "$n"
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor_after }}"
+  become: true
+  register: _k8s_notready
+  until: _k8s_notready.stdout | trim | length == 0
+  retries: 30
+  delay: 20
+  changed_when: false
+  failed_when: false
+
+- name: Verify | kubelet versions and etcd members
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ k8s_kubectl }} get nodes -o jsonpath='{range .items[*]}{.metadata.name}={.status.nodeInfo.kubeletVersion}{"\n"}{end}'
+    echo "--- etcd"
+    export ETCDCTL_API=3 ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 ETCDCTL_CACERT=/etc/ssl/etcd/ssl/ca.pem \
+      ETCDCTL_CERT=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor_after }}.pem ETCDCTL_KEY=/etc/ssl/etcd/ssl/admin-{{ k8s_anchor_after }}-key.pem
+    /usr/local/bin/etcdctl member list -w json | python3 -c 'import json,sys; print(" ".join(sorted(m.get("name","?") for m in json.load(sys.stdin)["members"])))'
+    /usr/local/bin/etcdctl endpoint health --cluster >/dev/null 2>&1 && echo healthy || echo UNHEALTHY
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor_after }}"
+  become: true
+  register: _k8s_verify
+  changed_when: false
+
+- name: Verify | result
+  vars:
+    _kv: "{{ _k8s_verify.stdout_lines[: _k8s_verify.stdout_lines.index('--- etcd')] }}"
+    _members: "{{ _k8s_verify.stdout_lines[_k8s_verify.stdout_lines.index('--- etcd') + 1].split() }}"
+    _expect_members: "{{ k8s_run_cp | map('extract', k8s_etcd_member_names) | sort }}"
+    _wrong_ver: >-
+      {{ _kv | select('match', '^(' ~ ((k8s_run_cp + k8s_run_workers) | map('regex_escape') | join('|')) ~ ')=')
+         | reject('search', '=v' ~ (k8s_verify_version | regex_escape) ~ '$') | list }}
+  ansible.builtin.assert:
+    that:
+      - _k8s_notready.stdout | trim | length == 0
+      - _members == _expect_members
+      - _k8s_verify.stdout_lines[-1] == 'healthy'
+      - _wrong_ver | length == 0
+    fail_msg: >-
+      Verification failed after {{ k8s_plan.action }}:
+      not Ready: {{ _k8s_notready.stdout_lines | join(',') or '-' }};
+      etcd members {{ _members | join(',') }} (expected {{ _expect_members | join(',') }}, {{ _k8s_verify.stdout_lines[-1] }});
+      kubelet version != v{{ k8s_verify_version }}: {{ _wrong_ver | join(',') or '-' }}.
+    quiet: true

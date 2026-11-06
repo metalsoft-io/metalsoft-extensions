@@ -1,0 +1,51 @@
+---
+# Anchor CP (become): what the cluster itself says. Skipped when the anchor has no admin.conf.
+# kubectl/etcdctl go to the LOCAL apiserver/etcd (admin.conf points at the VIP, which can move).
+- name: API | nodes and etcd
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ k8s_kubectl }} get nodes -o json --request-timeout=30s \
+      | python3 -c 'import json,sys
+    d=json.load(sys.stdin); out=[]
+    for n in d.get("items",[]):
+        m=n["metadata"]; s=n.get("status",{})
+        ready=any(c.get("type")=="Ready" and c.get("status")=="True" for c in s.get("conditions",[]))
+        labels=m.get("labels",{})
+        out.append({"name":m["name"],"ready":ready,"unschedulable":bool(n.get("spec",{}).get("unschedulable")),
+                    "cp":"node-role.kubernetes.io/control-plane" in labels,
+                    "ours":labels.get("metalsoft.io/cluster-id",""),"kubelet":s.get("nodeInfo",{}).get("kubeletVersion","")})
+    print(json.dumps(out))'
+  args:
+    executable: /bin/bash
+  register: _k8s_api_nodes
+  changed_when: false
+  failed_when: false
+
+- name: API | etcd health
+  ansible.builtin.shell: |
+    export ETCDCTL_API=3 ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 ETCDCTL_CACERT=/etc/ssl/etcd/ssl/ca.pem \
+      ETCDCTL_CERT=/etc/ssl/etcd/ssl/admin-{{ inventory_hostname }}.pem ETCDCTL_KEY=/etc/ssl/etcd/ssl/admin-{{ inventory_hostname }}-key.pem
+    {
+      echo "members:"; /usr/local/bin/etcdctl member list -w json 2>/dev/null
+      echo; echo "health:"; /usr/local/bin/etcdctl endpoint health --cluster -w json 2>/dev/null
+      echo; echo "alarms:"; /usr/local/bin/etcdctl alarm list 2>/dev/null | wc -l
+    } | python3 -c 'import json,sys
+    parts={}; key=None
+    for line in sys.stdin.read().splitlines():
+        if line in ("members:","health:","alarms:"): key=line[:-1]; parts[key]=""; continue
+        if key: parts[key]+=line+"\n"
+    def j(k):
+        try: return json.loads(parts.get(k,"") or "null")
+        except ValueError: return None
+    print(json.dumps({"members": j("members"), "health": j("health"), "alarms": int((parts.get("alarms") or "0").strip() or 0)}))'
+  args:
+    executable: /bin/bash
+  register: _k8s_etcd
+  changed_when: false
+  failed_when: false
+
+- name: API | facts
+  ansible.builtin.set_fact:
+    k8s_api_ok: "{{ _k8s_api_nodes.rc == 0 }}"
+    k8s_api_nodes: "{{ (_k8s_api_nodes.stdout | from_json) if _k8s_api_nodes.rc == 0 else [] }}"
+    k8s_etcd: "{{ _k8s_etcd.stdout | default('{}', true) | from_json }}"

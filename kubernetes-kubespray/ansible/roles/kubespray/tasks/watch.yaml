@@ -1,0 +1,19 @@
+---
+# Watch a started nested run (_k8s_ks_job) until it ends. A looped include cannot stop early:
+# after the run ends every remaining item is still included and skipped (~0.4 s each). One item
+# per minute of the task timeout cost ~5.5 min per run on a 13 h onEdit task (765 items), so the
+# cycles come in blocks of 10: the tail is at most ~9 cycles + timeout/600 blocks.
+- name: "Kubespray {{ ks_label }} | watch"
+  ansible.builtin.set_fact:
+    _k8s_ks_done: false
+    _k8s_ks_cycle_s: 60
+    _k8s_ks_started: "{{ now(utc=true).timestamp() | int }}"
+    _k8s_ks_blocks: "{{ (((([k8s_task_timeout_s | int - 900, 1800] | max) // 60) + 9) // 10) | int }}"
+
+- name: "Kubespray {{ ks_label }} | watch blocks"
+  ansible.builtin.include_tasks: watch-block.yaml
+  loop: "{{ range(0, _k8s_ks_blocks | int) | list }}"
+  loop_control:
+    loop_var: _k8s_ks_b
+    label: "{{ _k8s_ks_b }}"
+  # stops early through the block-level `when` inside watch-block.yaml

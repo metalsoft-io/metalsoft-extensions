@@ -1,0 +1,38 @@
+---
+# One watch cycle of a nested kubespray run (redhat-openshift wait-watch.yaml pattern).
+# Never fails: an error here must not kill the EE while kubespray is still mid-run.
+# The `when` sits on this block, not on the looped include: a looped include_tasks evaluates its
+# own `when` for every item before the first one runs, so the loop would never stop early.
+- name: "Kubespray {{ ks_label }} | cycle {{ _k8s_ks_b | int * 10 + _k8s_ks_i | int }}"
+  when: not (_k8s_ks_done | bool)
+  block:
+    - name: "Kubespray {{ ks_label }} | poll"
+      ansible.builtin.async_status:
+        jid: "{{ _k8s_ks_job.ansible_job_id }}"
+      register: _k8s_ks_poll
+      failed_when: false
+
+    - name: "Kubespray {{ ks_label }} | progress"
+      ansible.builtin.shell: >-
+        l={{ (k8s_ks_dir ~ '/logs/' ~ ks_label ~ '.log') | quote }};
+        t=$(grep -E '^(PLAY|TASK) \[' "$l" 2>/dev/null | tail -n 1 | cut -c1-160);
+        f=$(grep -c '^fatal:' "$l" 2>/dev/null);
+        echo "${t:-starting} | fatal lines: ${f:-0}"
+      register: _k8s_ks_progress
+      changed_when: false
+      failed_when: false
+
+    - name: "Kubespray {{ ks_label }} | status"
+      ansible.builtin.debug:
+        msg: "[{{ ((now(utc=true).timestamp() | int - _k8s_ks_started | int) // 60) }} min] {{ _k8s_ks_progress.stdout | default('') }}"
+
+    - name: "Kubespray {{ ks_label }} | finished?"
+      ansible.builtin.set_fact:
+        _k8s_ks_done: "{{ _k8s_ks_poll.finished | default(false) | bool }}"
+
+    - name: "Kubespray {{ ks_label }} | wait (ends early once ks-run.sh writes the result code)"
+      ansible.builtin.wait_for:
+        path: "{{ k8s_ks_dir }}/logs/{{ ks_label }}.rc"
+        timeout: "{{ _k8s_ks_cycle_s }}"
+      failed_when: false
+      when: not (_k8s_ks_done | bool)

@@ -1,0 +1,4 @@
+*.zip
+*.tar.gz
+tests/out/
+__pycache__/

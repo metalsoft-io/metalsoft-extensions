@@ -1,0 +1,73 @@
+---
+# kube_version upgrade inside the EE window (localhost, postDeploy): snapshot, upgrade_cluster.yml
+# (CPs one by one, workers in at most 5 batches), then the uncordon fix (kubespray only uncordons
+# what IT cordoned in that very run; a retried upgrade would leave nodes cordoned otherwise).
+- name: Upgrade | run hosts
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_state.control_plane.order }}"
+    k8s_run_workers: "{{ k8s_registered_workers | select('in', k8s_up_hosts) | list }}"
+    k8s_run_hostvars: {}
+    _k8s_unsched_before: >-
+      {{ (k8s_state.operation.unschedulable_before | default(none))
+         if (k8s_state.operation.kind | default('')) == 'upgrade' and (k8s_state.operation.to | default('')) == k8s_plan.kube_version
+         else (hostvars[k8s_anchor].k8s_api_nodes | default([]) | selectattr('unschedulable') | map(attribute='name') | list) }}
+
+- name: Upgrade | second-cluster guard
+  ansible.builtin.include_tasks: guard-cp0.yaml
+
+- name: Upgrade | etcd snapshot
+  ansible.builtin.include_tasks: etcd-snapshot.yaml
+  vars:
+    k8s_snapshot_reason: "pre-upgrade-{{ k8s_state.kube_version }}-{{ k8s_plan.kube_version }}"
+
+- name: Upgrade | record intent
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: {kind: upgrade, from: "{{ k8s_state.kube_version }}", to: "{{ k8s_plan.kube_version }}",
+                  unschedulable_before: "{{ _k8s_unsched_before }}"}
+      etcd_last_snapshot: "{{ k8s_last_snapshot }}"
+
+- name: Upgrade | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: Upgrade | upgrade_cluster.yml
+  block:
+    - name: Upgrade | upgrade_cluster.yml
+      ansible.builtin.include_role:
+        name: kubespray
+        tasks_from: run.yaml
+      vars:
+        ks_label: "30-upgrade"
+        ks_playbook: upgrade_cluster.yml
+        ks_vars:
+          kube_version: "{{ k8s_plan.kube_version }}"
+          serial: "{{ [1, ((k8s_run_workers | length) / 5) | round(0, 'ceil') | int] | max }}"
+          drain_timeout: "{{ k8s_drain_timeout_min * 60 }}s"
+          drain_retries: 0
+          drain_grace_period: 300
+          drain_fallback_enabled: "{{ k8s_drain_policy == 'force-after-timeout' }}"
+          drain_fallback_timeout: "300s"
+          drain_fallback_retries: 0
+          upgrade_node_fail_if_drain_fails: true
+          upgrade_node_uncordon_after_drain_failure: true
+          control_plane_node_become_ready_tries: 72
+        ks_budget_s: 36000
+  always:
+    - name: Upgrade | uncordon nodes this upgrade cordoned (success or failure)
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ k8s_kubectl }} get nodes -o jsonpath='{range .items[?(@.spec.unschedulable==true)]}{.metadata.name}{"\n"}{end}' \
+          | grep -vxF -f <(printf '%s\n' {{ (_k8s_unsched_before | default([])) | map('quote') | join(' ') }} "") \
+          | while read -r n; do [ -n "$n" ] && {{ k8s_kubectl }} uncordon "$n" && echo "uncordoned $n"; done; true
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ k8s_anchor }}"
+      become: true
+      register: _k8s_uncordon
+      changed_when: _k8s_uncordon.stdout | length > 0
+      failed_when: false

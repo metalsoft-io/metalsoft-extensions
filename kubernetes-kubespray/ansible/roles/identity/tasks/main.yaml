@@ -1,0 +1,189 @@
+---
+# Revocable admin kubeconfig (anchor CP, become). Dedicated identity per generation N:
+#   client  metalsoft-admin-g<N>, group metalsoft:cluster-admin:g<N>, bound to cluster-admin by its
+#   own ClusterRoleBinding metalsoft-admin-g<N> (never system:masters, so deleting the binding
+#   revokes it). A binding that was created and is now missing = revoked: never recreated; the next
+#   generation is minted instead. Raising admin_credential_generation rotates (old bindings deleted).
+#   < 30 days of validity left: re-minted in the same generation.
+# The kubeconfig is stored 0600 on every CP and re-emitted every run (outputs are replaced per run).
+- name: Identity | recorded identity, endpoint name
+  ansible.builtin.set_fact:
+    _k8s_id: "{{ hostvars['localhost'].k8s_state.admin_identity | default({}) }}"
+    _k8s_id_file: "{{ k8s_state_dir }}/admin/metalsoft-admin.kubeconfig"
+
+- name: Identity | directory
+  ansible.builtin.file:
+    path: "{{ k8s_state_dir }}/admin"
+    state: directory
+    mode: "0700"
+
+- name: Identity | does the api name resolve to the VIP? (DNS integration is optional)
+  ansible.builtin.shell: "getent ahostsv4 {{ k8s_api_fqdn_candidate | quote }} | awk '{print $1; exit}'"
+  register: _k8s_fqdn_res
+  changed_when: false
+  failed_when: false
+  when: k8s_api_fqdn_candidate | length > 0
+
+- name: Identity | api endpoint
+  ansible.builtin.set_fact:
+    k8s_api_host: >-
+      {{ k8s_api_fqdn_candidate if (k8s_api_fqdn_candidate and (_k8s_fqdn_res.stdout | default('') | trim) == k8s_vip) else k8s_vip }}
+    k8s_api_fqdn_ok: "{{ k8s_api_fqdn_candidate and (_k8s_fqdn_res.stdout | default('') | trim) == k8s_vip }}"
+
+- name: Identity | binding of the recorded generation still there?
+  ansible.builtin.command: >-
+    {{ k8s_kubectl }} get clusterrolebinding metalsoft-admin-g{{ _k8s_id.generation | default(0) }}
+    -o jsonpath={.subjects[0].name}
+  register: _k8s_crb
+  changed_when: false
+  failed_when: false
+  when: _k8s_id.generation is defined
+
+- name: Identity | stored kubeconfig
+  ansible.builtin.shell: |
+    f={{ _k8s_id_file | quote }}
+    [ -f "$f" ] || { echo missing; exit 0; }
+    grep 'client-certificate-data' "$f" | awk '{print $2}' | base64 -d | openssl x509 -noout -enddate -subject 2>/dev/null \
+      | sed -n 's/^notAfter=//p;s/^subject=.*CN *= *\([^,]*\).*/\1/p' | tr '\n' '|'
+    grep -q "server: https://{{ k8s_api_host }}:6443" "$f" && echo "|server-ok" || echo "|server-changed"
+  args:
+    executable: /bin/bash
+  register: _k8s_kc
+  changed_when: false
+  no_log: true
+
+- name: Identity | decide
+  vars:
+    _gen: "{{ _k8s_id.generation | default(0) | int }}"
+    _revoked: >-
+      {{ _k8s_id.binding_created | default(false) and
+         (_k8s_crb.rc | default(0) != 0 or (_k8s_crb.stdout | default('')) != 'metalsoft:cluster-admin:g' ~ _gen) }}
+    _kc: "{{ (_k8s_kc.stdout | default('missing')).split('|') }}"
+    _expiry_epoch: "{{ (_kc[0] | to_datetime('%b %d %H:%M:%S %Y GMT')).timestamp() if _kc | length > 2 else 0 }}"
+    _renew: >-
+      {{ _kc | length < 3 or _kc[1] | trim != 'metalsoft-admin-g' ~ _gen or 'server-changed' in _kc
+         or (_expiry_epoch | float) - now(utc=true).timestamp() < 30 * 86400 }}
+    _new_gen: >-
+      {{ ([k8s_admin_generation_input | int, _gen + 1] | max) if (_revoked | bool or _gen == 0)
+         else ([k8s_admin_generation_input | int, _gen] | max) }}
+  ansible.builtin.set_fact:
+    k8s_id_revoked: "{{ _revoked | bool }}"
+    k8s_id_gen: "{{ _new_gen | int }}"
+    k8s_id_mint: "{{ (_new_gen | int) != (_gen | int) or _renew | bool }}"
+    k8s_id_old_gen: "{{ _gen | int }}"
+  no_log: true
+
+- name: Identity | binding (created once per generation; never recreated after a revoke)
+  ansible.builtin.shell: |
+    set -o pipefail
+    cat <<'YAML' | {{ k8s_kubectl }} apply --server-side -f -
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: metalsoft-admin-g{{ k8s_id_gen }}
+      labels: {app.kubernetes.io/managed-by: metalsoft-kubernetes-kubespray}
+    roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+    subjects:
+      - {apiGroup: rbac.authorization.k8s.io, kind: Group, name: "metalsoft:cluster-admin:g{{ k8s_id_gen }}"}
+    YAML
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: (k8s_id_gen | int) != (k8s_id_old_gen | int)
+
+- name: Identity | mint (kubeadm kubeconfig user)
+  when: k8s_id_mint | bool
+  no_log: true
+  block:
+    - name: Identity | kubeadm config for the endpoint
+      ansible.builtin.copy:
+        dest: "{{ k8s_state_dir }}/admin/kubeadm-user.yaml"
+        mode: "0600"
+        content: |
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: ClusterConfiguration
+          certificatesDir: /etc/kubernetes/ssl
+          controlPlaneEndpoint: "{{ k8s_api_host }}:6443"
+          clusterName: "{{ k8s_instance_name }}"
+
+    - name: Identity | kubeconfig
+      ansible.builtin.command: >-
+        /usr/local/bin/kubeadm kubeconfig user --config {{ k8s_state_dir }}/admin/kubeadm-user.yaml
+        --client-name metalsoft-admin-g{{ k8s_id_gen }} --org metalsoft:cluster-admin:g{{ k8s_id_gen }}
+        --validity-period {{ k8s_admin_cert_days * 24 }}h
+      register: _k8s_minted
+      changed_when: true
+
+    - name: Identity | store (anchor)
+      ansible.builtin.copy:
+        dest: "{{ _k8s_id_file }}.new"
+        content: "{{ _k8s_minted.stdout }}\n"
+        mode: "0600"
+
+    - name: Identity | the new credential works
+      ansible.builtin.command: >-
+        /usr/local/bin/kubectl --kubeconfig {{ _k8s_id_file }}.new --server https://127.0.0.1:6443
+        auth can-i '*' '*' --all-namespaces
+      register: _k8s_cani
+      retries: 6
+      delay: 5
+      until: (_k8s_cani.stdout | default('') | trim) == 'yes'
+      changed_when: false
+
+    - name: Identity | activate
+      ansible.builtin.command: mv {{ _k8s_id_file }}.new {{ _k8s_id_file }}
+      changed_when: true
+
+- name: Identity | rotation — delete older generations' bindings
+  ansible.builtin.command: >-
+    {{ k8s_kubectl }} delete clusterrolebinding {{ range(1, k8s_id_gen | int) | map('regex_replace', '^(.*)$', 'metalsoft-admin-g\1') | join(' ') }}
+    --ignore-not-found
+  changed_when: true
+  when: (k8s_id_gen | int) > 1 and (k8s_id_gen | int) != (k8s_id_old_gen | int)
+
+- name: Identity | read back
+  ansible.builtin.slurp:
+    src: "{{ _k8s_id_file }}"
+  register: _k8s_kc_final
+  no_log: true
+
+- name: Identity | expiry
+  ansible.builtin.shell: >-
+    grep 'client-certificate-data' {{ _k8s_id_file | quote }} | awk '{print $2}' | base64 -d
+    | openssl x509 -noout -enddate | sed 's/^notAfter=//'
+  register: _k8s_kc_exp
+  changed_when: false
+
+- name: Identity | directory on every control-plane node
+  ansible.builtin.file:
+    path: "{{ k8s_state_dir }}/admin"
+    state: directory
+    mode: "0700"
+  delegate_to: "{{ item }}"
+  loop: >-
+    {{ hostvars['localhost'].k8s_state.control_plane.order | default([])
+       | select('in', k8s_up_hosts) | reject('equalto', inventory_hostname) | list }}
+
+- name: Identity | copy to every control-plane node
+  ansible.builtin.copy:
+    dest: "{{ _k8s_id_file }}"
+    content: "{{ _k8s_kc_final.content | b64decode }}"
+    mode: "0600"
+  delegate_to: "{{ item }}"
+  loop: >-
+    {{ hostvars['localhost'].k8s_state.control_plane.order | default([])
+       | select('in', k8s_up_hosts) | reject('equalto', inventory_hostname) | list }}
+  no_log: true
+
+- name: Identity | result
+  ansible.builtin.set_fact:
+    k8s_identity_new:
+      generation: "{{ k8s_id_gen | int }}"
+      binding_created: true
+      revoked_generations: >-
+        {{ (_k8s_id.revoked_generations | default([]) + ([k8s_id_old_gen | int] if k8s_id_revoked | bool else [])) | unique }}
+      not_after: "{{ (_k8s_kc_exp.stdout | trim | to_datetime('%b %d %H:%M:%S %Y GMT')).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+      client: "metalsoft-admin-g{{ k8s_id_gen }}"
+      group: "metalsoft:cluster-admin:g{{ k8s_id_gen }}"
+    k8s_admin_kubeconfig: "{{ _k8s_kc_final.content | b64decode }}"
+  no_log: true

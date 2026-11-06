@@ -1,0 +1,37 @@
+---
+# converge (localhost, postDeploy): full cluster.yml at the DEPLOYED kube_version with the new
+# site settings / add-ons; joiners of the same edit are joined by the same run.
+- name: Converge | run hosts
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_state.control_plane.order }}"
+    k8s_run_workers: "{{ (k8s_registered_workers | select('in', k8s_up_hosts) | list) + k8s_plan.w_joining | unique }}"
+    k8s_run_hostvars: {}
+
+- name: Converge | second-cluster guard
+  ansible.builtin.include_tasks: guard-cp0.yaml
+
+- name: Converge | record intent
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      pending: {workers: "{{ k8s_plan.w_joining }}"}
+      operation: {kind: converge, reasons: "{{ k8s_plan.converge_reasons }}"}
+
+- name: Converge | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: Converge | cluster.yml
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "20-converge"
+    ks_playbook: cluster.yml
+    ks_vars:
+      kube_version: "{{ k8s_state.kube_version }}"
+      control_plane_node_become_ready_tries: 72
+    ks_budget_s: 10800

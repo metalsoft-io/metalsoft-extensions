@@ -1,0 +1,246 @@
+---
+# kubernetes-kubespray — converge playbook.
+#
+# Registered at onCreate postDeploy AND onEdit postDeploy. The plan (create / resume-create /
+# worker-scale-out / converge / upgrade / cp-scale-out / noop) is chosen from the cluster state
+# recorded on the control-plane nodes, never from the lifecycle stage, so a retried or never-
+# finished create resumes as a create. Fully retry-safe: a retried task re-runs this whole file.
+#
+# Rules (see .claude/skills/building-metalsoft-extensions): plays target the instance-array groups
+# (k8scp, k8sworker) or groups built at runtime, never `all`; unreachable NEW nodes fail the run,
+# unreachable EXISTING workers are skipped; no `meta: end_playbook`; the last play always
+# re-emits every output (the platform REPLACES stored outputs on every successful run).
+
+- name: K8s | banner and static preflight
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+  roles:
+    - role: globals
+  tasks:
+    - name: Banner | bundle version (proves which bundle ran)
+      ansible.builtin.debug:
+        msg: >-
+          kubernetes-kubespray bundle v{{ k8s_ext_version }} (kubespray {{ k8s_kubespray_tag }}, EE {{ k8s_ee_tag }})
+          stage=post cp={{ k8s_cp_hosts | length }} workers={{ k8s_worker_hosts | length }}
+          cp_out={{ k8s_cp_scale_out | length }} w_out={{ k8s_worker_scale_out | length }}
+          kube_version={{ k8s_kube_version_input }} vip={{ k8s_vip }} lb={{ k8s_lb_ranges | map(attribute='start') | join(',') }}
+
+    - name: Preflight | EE, inputs, site config, allocations
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: preflight-static.yaml
+
+- name: K8s | probe reachability and become
+  hosts: k8scp:k8sworker
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+  roles:
+    - role: globals
+  tasks:
+    - name: Probe | reachability, sudo
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: probe.yaml
+
+- name: K8s | node identity and state copies
+  hosts: k8s_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Identity | read
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: read-identity.yaml
+
+- name: K8s | merge state, pick the anchor
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+  roles:
+    - role: globals
+  tasks:
+    - name: State | merge
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: merge.yaml
+
+- name: K8s | API and etcd snapshot
+  hosts: k8s_anchor
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: API | snapshot
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: apisnap.yaml
+      when: k8s_node_ident.admin_conf | default(false)
+
+- name: K8s | plan and guards
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+  roles:
+    - role: globals
+  tasks:
+    - name: Plan | compute and refuse illegal edits
+      ansible.builtin.include_role:
+        name: state
+        tasks_from: plan.yaml
+
+    - name: Plan | hosts that get the node baseline / joiner hygiene
+      vars:
+        _all: "{{ k8s_plan.cp_order + k8s_plan.w_joining + (k8s_registered_workers | select('in', k8s_up_hosts) | list) }}"
+        _baseline: >-
+          {{ (_all if k8s_plan.action in ['create', 'resume-create', 'converge'] else
+              (k8s_plan.cp_joining + k8s_plan.w_joining) if k8s_plan.action in ['worker-scale-out', 'cp-scale-out'] else [])
+             | select('in', k8s_up_hosts) | unique | list }}
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: "{{ ['k8s_run'] + (['k8s_joiners'] if item in (k8s_plan.cp_joining + k8s_plan.w_joining) else []) }}"
+      loop: "{{ _baseline }}"
+      changed_when: false
+
+    - name: Plan | anchor after the action
+      ansible.builtin.set_fact:
+        k8s_anchor_after: "{{ k8s_anchor }}"
+
+- name: K8s | node baseline and joiner hygiene
+  hosts: k8s_run
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Baseline | OS, cloud-init, apt lock, ufw off, chrony, cluster id
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: baseline.yaml
+
+    - name: Hygiene | reset leftovers on joiners
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: hygiene.yaml
+      when: inventory_hostname in groups.get('k8s_joiners', [])
+
+- name: K8s | kubernetes action (nested kubespray)
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+    _k8s_ops:
+      create: create.yaml
+      resume-create: create.yaml
+      worker-scale-out: worker-scale-out.yaml
+      converge: converge.yaml
+      upgrade: upgrade.yaml
+      cp-scale-out: cp-scale-out.yaml
+  roles:
+    - role: globals
+  tasks:
+    - name: Action | {{ k8s_plan.action }}
+      ansible.builtin.include_role:
+        name: ops
+        tasks_from: "{{ _k8s_ops[k8s_plan.action] }}"
+      when: k8s_plan.action in _k8s_ops
+
+    - name: Action | verify
+      ansible.builtin.include_role:
+        name: ops
+        tasks_from: verify.yaml
+      vars:
+        k8s_verify_version: "{{ k8s_plan.kube_version }}"
+      when: k8s_plan.action in _k8s_ops
+
+- name: K8s | refresh control-plane identity after the action
+  hosts: k8scp:&k8s_up
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Identity | re-read (CA hashes for the state)
+      ansible.builtin.include_role:
+        name: node
+        tasks_from: read-identity.yaml
+
+    - name: kube-vip | renewal hook and freshness
+      ansible.builtin.include_role:
+        name: addons
+        tasks_from: kube-vip-renew-hook.yaml
+      when: k8s_node_ident.admin_conf | default(false)
+
+- name: K8s | add-ons and admin identity
+  hosts: k8s_anchor
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Add-ons | MetalLB
+      ansible.builtin.include_role:
+        name: addons
+        tasks_from: metallb.yaml
+      when: hostvars['localhost'].k8s_effective_addons.metallb | bool
+
+    - name: Identity | ensure / renew / rotate
+      ansible.builtin.include_role:
+        name: identity
+        tasks_from: main.yaml
+
+- name: K8s | kube-vip freshness and state commit
+  hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    k8s_stage: post
+  roles:
+    - role: globals
+  tasks:
+    - name: kube-vip | restart stale containers (followers first)
+      ansible.builtin.include_role:
+        name: addons
+        tasks_from: vip-restart.yaml
+
+    - name: State | commit
+      ansible.builtin.include_role:
+        name: ops
+        tasks_from: finalize.yaml
+
+- name: K8s | collect outputs
+  hosts: k8s_anchor
+  gather_facts: false
+  become: true
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | collect
+      ansible.builtin.include_role:
+        name: outputs
+        tasks_from: collect.yaml
+
+# Stored outputs are REPLACED by every successful run's context.json: always re-emit all of them.
+- name: K8s | publish outputs
+  hosts: localhost
+  gather_facts: false
+  become: false
+  roles:
+    - role: globals
+  tasks:
+    - name: Outputs | emit
+      ansible.builtin.include_role:
+        name: outputs
+        tasks_from: emit.yaml

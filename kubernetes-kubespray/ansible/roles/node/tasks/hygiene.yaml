@@ -1,0 +1,28 @@
+---
+# Joiner hygiene (become): a node that is joining but carries Kubernetes leftovers from THIS
+# cluster (a reverted scale-in: removed marker; or a half-joined worker without kubelet.conf)
+# is reset so kubespray's join starts clean. Pending control-plane joiners are left to
+# kubespray's own CP join rescue.
+- name: Hygiene | needs reset?
+  ansible.builtin.set_fact:
+    _k8s_reset_reason: >-
+      {{ 'returning node (removed marker)' if k8s_node_ident.removed
+         else ('half-joined worker' if (inventory_hostname not in k8s_cp_hosts and k8s_node_ident.kubelet_config
+                                        and not k8s_node_ident.kubelet_conf) else '') }}
+
+- name: Hygiene | reset leftovers
+  ansible.builtin.shell: |
+    set -x
+    kubeadm reset -f --cert-dir /etc/kubernetes/ssl || true
+    systemctl disable --now etcd 2>/dev/null || true
+    rm -rf /var/lib/etcd /etc/etcd.env {{ k8s_state_dir }}/removed-manifests {{ k8s_state_dir }}/removed
+    systemctl enable containerd kubelet 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  when: _k8s_reset_reason | length > 0
+  changed_when: true
+
+- name: Hygiene | reset done
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: reset before join ({{ _k8s_reset_reason }})."
+  when: _k8s_reset_reason | length > 0

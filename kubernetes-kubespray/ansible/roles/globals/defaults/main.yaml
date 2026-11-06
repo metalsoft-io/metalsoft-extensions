@@ -1,0 +1,133 @@
+---
+# kubernetes-kubespray — global derivations (role defaults only, no tasks).
+#
+# Every play lists `roles: [globals]` first; the offline tests load this file with include_vars.
+# All derived variables use the `k8s_` prefix so they can never collide with extra-vars (input,
+# configVar and output labels are unprefixed or `site_`; the platform's own `context` var is never
+# shadowed). Values are pure derivations of extra-vars, inventory and facts collected by the plays.
+
+# ---------------------------------------------------------------------------------------
+# Pins (single source of truth; tests/definition-spec checks them against extension.json)
+# ---------------------------------------------------------------------------------------
+k8s_ext_version: "1.0.0"
+k8s_kubespray_tag: "v2.32.0"
+k8s_kubespray_commit: "9751ea6f63244e433a7a6263d9ecf381e57bb8e9"
+k8s_ee_tag: "ks2.32.0-b1"
+k8s_offered_versions: ["1.36.4", "1.35.8"]
+k8s_kubespray_tree: /opt/kubespray/src
+k8s_kubespray_python: /opt/kubespray/venv/bin/python
+
+# ---------------------------------------------------------------------------------------
+# Inputs (extensionInstanceVariables.<label>) and site config (configVars.<label>)
+# ---------------------------------------------------------------------------------------
+_k8s_iv: "{{ extensionInstanceVariables | default({}, true) }}"
+# configVars may also surface top-level on some controllers — the dict wins, top-level is
+# the fallback. Booleans use .get() with an explicit default (a real `false` is falsy).
+_k8s_cv: "{{ configVars | default({}, true) }}"
+
+k8s_cp_count: "{{ _k8s_iv.get('control_plane_count', 1) | int }}"
+k8s_worker_count: "{{ _k8s_iv.get('worker_count', 1) | int }}"
+k8s_kube_version_input: "{{ _k8s_iv.get('kube_version') | default('1.36.4', true) | string | trim }}"
+k8s_kube_proxy_mode: "{{ _k8s_iv.get('kube_proxy_mode') | default('iptables', true) | string | trim | lower }}"
+k8s_pod_cidr: "{{ _k8s_iv.get('pod_network_cidr') | default('10.233.64.0/18', true) | string | trim }}"
+k8s_service_cidr: "{{ _k8s_iv.get('service_network_cidr') | default('10.233.0.0/18', true) | string | trim }}"
+k8s_dns_domain: "{{ _k8s_iv.get('cluster_dns_domain') | default('cluster.local', true) | string | trim | lower }}"
+k8s_addons:
+  metrics_server: "{{ _k8s_iv.get('metrics_server_enabled', true) | bool }}"
+  local_path_provisioner: "{{ _k8s_iv.get('local_path_provisioner_enabled', true) | bool }}"
+  gateway_api_crds: "{{ _k8s_iv.get('gateway_api_crds_enabled', false) | bool }}"
+  metallb: "{{ _k8s_iv.get('metallb_enabled', true) | bool }}"
+k8s_drain_timeout_min: "{{ _k8s_iv.get('drain_timeout_minutes', 10) | int }}"
+k8s_drain_policy: "{{ _k8s_iv.get('drain_policy') | default('respect-pdb', true) | string | trim }}"
+k8s_converge_generation: "{{ _k8s_iv.get('converge_generation', 0) | int }}"
+k8s_admin_generation_input: "{{ _k8s_iv.get('admin_credential_generation', 1) | int }}"
+# verified live: the instance name is only in the record set (no top-level extensionInstanceName)
+k8s_instance_name: "{{ (extensionInstanceRecordSet | default({}, true)).get('extensionInstanceName') | default('kubernetes', true) | string }}"
+
+k8s_create_only:
+  kube_proxy_mode: "{{ k8s_kube_proxy_mode }}"
+  pod_network_cidr: "{{ k8s_pod_cidr }}"
+  service_network_cidr: "{{ k8s_service_cidr }}"
+  cluster_dns_domain: "{{ k8s_dns_domain }}"
+
+_k8s_csv: "{{ _k8s_cv.get('site_dns_servers') | default(site_dns_servers | default(''), true) | string }}"
+k8s_site_dns_servers: "{{ _k8s_csv.split(',') | map('trim') | reject('equalto', '') | list }}"
+_k8s_ntp_raw: "{{ _k8s_cv.get('site_ntp_servers') | default(site_ntp_servers | default(''), true) | string }}"
+_k8s_rs_ntp: >-
+  {{ (extensionInstanceRecordSet | default({}, true)).get('ntpServers', [])
+     if ((extensionInstanceRecordSet | default({}, true)).get('ntpServers', []) is not string)
+     else (extensionInstanceRecordSet.ntpServers.split(',')) }}
+k8s_site_ntp_servers: >-
+  {{ (_k8s_ntp_raw.split(',') | map('trim') | reject('equalto', '') | list)
+     or (_k8s_rs_ntp | map('string') | map('trim') | reject('equalto', '') | list) }}
+k8s_admin_cert_days: "{{ _k8s_cv.get('site_admin_cert_validity_days', site_admin_cert_validity_days | default(365)) | int }}"
+k8s_auto_renew_certificates: >-
+  {{ _k8s_cv.get('site_auto_renew_certificates', site_auto_renew_certificates | default(true)) | bool }}
+k8s_backup_retention: "{{ _k8s_cv.get('site_backup_retention_count', site_backup_retention_count | default(5)) | int }}"
+k8s_forks: "{{ _k8s_cv.get('site_ansible_forks', site_ansible_forks | default(50)) | int }}"
+# Overrides: YAML/JSON string, base64 of either, or already a mapping (platform-decoded)
+_k8s_ovr_raw: "{{ _k8s_cv.get('site_kubespray_overrides') | default(site_kubespray_overrides | default(''), true) }}"
+_k8s_ovr_text: >-
+  {{ '' if _k8s_ovr_raw is mapping else (_k8s_ovr_raw | string | trim) }}
+_k8s_ovr_decoded: >-
+  {{ _k8s_ovr_text if (_k8s_ovr_text == '' or _k8s_ovr_text is match('^[\{\[]|^[A-Za-z_][A-Za-z0-9_]*\s*:'))
+     else (_k8s_ovr_text | b64decode) }}
+k8s_site_overrides: >-
+  {{ _k8s_ovr_raw if _k8s_ovr_raw is mapping
+     else ({} if _k8s_ovr_decoded | trim == '' else (_k8s_ovr_decoded | from_yaml)) }}
+# Hash of the site settings that shape the cluster (drift is only applied on a converge bump)
+k8s_site_config_sha: >-
+  {{ {'dns': k8s_site_dns_servers, 'ntp': k8s_site_ntp_servers, 'renew': k8s_auto_renew_certificates,
+      'retention': k8s_backup_retention, 'overrides': k8s_site_overrides}
+     | to_json(sort_keys=true) | hash('sha256') }}
+
+# ---------------------------------------------------------------------------------------
+# Inventory view (platform groups are the instance-array labels; scale groups may be absent)
+# ---------------------------------------------------------------------------------------
+k8s_cp_hosts: "{{ groups.get('k8scp', []) }}"
+k8s_worker_hosts: "{{ groups.get('k8sworker', []) }}"
+k8s_cp_scale_in: "{{ groups.get('k8scp_scale_in', []) }}"
+k8s_cp_scale_out: "{{ groups.get('k8scp_scale_out', []) }}"
+k8s_worker_scale_in: "{{ groups.get('k8sworker_scale_in', []) }}"
+k8s_worker_scale_out: "{{ groups.get('k8sworker_scale_out', []) }}"
+k8s_up_hosts: "{{ groups.get('k8s_up', []) }}"
+k8s_server_ids: >-
+  {{ (extensionInstanceRecordSet | default({}, true)).get('serverInstances', [])
+     | selectattr('host', 'defined') | items2dict(key_name='host', value_name='serverInstanceId') }}
+
+# ---------------------------------------------------------------------------------------
+# Record set: VIP, api fqdn, lb-pool ranges, node subnet (both known shapes, unioned)
+# ---------------------------------------------------------------------------------------
+_k8s_rs: "{{ extensionInstanceRecordSet | default({}, true) }}"
+_k8s_subnets: >-
+  {{ _k8s_rs.get('serverInstanceGroups', []) | map(attribute='logicalNetworks', default=[]) | flatten
+     | map(attribute='subnets', default=[]) | flatten }}
+_k8s_allocs: >-
+  {{ (_k8s_rs.get('clusterIpv4Ips', []) + (_k8s_subnets | map(attribute='ipAllocations', default=[]) | flatten))
+     | selectattr('tags', 'defined') | list }}
+_k8s_ranges_raw: >-
+  {{ (_k8s_rs.get('clusterIpv4IpRanges', []) + (_k8s_subnets | map(attribute='ipRanges', default=[]) | flatten))
+     | selectattr('tags', 'defined') | list }}
+_k8s_vip_alloc: "{{ _k8s_allocs | selectattr('tags.role', 'defined') | selectattr('tags.role', 'equalto', 'api-vip') | first | default({}) }}"
+k8s_vip: "{{ _k8s_vip_alloc.ip | default('') }}"
+_k8s_fqdn_raw: "{{ _k8s_vip_alloc.fqdn | default('', true) | string | lower | regex_replace('\\.$', '') }}"
+# DNS is optional: the name is only offered when it is a valid DNS name (the instance name is free text)
+k8s_api_fqdn_candidate: "{{ _k8s_fqdn_raw if (_k8s_fqdn_raw | k8s_rfc1123) else '' }}"
+k8s_lb_ranges: >-
+  {{ _k8s_ranges_raw | selectattr('tags.role', 'defined') | selectattr('tags.role', 'equalto', 'lb-pool') | list | k8s_ranges }}
+
+# ---------------------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------------------
+k8s_ident: "{{ lookup('env', 'ANSIBLE_RUNNER_IDENT') | default('local', true) }}"
+k8s_context_json_path: "/runner/artifacts/{{ k8s_ident }}/context.json"
+k8s_ks_dir: "/tmp/k8s-ks-{{ k8s_ident }}"
+k8s_state_dir: /etc/metalsoft-k8s
+k8s_state_file: /etc/metalsoft-k8s/state.json
+k8s_backup_dir: /var/backups/metalsoft-k8s
+k8s_kubectl: >-
+  /usr/local/bin/kubectl --kubeconfig /etc/kubernetes/admin.conf --server https://127.0.0.1:6443
+
+# Nested kubespray budget ceiling: executionTimeout of the running task minus a reserve for the
+# trailing plays (emit). Per-run soft budgets only warn.
+k8s_task_timeout_s: "{{ 18000 if (k8s_stage | default('post')) == 'post' else 14400 }}"

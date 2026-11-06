@@ -1,0 +1,528 @@
+{
+  "kind": "ExtensionDefinition",
+  "schemaVersion": "1.1",
+  "name": "Kubernetes (kubespray)",
+  "label": "kubernetes_kubespray",
+  "extensionType": "application",
+  "vendor": "MetalSoft",
+  "extensionVersion": "1.0.0",
+  "description": "Vanilla upstream Kubernetes on Ubuntu 26.04 bare metal via kubespray v2.32.0: 1/3/5 control-plane nodes with stacked etcd, scalable workers, kube-vip API VIP, MetalLB L2, local-path storage.",
+  "icon": "https://raw.githubusercontent.com/cncf/artwork/main/projects/kubernetes/icon/color/kubernetes-icon-color.svg",
+  "dependencies": {
+    "controllerVersion": "v7.5.0",
+    "osTemplates": [
+      "ubuntu-26-04-lts-waitforssh"
+    ]
+  },
+  "inputs": [
+    {
+      "label": "control_plane_server_type",
+      "name": "control_plane_server_type",
+      "helpText": "Control-plane nodes (API server, etcd). Production: 4+ cores, 16+ GB RAM, SSD. Fixed after create.",
+      "inputType": "ExtensionInputServerType",
+      "setOnly": true,
+      "options": {
+        "minRamGb": 8
+      }
+    },
+    {
+      "label": "worker_server_type",
+      "name": "worker_server_type",
+      "helpText": "Server type of every worker node (runs the workloads). Fixed after create.",
+      "inputType": "ExtensionInputServerType",
+      "setOnly": true,
+      "options": {}
+    },
+    {
+      "label": "os_template",
+      "name": "os_template",
+      "helpText": "Ubuntu 26.04 LTS wait-for-SSH template (ubuntu-26-04-lts-waitforssh). Fixed after create.",
+      "inputType": "ExtensionInputOsTemplate",
+      "setOnly": true,
+      "options": {
+        "osFamily": "Ubuntu"
+      }
+    },
+    {
+      "label": "control_plane_count",
+      "name": "control_plane_count",
+      "helpText": "Control-plane nodes with stacked etcd: 1, 3 or 5. Change by 2 per edit, with no other change in that edit.",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 5,
+        "deniedValues": [
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "label": "worker_count",
+      "name": "worker_count",
+      "helpText": "Worker nodes (1-100). Edit to scale out/in; removed nodes are drained first (MetalSoft picks which leave).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 100
+      }
+    },
+    {
+      "label": "kube_version",
+      "name": "kube_version",
+      "helpText": "Kubernetes version. Edit to upgrade: one minor at a time, never down, no other change in the same edit.",
+      "inputType": "ExtensionInputEnum",
+      "defaultValue": "1.36.4",
+      "options": {
+        "values": [
+          "1.36.4",
+          "1.35.8"
+        ]
+      }
+    },
+    {
+      "label": "kube_proxy_mode",
+      "name": "kube_proxy_mode",
+      "helpText": "kube-proxy mode: iptables (default, tested on Ubuntu 26.04) or nftables (experimental). Fixed after create.",
+      "inputType": "ExtensionInputEnum",
+      "setOnly": true,
+      "defaultValue": "iptables",
+      "options": {
+        "values": [
+          "iptables",
+          "nftables"
+        ]
+      }
+    },
+    {
+      "label": "pod_network_cidr",
+      "name": "pod_network_cidr",
+      "helpText": "Pod network (Calico), /12 to /20. Must not overlap node, service or client networks. Fixed after create.",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "10.233.64.0/18",
+      "options": {
+        "validationRegEx": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[2-9]|20)$"
+      }
+    },
+    {
+      "label": "service_network_cidr",
+      "name": "service_network_cidr",
+      "helpText": "Service (ClusterIP) network, /12 to /24. Must not overlap the pod or node networks. Fixed after create.",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "10.233.0.0/18",
+      "options": {
+        "validationRegEx": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[2-9]|2[0-4])$"
+      }
+    },
+    {
+      "label": "cluster_dns_domain",
+      "name": "cluster_dns_domain",
+      "helpText": "In-cluster DNS domain (<svc>.<ns>.svc.<domain>), not the site DNS zone. Keep cluster.local. Fixed after create.",
+      "inputType": "ExtensionInputString",
+      "setOnly": true,
+      "defaultValue": "cluster.local",
+      "options": {
+        "validationRegEx": "^([a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?\\.){0,3}[a-z]{2,30}$"
+      }
+    },
+    {
+      "label": "metrics_server_enabled",
+      "name": "metrics_server_enabled",
+      "helpText": "Install metrics-server (kubectl top, autoscaling). Add-only: switching it off later is refused.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "local_path_provisioner_enabled",
+      "name": "local_path_provisioner_enabled",
+      "helpText": "Install local-path-provisioner as the default StorageClass (node-local disk, no replication). Add-only.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "gateway_api_crds_enabled",
+      "name": "gateway_api_crds_enabled",
+      "helpText": "Install the Gateway API CRDs (standard channel, no controller). Add-only.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": false,
+      "options": {}
+    },
+    {
+      "label": "metallb_enabled",
+      "name": "metallb_enabled",
+      "helpText": "Install MetalLB (L2) for LoadBalancer Services from the 4 reserved IPs (output lb_pool_ranges). Add-only.",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "drain_timeout_minutes",
+      "name": "drain_timeout_minutes",
+      "helpText": "Per-node drain timeout for scale-in and upgrades (1-30 min).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 10,
+      "options": {
+        "minValue": 1,
+        "maxValue": 30
+      }
+    },
+    {
+      "label": "drain_policy",
+      "name": "drain_policy",
+      "helpText": "When a drain times out: respect-pdb fails the edit (nothing removed); force-after-timeout evicts anyway.",
+      "inputType": "ExtensionInputEnum",
+      "defaultValue": "respect-pdb",
+      "options": {
+        "values": [
+          "respect-pdb",
+          "force-after-timeout"
+        ]
+      }
+    },
+    {
+      "label": "converge_generation",
+      "name": "converge_generation",
+      "helpText": "Raise it (e.g. +1) to re-run the full kubespray converge: repair drift, apply new site settings. Never lower.",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 0,
+      "options": {
+        "minValue": 0,
+        "maxValue": 1000000
+      }
+    },
+    {
+      "label": "admin_credential_generation",
+      "name": "admin_credential_generation",
+      "helpText": "Raise it to rotate the admin kubeconfig (old one stops working). Never lower it.",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 1,
+      "options": {
+        "minValue": 1,
+        "maxValue": 1000
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "label": "api_url",
+      "name": "api_url",
+      "helpText": "Kubernetes API URL (https://<api name or VIP>:6443).",
+      "outputType": "url"
+    },
+    {
+      "label": "api_vip",
+      "name": "api_vip",
+      "helpText": "API virtual IP (kube-vip, ARP) on the cluster network.",
+      "outputType": "string"
+    },
+    {
+      "label": "api_fqdn",
+      "name": "api_fqdn",
+      "helpText": "API DNS name; empty when the site has no DNS provisioning for it.",
+      "outputType": "string"
+    },
+    {
+      "label": "ca_cert",
+      "name": "ca_cert",
+      "helpText": "Cluster CA certificate (PEM).",
+      "outputType": "text"
+    },
+    {
+      "label": "admin_kubeconfig",
+      "name": "admin_kubeconfig",
+      "helpText": "kubeconfig of the extension's admin identity (cluster-admin via its own binding; revocable).",
+      "outputType": "secret",
+      "isPassword": true
+    },
+    {
+      "label": "admin_kubeconfig_expires",
+      "name": "admin_kubeconfig_expires",
+      "helpText": "Expiry (UTC) of the admin kubeconfig certificate; edits renew it when < 30 days remain.",
+      "outputType": "string"
+    },
+    {
+      "label": "admin_credential",
+      "name": "admin_credential",
+      "helpText": "Admin identity name and group (revoke: delete its ClusterRoleBinding).",
+      "outputType": "string"
+    },
+    {
+      "label": "kubernetes_version",
+      "name": "kubernetes_version",
+      "helpText": "Kubernetes version running on the control plane.",
+      "outputType": "string"
+    },
+    {
+      "label": "kubespray_version",
+      "name": "kubespray_version",
+      "helpText": "kubespray release used by this extension version.",
+      "outputType": "string"
+    },
+    {
+      "label": "control_plane_nodes",
+      "name": "control_plane_nodes",
+      "helpText": "Control-plane (and etcd) node names, comma-separated.",
+      "outputType": "string"
+    },
+    {
+      "label": "worker_nodes",
+      "name": "worker_nodes",
+      "helpText": "Worker node names, comma-separated.",
+      "outputType": "string"
+    },
+    {
+      "label": "lb_pool_ranges",
+      "name": "lb_pool_ranges",
+      "helpText": "IP range(s) reserved for LoadBalancer Services (MetalLB), first-last.",
+      "outputType": "string"
+    },
+    {
+      "label": "cluster_id",
+      "name": "cluster_id",
+      "helpText": "Cluster id recorded at create.",
+      "outputType": "string"
+    },
+    {
+      "label": "cluster_status",
+      "name": "cluster_status",
+      "helpText": "ready, or degraded: <problems> from the last run's health check.",
+      "outputType": "string"
+    },
+    {
+      "label": "etcd_last_snapshot",
+      "name": "etcd_last_snapshot",
+      "helpText": "Last etcd snapshot taken by the extension (node:path, time).",
+      "outputType": "string"
+    }
+  ],
+  "infrastructure": {
+    "instanceArrays": [
+      {
+        "label": "k8scp",
+        "instanceCount": "#/input/control_plane_count",
+        "serverType": "#/input/control_plane_server_type",
+        "osTemplate": "#/input/os_template",
+        "logicalNetworks": [
+          {
+            "label": "k8s-net",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          }
+        ],
+        "tags": [
+          "k8s-control-plane"
+        ]
+      },
+      {
+        "label": "k8sworker",
+        "instanceCount": "#/input/worker_count",
+        "serverType": "#/input/worker_server_type",
+        "osTemplate": "#/input/os_template",
+        "logicalNetworks": [
+          {
+            "label": "k8s-net",
+            "networkConnection": {
+              "tagged": false,
+              "accessMode": "l2",
+              "providesDefaultRoute": true,
+              "dns": {
+                "provisionInstanceDnsRecords": true
+              }
+            }
+          }
+        ],
+        "tags": [
+          "k8s-worker"
+        ]
+      }
+    ],
+    "logicalNetworks": [
+      {
+        "label": "k8s-net",
+        "profileLabel": "k8s-net",
+        "ipAllocations": [
+          {
+            "tags": {
+              "role": "api-vip"
+            },
+            "ipVersion": "ipv4",
+            "dnsRecords": [
+              {
+                "name": "api.{{CLUSTER_NAME}}.{{default_zone_name}}",
+                "recordType": "A",
+                "generatePtrRecord": true,
+                "ttl": 3600
+              }
+            ]
+          }
+        ],
+        "ipRanges": [
+          {
+            "tags": {
+              "role": "lb-pool"
+            },
+            "ipVersion": "ipv4",
+            "ipCount": 4
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "label": "kubernetes-kubespray-ansible-bundle",
+      "name": "kubernetes-kubespray-ansible-bundle",
+      "assetType": "AnsibleBundle",
+      "url": "https://repo.metalsoft.io/.extensions_ms/kubernetes-kubespray/kubernetes-kubespray-v1.0.0.zip"
+    },
+    {
+      "label": "ee-kubernetes-kubespray-ks2-32-0-b1",
+      "name": "ee-kubernetes-kubespray-ks2-32-0-b1",
+      "assetType": "OciImage",
+      "url": "https://repo.metalsoft.io/.extensions_ms/ee/ee-kubernetes-kubespray-ks2.32.0-b1.tar.gz",
+      "repositoryRegistry": "ee-kubernetes-kubespray",
+      "namespaceRegistry": "ee",
+      "tagRegistry": "ks2.32.0-b1"
+    }
+  ],
+  "onCreate": [
+    {
+      "stage": "preDeploy",
+      "tasks": []
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "k8s-deploy",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "kubernetes-kubespray-ansible-bundle",
+            "playbook": "deploy.yaml",
+            "ee": "ee-kubernetes-kubespray-ks2-32-0-b1",
+            "executionTimeout": 18000,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onEdit": [
+    {
+      "stage": "preDeploy",
+      "tasks": [
+        {
+          "label": "k8s-edit-pre",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "kubernetes-kubespray-ansible-bundle",
+            "playbook": "edit-pre.yaml",
+            "ee": "ee-kubernetes-kubespray-ks2-32-0-b1",
+            "executionTimeout": 14400,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    },
+    {
+      "stage": "postDeploy",
+      "tasks": [
+        {
+          "label": "k8s-edit-post",
+          "taskType": "ExtensionTaskAnsible",
+          "options": {
+            "asset": "kubernetes-kubespray-ansible-bundle",
+            "playbook": "deploy.yaml",
+            "ee": "ee-kubernetes-kubespray-ks2-32-0-b1",
+            "executionTimeout": 46800,
+            "executionTimeoutTick": 30
+          }
+        }
+      ]
+    }
+  ],
+  "onDelete": [],
+  "configVars": [
+    {
+      "label": "site_kubespray_overrides",
+      "name": "site_kubespray_overrides",
+      "helpText": "Site-admin kubespray group_vars (YAML/JSON or base64); protected keys rejected. Applied on create/converge.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {}
+    },
+    {
+      "label": "site_dns_servers",
+      "name": "site_dns_servers",
+      "helpText": "Up to 3 comma-separated upstream DNS servers for cluster DNS. Empty: use the nodes' own resolvers.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^$|^[0-9.]{7,15}(, ?[0-9.]{7,15}){0,2}$"
+      }
+    },
+    {
+      "label": "site_ntp_servers",
+      "name": "site_ntp_servers",
+      "helpText": "Comma-separated NTP servers for the nodes (chrony). Empty: site NTP servers, else Ubuntu pool.",
+      "inputType": "ExtensionInputString",
+      "defaultValue": "",
+      "options": {
+        "validationRegEx": "^$|^[A-Za-z0-9.:-]{1,63}(, ?[A-Za-z0-9.:-]{1,63}){0,3}$"
+      }
+    },
+    {
+      "label": "site_admin_cert_validity_days",
+      "name": "site_admin_cert_validity_days",
+      "helpText": "Validity in days (60-365) of the admin kubeconfig certificate issued by the extension.",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 365,
+      "options": {
+        "minValue": 60,
+        "maxValue": 365
+      }
+    },
+    {
+      "label": "site_auto_renew_certificates",
+      "name": "site_auto_renew_certificates",
+      "helpText": "Renew control-plane certificates monthly on the nodes (kubespray auto_renew_certificates).",
+      "inputType": "ExtensionInputBoolean",
+      "defaultValue": true,
+      "options": {}
+    },
+    {
+      "label": "site_backup_retention_count",
+      "name": "site_backup_retention_count",
+      "helpText": "etcd and kubeadm backups kept on each control-plane node (1-100).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 5,
+      "options": {
+        "minValue": 1,
+        "maxValue": 100
+      }
+    },
+    {
+      "label": "site_ansible_forks",
+      "name": "site_ansible_forks",
+      "helpText": "Parallel SSH connections used by kubespray runs (5-200).",
+      "inputType": "ExtensionInputInteger",
+      "defaultValue": 50,
+      "options": {
+        "minValue": 5,
+        "maxValue": 200
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+---
+# Pods of unreachable leavers (localhost, delegated to the anchor). Input: _k8s_dead_nodes (Node names).
+# A drain never finishes on a dead kubelet: evicted pods stay Terminating because nobody confirms
+# their exit. The node is cordoned and given the out-of-service taint (Kubernetes' procedure for a
+# shut-down node: pods are deleted and volumes detached without the kubelet); pods still bound to
+# it after the wait are force-deleted. PodDisruptionBudgets do not apply: those pods are already down.
+- name: Dead leavers | cordon + out-of-service taint, then clear their pods
+  ansible.builtin.shell: |
+    set -u
+    for n in {{ _k8s_dead_nodes | map('quote') | join(' ') }}; do
+      {{ k8s_kubectl }} get node "$n" >/dev/null 2>&1 || { echo "gone $n"; continue; }
+      {{ k8s_kubectl }} label node "$n" metalsoft.io/leaving=true --overwrite >/dev/null
+      {{ k8s_kubectl }} cordon "$n" >/dev/null
+      {{ k8s_kubectl }} taint node "$n" node.kubernetes.io/out-of-service=nodeshutdown:NoExecute --overwrite >/dev/null
+      left=""
+      for i in $(seq 1 24); do
+        # DaemonSet pods and static (mirror, owner kind Node) pods are left alone: they go with the Node object
+        left=$({{ k8s_kubectl }} get pods -A --field-selector spec.nodeName="$n" \
+          -o jsonpath='{range .items[*]}{.metadata.ownerReferences[0].kind}|{.metadata.namespace}/{.metadata.name}{"\n"}{end}' \
+          | awk -F'|' '$1 != "DaemonSet" && $1 != "Node" && $2 != "" {print $2}')
+        [ -z "$left" ] && break
+        sleep 5
+      done
+      for p in $left; do
+        {{ k8s_kubectl }} -n "${p%%/*}" delete pod "${p#*/}" --force --grace-period=0 --wait=false >/dev/null 2>&1 || true
+      done
+      echo "cleared $n${left:+ (force-deleted: $(echo $left | tr '\n' ' '))}"
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  register: _k8s_dead_pods
+  changed_when: "'cleared' in _k8s_dead_pods.stdout"
+  when: _k8s_dead_nodes | length > 0
+
+- name: Dead leavers | result
+  ansible.builtin.debug:
+    msg: "{{ _k8s_dead_pods.stdout_lines | default([]) }}"
+  when: _k8s_dead_nodes | length > 0

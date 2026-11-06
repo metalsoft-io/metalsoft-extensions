@@ -1,0 +1,22 @@
+---
+# Quiesce one leaving node (best effort; it is about to be wiped by the platform): stop static pods
+# (CPs), kubelet, containerd and etcd, and leave a marker so a reverted edit resets it cleanly.
+- name: "Quiesce {{ _k8s_quiesce_host }}"
+  ansible.builtin.shell: |
+    mkdir -p {{ k8s_state_dir }}/removed-manifests
+    if ls /etc/kubernetes/manifests/*.y*ml >/dev/null 2>&1; then
+      mv /etc/kubernetes/manifests/*.y*ml {{ k8s_state_dir }}/removed-manifests/ 2>/dev/null
+      for i in $(seq 1 30); do [ -z "$(crictl ps -q 2>/dev/null)" ] && break; sleep 2; done
+    fi
+    systemctl disable --now kubelet 2>/dev/null
+    systemctl disable --now etcd 2>/dev/null
+    systemctl disable --now containerd 2>/dev/null
+    date -u +%FT%TZ > {{ k8s_state_dir }}/removed
+    echo quiesced
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ _k8s_quiesce_host }}"
+  become: true
+  ignore_unreachable: true
+  failed_when: false
+  changed_when: true

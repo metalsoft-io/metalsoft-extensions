@@ -1,0 +1,27 @@
+---
+# localhost: restart stale kube-vip containers (see kube-vip-renew-hook.yaml): followers first,
+# the current lease holder last, so the VIP moves at most once.
+- name: kube-vip | lease holder
+  ansible.builtin.command: "{{ k8s_kubectl }} -n kube-system get lease plndr-cp-lock -o jsonpath={.spec.holderIdentity}"
+  delegate_to: "{{ k8s_anchor }}"
+  become: true
+  register: _k8s_vip_holder_now
+  changed_when: false
+  failed_when: false
+  when: k8s_anchor | length > 0
+
+- name: kube-vip | restart stale containers
+  ansible.builtin.shell: |
+    id=$(/usr/local/bin/crictl ps -q --name kube-vip | head -1); [ -n "$id" ] && /usr/local/bin/crictl stop "$id"
+    for i in $(seq 1 30); do /usr/local/bin/crictl ps -q --name kube-vip | grep -q . && exit 0; sleep 2; done; exit 1
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ item }}"
+  become: true
+  loop: >-
+    {{ (_k8s_cps | reject('equalto', _k8s_holder) | list) + (_k8s_cps | select('equalto', _k8s_holder) | list) }}
+  vars:
+    _k8s_cps: "{{ k8s_state.control_plane.order | default([]) | select('in', k8s_up_hosts) | list }}"
+    _k8s_holder: "{{ _k8s_vip_holder_now.stdout | default('') }}"
+  when: (hostvars[item]._k8s_vip_age.stdout | default('')) == 'stale'
+  changed_when: true

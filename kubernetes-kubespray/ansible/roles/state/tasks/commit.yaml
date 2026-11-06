@@ -1,0 +1,25 @@
+---
+# localhost: build the next state document from k8s_state + k8s_state_patch, bump the serial,
+# then write it to every reachable CP of the (new) order. Caller sets k8s_state_patch.
+# Whole-document writes only; the highest serial wins at the next merge.
+- name: State | next document
+  ansible.builtin.set_fact:
+    k8s_state_new: >-
+      {{ k8s_state | combine(k8s_state_patch, recursive=false)
+         | combine({'serial': (k8s_state.serial | default(0) | int) + 1,
+                    'updated': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'ext_version': k8s_ext_version,
+                    'kubespray': {'tag': k8s_kubespray_tag, 'commit': k8s_kubespray_commit}}) }}
+
+- name: State | write to the control-plane nodes of the order
+  ansible.builtin.copy:
+    dest: "{{ k8s_state_file }}"
+    content: "{{ k8s_state_new | to_nice_json }}\n"
+    mode: "0600"
+  delegate_to: "{{ item }}"
+  become: true
+  loop: "{{ k8s_state_new.control_plane.order | default([]) | select('in', k8s_up_hosts) | list }}"
+
+- name: State | adopt
+  ansible.builtin.set_fact:
+    k8s_state: "{{ k8s_state_new }}"

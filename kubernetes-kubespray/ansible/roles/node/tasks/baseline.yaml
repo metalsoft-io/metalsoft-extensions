@@ -1,0 +1,103 @@
+---
+# Node baseline before kubespray touches a node (become). Idempotent; existing nodes are never
+# rebooted or upgraded here.
+- name: Baseline | Ubuntu 26.04 x86_64
+  ansible.builtin.shell: . /etc/os-release && echo "${ID} ${VERSION_ID} $(uname -m)"
+  register: _k8s_os
+  changed_when: false
+
+- name: Baseline | supported OS
+  ansible.builtin.assert:
+    that:
+      - _k8s_os.stdout.split()[0] == 'ubuntu'
+      - _k8s_os.stdout.split()[1] == '26.04'
+      - _k8s_os.stdout.split()[2] == 'x86_64'
+    fail_msg: "{{ inventory_hostname }} runs '{{ _k8s_os.stdout }}'; this extension supports Ubuntu 26.04 x86_64 only."
+    quiet: true
+
+- name: Baseline | wait for cloud-init
+  ansible.builtin.command: cloud-init status --wait
+  register: _k8s_ci
+  changed_when: false
+  failed_when: false
+  timeout: 900
+
+- name: Baseline | wait for the apt/dpkg lock (unattended-upgrades on first boot)
+  ansible.builtin.shell: |
+    for i in $(seq 1 120); do
+      if ! fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; then exit 0; fi
+      sleep 5
+    done
+    echo "dpkg lock still held after 10 minutes"; exit 1
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+# No firewall management in this version: kubespray does not manage host firewalls and an
+# active ufw breaks pod/service networking.
+- name: Baseline | ufw present?
+  ansible.builtin.stat:
+    path: /usr/sbin/ufw
+  register: _k8s_ufw_bin
+
+- name: Baseline | disable ufw
+  ansible.builtin.shell: |
+    changed=no
+    if ufw status 2>/dev/null | grep -q '^Status: active'; then ufw --force disable >/dev/null; changed=yes; fi
+    if systemctl is-enabled ufw >/dev/null 2>&1; then systemctl disable --now ufw >/dev/null 2>&1; changed=yes; fi
+    echo "$changed"
+  args:
+    executable: /bin/bash
+  register: _k8s_ufw
+  changed_when: _k8s_ufw.stdout == 'yes'
+  when: _k8s_ufw_bin.stat.exists
+
+- name: Baseline | chrony installed
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: _k8s_chrony_pkg
+  retries: 3
+  delay: 10
+  until: _k8s_chrony_pkg is succeeded
+  when: k8s_site_ntp_servers | length > 0
+
+- name: Baseline | chrony sources directory
+  ansible.builtin.file:
+    path: /etc/chrony/sources.d
+    state: directory
+    mode: "0755"
+  when: k8s_site_ntp_servers | length > 0
+
+- name: Baseline | chrony sources (site NTP servers)
+  ansible.builtin.copy:
+    dest: /etc/chrony/sources.d/metalsoft-k8s.sources
+    mode: "0644"
+    content: |
+      # Managed by kubernetes-kubespray (site NTP servers)
+      {% for s in k8s_site_ntp_servers %}
+      server {{ s }} iburst
+      {% endfor %}
+  register: _k8s_chrony_src
+  when: k8s_site_ntp_servers | length > 0
+
+- name: Baseline | reload chrony sources
+  ansible.builtin.command: chronyc reload sources
+  when: _k8s_chrony_src is changed
+  changed_when: true
+  failed_when: false
+
+- name: Baseline | state directory
+  ansible.builtin.file:
+    path: "{{ k8s_state_dir }}"
+    state: directory
+    mode: "0700"
+
+# Written BEFORE kubespray touches the node: a node carrying another cluster's id is refused.
+- name: Baseline | cluster id marker
+  ansible.builtin.copy:
+    dest: "{{ k8s_state_dir }}/cluster-id"
+    content: "{{ hostvars['localhost'].k8s_cluster_id }}\n"
+    mode: "0644"

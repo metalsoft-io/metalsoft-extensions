@@ -1,0 +1,124 @@
+---
+# control-plane scale-out 1→3 / 3→5 (localhost, postDeploy). Joiners are appended after the
+# existing order (CP[0] unchanged). cluster.yml limited to etcd+CPs joins them; a same-version
+# upgrade_cluster.yml (drain_nodes false) then re-renders --etcd-servers and the kubeadm-config
+# on every CP — new CPs otherwise inherit the stale member list. Worker joiners of the same edit
+# join in the same cluster.yml run (no separate facts + scale.yml). The refresh runs with
+# skip_downloads: the join run just verified every file and image at this version on these CPs.
+- name: CP scale-out | joiner preflight (etcd ports reachable from the existing members)
+  ansible.builtin.shell: |
+    for p in 2379 2380 6443 10250; do
+      timeout 3 bash -c "</dev/tcp/{{ hostvars[item].ansible_host }}/$p" 2>/dev/null && echo "busy $p" || true
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ k8s_anchor }}"
+  loop: "{{ k8s_plan.cp_joining }}"
+  register: _k8s_cp_ports
+  changed_when: false
+
+- name: CP scale-out | joiner ports must be free (skipped when resuming this same scale-out)
+  when: >-
+    not ((k8s_state.operation.kind | default('')) == 'cp-scale-out'
+         and k8s_plan.cp_joining | difference(k8s_state.operation.joiners | default([])) | length == 0)
+  ansible.builtin.assert:
+    that: _k8s_cp_ports.results | map(attribute='stdout') | select | list | length == 0
+    fail_msg: >-
+      Joining control-plane node(s) already listen on Kubernetes/etcd ports:
+      {{ _k8s_cp_ports.results | selectattr('stdout') | map(attribute='item') | join(', ') }}. They are not clean.
+    quiet: true
+
+- name: CP scale-out | run hosts
+  ansible.builtin.set_fact:
+    k8s_run_cp: "{{ k8s_plan.cp_order_after }}"
+    k8s_run_workers: "{{ (k8s_registered_workers | select('in', k8s_up_hosts) | list) + k8s_plan.w_joining | unique }}"
+    k8s_run_hostvars: {}
+
+- name: CP scale-out | second-cluster guard
+  ansible.builtin.include_tasks: guard-cp0.yaml
+
+- name: CP scale-out | etcd snapshot
+  ansible.builtin.include_tasks: etcd-snapshot.yaml
+  vars:
+    k8s_snapshot_reason: cp-scale-out
+
+- name: CP scale-out | record intent (joiners pending)
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: {kind: cp-scale-out, joiners: "{{ k8s_plan.cp_joining }}", worker_joiners: "{{ k8s_plan.w_joining }}"}
+      pending: {control_plane: "{{ k8s_plan.cp_joining }}", workers: "{{ k8s_plan.w_joining }}"}
+      etcd_last_snapshot: "{{ k8s_last_snapshot }}"
+      control_plane: >-
+        {{ k8s_state.control_plane | combine({'etcd_member_names': k8s_etcd_member_names,
+           'members': k8s_state.control_plane.members | default({}) | combine(k8s_plan.cp_joining | k8s_members(k8s_server_ids))}) }}
+
+- name: CP scale-out | overlay
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: overlay.yaml
+
+- name: CP scale-out | facts
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "40-facts"
+    ks_playbook: playbooks/facts.yml
+    ks_vars: {kube_version: "{{ k8s_state.kube_version }}"}
+    ks_budget_s: 1800
+    ks_allow_fail: true
+
+- name: CP scale-out | cluster.yml --limit etcd:kube_control_plane
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "41-cp-join"
+    ks_playbook: cluster.yml
+    ks_limit: "{{ (['etcd', 'kube_control_plane'] + k8s_plan.w_joining) | join(':') }}"
+    ks_vars:
+      kube_version: "{{ k8s_state.kube_version }}"
+      etcd_retries: 10
+      control_plane_node_become_ready_tries: 72
+    ks_budget_s: 7200
+
+- name: CP scale-out | refresh --etcd-servers and kubeadm-config (same version, no drain)
+  ansible.builtin.include_role:
+    name: kubespray
+    tasks_from: run.yaml
+  vars:
+    ks_label: "42-cp-refresh"
+    ks_playbook: upgrade_cluster.yml
+    ks_limit: "etcd:kube_control_plane"
+    ks_vars:
+      kube_version: "{{ k8s_state.kube_version }}"
+      etcd_retries: 10
+      drain_nodes: false
+      control_plane_node_become_ready_tries: 72
+      skip_downloads: true
+    ks_budget_s: 7200
+
+# Commit the new order and the joined workers, so a retry after a failure from here on sees
+# the scale-out as done.
+- name: CP scale-out | verify the control plane and the joined workers
+  ansible.builtin.include_tasks: verify.yaml
+  vars:
+    k8s_verify_version: "{{ k8s_state.kube_version }}"
+
+- name: CP scale-out | commit the new order
+  ansible.builtin.include_role:
+    name: state
+    tasks_from: commit.yaml
+  vars:
+    k8s_state_patch:
+      operation: {}
+      pending: {control_plane: [], workers: "{{ k8s_state.pending.workers | default([]) | reject('in', k8s_plan.w_joining) | list }}"}
+      workers: "{{ (k8s_state.workers | default([]) + k8s_plan.w_joining) | unique }}"
+      control_plane: >-
+        {{ k8s_state.control_plane | combine({'order': k8s_plan.cp_order_after,
+           'etcd_member_names': dict(k8s_plan.cp_order_after | zip(k8s_plan.cp_order_after | map('extract', k8s_etcd_member_names))),
+           'members': (k8s_state.control_plane.members | default({})) | combine(k8s_plan.cp_order_after | k8s_members(k8s_server_ids))
+                      | dict2items | selectattr('key', 'in', k8s_plan.cp_order_after) | items2dict}) }}

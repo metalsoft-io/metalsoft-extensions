@@ -1,0 +1,54 @@
+diff --git a/roles/kubernetes/node/templates/manifests/haproxy.manifest.j2 b/roles/kubernetes/node/templates/manifests/haproxy.manifest.j2
+index 78572b411e5..c940fbbcf65 100644
+--- a/roles/kubernetes/node/templates/manifests/haproxy.manifest.j2
++++ b/roles/kubernetes/node/templates/manifests/haproxy.manifest.j2
+@@ -13,10 +13,10 @@ spec:
+   dnsPolicy: ClusterFirstWithHostNet
+   nodeSelector:
+     kubernetes.io/os: linux
+-{# Static pods do not support priorityClassName, so set the numeric priority of
+-   system-node-critical directly, otherwise kubelet may evict this pod early:
+-   https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#pod-selection-for-kubelet-eviction #}
++{# Set both, like kubeadm. The kubelet does not resolve priorityClassName for static pods,
++   and the API server rejects the mirror pod when priority does not match the class. #}
+   priority: 2000001000
++  priorityClassName: system-node-critical
+   containers:
+   - name: haproxy
+     image: {{ haproxy_image_repo }}:{{ haproxy_image_tag }}
+diff --git a/roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2 b/roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2
+index 69395fab1de..93d8f151709 100644
+--- a/roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2
++++ b/roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2
+@@ -144,10 +144,10 @@ spec:
+     - kubernetes
+     ip: 127.0.0.1
+   hostNetwork: true
+-{# Static pods do not support priorityClassName, so set the numeric priority of
+-   system-node-critical directly, otherwise kubelet may evict this pod early:
+-   https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#pod-selection-for-kubelet-eviction #}
++{# Set both, like kubeadm. The kubelet does not resolve priorityClassName for static pods,
++   and the API server rejects the mirror pod when priority does not match the class. #}
+   priority: 2000001000
++  priorityClassName: system-node-critical
+   volumes:
+   - hostPath:
+       path: /etc/kubernetes/{{kube_vip_admin_conf}}
+diff --git a/roles/kubernetes/node/templates/manifests/nginx-proxy.manifest.j2 b/roles/kubernetes/node/templates/manifests/nginx-proxy.manifest.j2
+index 4064455bfcc..369b9828fc5 100644
+--- a/roles/kubernetes/node/templates/manifests/nginx-proxy.manifest.j2
++++ b/roles/kubernetes/node/templates/manifests/nginx-proxy.manifest.j2
+@@ -13,10 +13,10 @@ spec:
+   dnsPolicy: ClusterFirstWithHostNet
+   nodeSelector:
+     kubernetes.io/os: linux
+-{# Static pods do not support priorityClassName, so set the numeric priority of
+-   system-node-critical directly, otherwise kubelet may evict this pod early:
+-   https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#pod-selection-for-kubelet-eviction #}
++{# Set both, like kubeadm. The kubelet does not resolve priorityClassName for static pods,
++   and the API server rejects the mirror pod when priority does not match the class. #}
+   priority: 2000001000
++  priorityClassName: system-node-critical
+   containers:
+   - name: nginx-proxy
+     image: {{ nginx_image_repo }}:{{ nginx_image_tag }}

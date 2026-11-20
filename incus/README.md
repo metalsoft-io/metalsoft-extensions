@@ -117,11 +117,11 @@ Playbooks must sit at the archive root (no wrapper directory), and never ship a 
 
 ```bash
 cd ansible
-zip -r ../incus-v1.1.3.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../incus-v1.1.3.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
+zip -r ../incus-v1.1.4.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../incus-v1.1.4.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
 ```
 
-Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.3.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
+Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.4.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
 
 ### Execution environment image
 

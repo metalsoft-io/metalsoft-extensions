@@ -22,7 +22,8 @@ config:
   cluster.join_token_expiry: 1H
   cluster.max_standby: 2
   cluster.max_voters: 3
-  cluster.offline_threshold: 20
+  # cluster.offline_threshold is left at its default (20 s). Setting it in this preseed makes
+  # "incus admin init --preseed" fail on Incus 7.5.0 and newer (the daemon is not clustered yet).
   # Images configuration - https://linuxcontainers.org/incus/docs/main/server_config/#images-configuration
   images.auto_update_cached: true
   images.auto_update_interval: {{ incus_images_auto_update_interval }}

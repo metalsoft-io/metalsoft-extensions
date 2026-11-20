@@ -49,6 +49,8 @@
           - bootstrap_config.storage_pools[0].driver == 'dir'
           - bootstrap_config.config['images.auto_update_interval'] | int == 6
           - bootstrap_config.cluster.enabled | bool
+          # must stay out of the preseed: on Incus >= 7.5.0 it makes "incus admin init --preseed" fail
+          - "'cluster.offline_threshold' not in bootstrap_config.config"
 
     # set_fact (not task vars) — include_vars-loaded defaults outrank task vars
     - name: Override | enable separate cluster traffic

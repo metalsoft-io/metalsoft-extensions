@@ -7,7 +7,7 @@
     # Stale-bundle detection: proves which bundle version actually ran.
     - name: Debug | incus extension bundle version
       ansible.builtin.debug:
-        msg: "incus extension bundle v1.1.3"
+        msg: "incus extension bundle v1.1.4"
       run_once: true
   roles:
     - role: incus

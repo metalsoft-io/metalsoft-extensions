@@ -4,4 +4,4 @@
   loop: "{{ a_record.records | default([]) }}"
   loop_control:
     loop_var: ip_address
-  when: ip_address is ansible.utils.ipv4
+  when: ip_address is regex('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')

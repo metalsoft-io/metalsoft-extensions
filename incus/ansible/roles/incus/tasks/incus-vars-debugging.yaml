@@ -19,6 +19,10 @@
     msg: "incus_branch_release: {{ incus_branch_release }}"
   when: incus_branch_release is defined
 
+- name: Debugging var | incus_repository_url
+  ansible.builtin.debug:
+    msg: "incus_repository_url: {{ incus_repository_url }}"
+
 - name: Debugging var | incus_cluster_node_dns_servers
   ansible.builtin.debug:
     msg: "incus_cluster_node_dns_servers: {{ incus_cluster_node_dns_servers }}"

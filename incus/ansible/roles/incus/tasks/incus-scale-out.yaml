@@ -1,4 +1,8 @@
 ---
+- name: Check the Incus repository settings
+  ansible.builtin.import_tasks: check-repository.yaml
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
 - name: Allow Incus to run a large number of instances
   ansible.builtin.import_tasks: server-settings.yaml
 

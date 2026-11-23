@@ -1,0 +1,24 @@
+---
+# One case of render-spec.yaml: run check-repository.yaml with the case's settings and compare
+# the outcome with repository_case.refused.
+- name: "Case | {{ repository_case.name }}"
+  block:
+    - name: Override | settings of the case
+      ansible.builtin.set_fact:
+        configVars: "{{ configVars | combine(repository_case.settings) }}"
+
+    - name: Run the repository check
+      ansible.builtin.include_tasks: ../ansible/roles/incus/tasks/check-repository.yaml
+
+    - name: Record | accepted
+      ansible.builtin.set_fact:
+        repository_check_refused: false
+  rescue:
+    - name: Record | refused
+      ansible.builtin.set_fact:
+        repository_check_refused: true
+
+- name: "Assert | {{ repository_case.name }}: {{ 'refused' if repository_case.refused else 'accepted' }}"
+  ansible.builtin.assert:
+    that:
+      - (repository_check_refused | bool) == (repository_case.refused | bool)

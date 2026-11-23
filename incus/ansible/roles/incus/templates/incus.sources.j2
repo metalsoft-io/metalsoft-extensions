@@ -1,7 +1,7 @@
 # Managed by Ansible
 Enabled: yes
 Types: deb
-URIs: https://pkgs.zabbly.com/incus/{{ incus_branch_release }}/
+URIs: {{ incus_repository_url }}
 Suites: {{ ansible_facts['distribution_release'] }}
 Components: main
 Architectures: {{ incus_host_architecture }}

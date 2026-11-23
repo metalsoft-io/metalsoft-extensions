@@ -75,6 +75,13 @@ incus_branch_release: >-
      | default(extensionInstanceVariables.branch_release | default('', true), true)
      | default('stable', true) }}
 
+# APT repository for Incus: site setting incus_repository_url. Empty (the default in extension.json):
+# Zabbly upstream for incus_branch_release. Set: a mirror, for example a MetalSoft snapshot.
+incus_repository_url: >-
+  {{ (configVars | default({})).get('incus_repository_url')
+     | default(extensionInstanceVariables.incus_repository_url | default('', true), true)
+     | default('https://pkgs.zabbly.com/incus/' ~ incus_branch_release ~ '/', true) }}
+
 incus_install_ui: >-
   {%- if extensionInstanceVariables.install_ui is defined -%}
   {{ extensionInstanceVariables.install_ui | bool }}

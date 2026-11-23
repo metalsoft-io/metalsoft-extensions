@@ -13,6 +13,7 @@
       default_ipv4:
         address: 10.0.10.11
       architecture: x86_64
+      distribution_release: noble
       fqdn: node-a.incus.example.com
     incus_cluster_join_token:
       stdout: fake-join-token
@@ -36,6 +37,107 @@
           - incus_storage_driver == 'dir'
           - incus_install_ui | bool
           - incus_cluster_enabled | bool
+
+    - name: Assert | the extension's default for incus_repository_url is empty (Zabbly upstream)
+      ansible.builtin.assert:
+        that:
+          - (lookup('file', '../extension.json') | from_json).configVars | selectattr('label', 'equalto', 'incus_repository_url') | map(attribute='defaultValue') | first == ''
+
+    - name: Render the Incus package source (default setting)
+      ansible.builtin.set_fact:
+        incus_sources: "{{ lookup('template', '../ansible/roles/incus/templates/incus.sources.j2') }}"
+
+    - name: Assert | the default installs from Zabbly upstream for branch_release
+      ansible.builtin.assert:
+        that:
+          # the whole line: one URI, nothing appended
+          - "incus_sources is search('(?m)^URIs: https://pkgs[.]zabbly[.]com/incus/stable/$')"
+          - "'Signed-By: /etc/apt/keyrings/zabbly.asc' in incus_sources"
+          - "'Suites: noble' in incus_sources"
+
+    # set_fact (not task vars) - include_vars-loaded defaults outrank task vars
+    - name: Override | a custom repository (the MetalSoft snapshot)
+      ansible.builtin.set_fact:
+        configVars: "{{ configVars | combine({'incus_repository_url': 'https://repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/'}) }}"
+
+    - name: Render the Incus package source (custom repository)
+      ansible.builtin.set_fact:
+        incus_sources_custom: "{{ lookup('template', '../ansible/roles/incus/templates/incus.sources.j2') }}"
+
+    - name: Assert | a set repository replaces Zabbly upstream
+      ansible.builtin.assert:
+        that:
+          - "incus_sources_custom is search('(?m)^URIs: https://repo[.]metalsoft[.]io/[.]apt-mirrors/zabbly-incus-stable/20261120/$')"
+          - "'pkgs.zabbly.com' not in incus_sources_custom"
+
+    - name: Override | lts-6.0 channel, no repository setting
+      ansible.builtin.set_fact:
+        configVars: "{{ configVars | combine({'incus_repository_url': '', 'branch_release': 'lts-6.0'}) }}"
+
+    - name: Assert | empty setting follows a non-stable branch_release
+      ansible.builtin.assert:
+        that:
+          - "lookup('template', '../ansible/roles/incus/templates/incus.sources.j2') is search('(?m)^URIs: https://pkgs[.]zabbly[.]com/incus/lts-6[.]0/$')"
+
+    # check-repository.yaml with each case's settings: the outcome must match "refused".
+    - name: Check | repository settings the check accepts or refuses
+      ansible.builtin.include_tasks: repository-check-case.yaml
+      loop:
+        - name: stable with the stable snapshot
+          refused: false
+          settings: {incus_repository_url: "https://repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/", branch_release: stable}
+        - name: lts-6.0 with an empty setting (Zabbly upstream lts-6.0)
+          refused: false
+          settings: {incus_repository_url: "", branch_release: lts-6.0}
+        - name: lts-6.0 with a site mirror that names no channel
+          refused: false
+          settings: {incus_repository_url: "http://mirror.site.example/zabbly/", branch_release: lts-6.0}
+        - name: lts-6.0 with the stable snapshot
+          refused: true
+          settings: {incus_repository_url: "https://repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/", branch_release: lts-6.0}
+        - name: daily with Zabbly upstream stable
+          refused: true
+          settings: {incus_repository_url: "https://pkgs.zabbly.com/incus/stable/", branch_release: daily}
+        - name: stable with Zabbly upstream daily
+          refused: true
+          settings: {incus_repository_url: "https://pkgs.zabbly.com/incus/daily", branch_release: stable}
+        - name: a newline in the URL (deb822 field injection)
+          refused: true
+          settings: {incus_repository_url: "https://repo.example/x/\nTrusted: yes", branch_release: stable}
+        - name: two URLs
+          refused: true
+          settings: {incus_repository_url: "https://a.example/x/ https://b.example/y/", branch_release: stable}
+        - name: branch_release with a capital letter (Zabbly upstream has no /incus/Stable/)
+          refused: true
+          settings: {incus_repository_url: "", branch_release: Stable}
+        - name: branch_release with a trailing space
+          refused: true
+          settings: {incus_repository_url: "", branch_release: "stable "}
+        - name: lts-7.0 with an empty setting (Zabbly upstream lts-7.0)
+          refused: false
+          settings: {incus_repository_url: "", branch_release: lts-7.0}
+        - name: a URL without a scheme
+          refused: true
+          settings: {incus_repository_url: "repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/", branch_release: stable}
+      loop_control:
+        loop_var: repository_case
+        label: "{{ repository_case.name }}"
+
+    # The cases include check-repository.yaml directly: also prove that deploy and scale-out run
+    # it before they change anything, that both write the source before they install, and that the
+    # source file is named after branch_release.
+    - name: Assert | the check runs first; deploy and scale-out write the source; its file name
+      ansible.builtin.assert:
+        that:
+          - lookup('file', '../ansible/roles/incus/tasks/main.yaml') is search('import_tasks:[ ]zabbly-apt-repo[.]yaml[\\s\\S]*import_tasks:[ ]incus-zabbly-apt-install[.]yaml')
+          - lookup('file', '../ansible/roles/incus/tasks/incus-scale-out.yaml') is search('import_tasks:[ ]zabbly-apt-repo[.]yaml[\\s\\S]*import_tasks:[ ]incus-zabbly-apt-install[.]yaml')
+          - lookup('file', '../ansible/roles/incus/tasks/main.yaml') is search('import_tasks:[ ]check-repository[.]yaml[\\s\\S]*import_tasks:[ ]server-settings[.]yaml')
+          - lookup('file', '../ansible/roles/incus/tasks/incus-scale-out.yaml') is search('import_tasks:[ ]check-repository[.]yaml[\\s\\S]*import_tasks:[ ]server-settings[.]yaml')
+          - lookup('file', '../ansible/roles/incus/tasks/zabbly-apt-repo.yaml') is search('/zabbly-incus-[{][{] incus_branch_release [}][}][.]sources')
+
+    - name: Restore | repository setting and branch from the fixture (the defaults)
+      ansible.builtin.set_fact:
+        configVars: "{{ configVars | combine({'incus_repository_url': '', 'branch_release': 'stable'}) }}"
 
     - name: Render bootstrap (first server) preseed
       ansible.builtin.set_fact:

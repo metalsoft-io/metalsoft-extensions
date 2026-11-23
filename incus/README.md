@@ -23,11 +23,12 @@ Settings are split between site-level admin config and per-deployment inputs.
 | Variable | Type | Default | Description |
 |---|---|---|---|
 | `DNSResolvers` | String | `1.1.1.1` | Comma-separated DNS resolver IPs handed to every cluster node (systemd-resolved). |
-| `branch_release` | String | `stable` | Zabbly package channel: `daily`, `stable` or `lts-6.0`. |
+| `branch_release` | String | `stable` | Zabbly package channel: `daily`, `stable` or `lts-6.0`. Selects the repository while `incus_repository_url` is empty (the default); always names the source file (`zabbly-incus-<branch>.sources`) and the `incus_release` output. Must match the channel that `incus_repository_url` names, if it names one (`/zabbly-incus-<channel>/` or `/incus/<channel>/`; MetalSoft's snapshots name `stable`): the deploy stops otherwise. |
+| `incus_repository_url` | String | empty | APT repository Incus is installed from. Empty (the default): Zabbly upstream, `https://pkgs.zabbly.com/incus/<branch_release>/`. Set it to install from a mirror instead, for example MetalSoft's snapshot (see "Package repository"). |
 | `images_auto_update_interval` | Integer | `6` | Hours between cached image auto-updates ([docs](https://linuxcontainers.org/incus/docs/main/image-handling/#auto-update)). |
 | `core_https_port` | Integer | `8443` | HTTPS port the Incus API listens on. |
 | `separate_api_and_cluster_traffic` | Boolean | `false` | When true, cluster traffic uses a dedicated port (API port + 1) ([docs](https://linuxcontainers.org/incus/docs/main/howto/cluster_config_networks/#separate-rest-api-and-clustering-networks)). |
-| `cluster_member_upgrade_enabled` | Boolean | `false` | When true, edit deployments apply OS/package upgrades to existing members one node at a time before scaling. Enable it before scaling out an aged cluster, or the new node's newer Incus version fails the join version check. |
+| `cluster_member_upgrade_enabled` | Boolean | `false` | When true, edit deployments apply OS/package upgrades to existing members one node at a time before scaling. It does not bring a multi-member cluster to a newer Incus minor release (an upgraded member stops serving its API until every member runs that release, so the one-at-a-time upgrade fails at the first member), and it does not change a member's package source (see "Package repository"). |
 | `cluster_member_force_remove_enabled` | Boolean | `false` | When true, scale-in force-removes a member that stays offline after evacuation. |
 | `vars_debugging_enabled` | Boolean | `false` | Print the resolved extension variables during playbook runs. |
 
@@ -55,7 +56,7 @@ Published after every successful deployment/edit and visible on the extension in
 | `cluster_members` | Comma-separated FQDNs of the current cluster members |
 | `cluster_member_count` | Number of cluster members |
 | `cluster_storage_driver` | Storage driver of the default pool |
-| `incus_release` | Zabbly channel the cluster tracks |
+| `incus_release` | Zabbly channel (`branch_release`); with a snapshot in `incus_repository_url`, Incus stays at that snapshot's version |
 | `browser_client_certificate` | PEM user (browser) client certificate trusted by the cluster |
 | `browser_client_certificate_key` | PEM private key for the browser certificate (see security note below) |
 
@@ -101,9 +102,91 @@ then `incus config trust remove <fingerprint>` and delete
 
 Edit the deployment's `cluster_instance_count`. The platform populates the `incus_scale_out` / `incus_scale_in` inventory groups and runs `scale.yaml` at both onEdit stages: scale-in nodes are evacuated and removed at preDeploy (while still reachable), scale-out nodes are installed and joined at postDeploy. When `cluster_member_upgrade_enabled` is true, `upgrade.yaml` upgrades the surviving members (serially) before the scale-out join.
 
+## Package repository
+
+By default Incus comes from Zabbly upstream, `https://pkgs.zabbly.com/incus/<branch_release>/`
+(site setting `incus_repository_url` left empty). Zabbly keeps only its newest builds, so nodes
+deployed at different times can get different Incus versions, and a node whose Incus minor release
+differs from the cluster's cannot join it: once Zabbly has moved on, scaling out an older cluster
+fails at the join version check. Then set `incus_repository_url` to a snapshot that has the
+cluster's version, if one exists, or upgrade every member together by hand first.
+
+To install from another repository, set `incus_repository_url`:
+
+- MetalSoft's dated snapshot of Zabbly stable,
+  `https://repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/` (Incus 7.6, with every
+  suite Zabbly stable publishes for amd64 and arm64: Ubuntu 22.04, 24.04 and 26.04, Debian 12 and
+  13). A snapshot is a byte-for-byte copy of upstream on one date, with Zabbly's own signed release
+  files, so the bundled `zabbly.asc` verifies it unchanged, and every node deployed with the same
+  setting gets the same Incus version. Keep `branch_release` at `stable` with it.
+- A mirror at the site: any URL that serves the same layout (`dists/`, `pool/`) with Zabbly's
+  signatures, such as a byte-for-byte copy. A mirror that re-signs with its own key does not work:
+  the source always uses the bundled `zabbly.asc`.
+
+A changed setting applies to nodes installed after the change (new deployments and scale-out).
+`upgrade.yaml` (`cluster_member_upgrade_enabled`) does not rewrite the source file, so it upgrades
+a member only as far as the repository that member was installed from.
+
+Before it changes anything on a node, the deploy and scale-out check the setting: it must be one
+`http://` or `https://` URL, and a channel the URL names (`/zabbly-incus-<channel>/` or
+`/incus/<channel>/`) must equal `branch_release`.
+
+The GB200 OS template (`os-templates`: `Ubuntu/24.04/incus-gb200-nvidia`) installs and holds Incus
+from the snapshot before the extension runs. On sites with those hosts, set `incus_repository_url`
+to the template's `INCUS_REPO_URL`: the extension rewrites the same source file
+(`/etc/apt/sources.list.d/zabbly-incus-stable.sources`). Left empty, those hosts keep the Incus
+they were installed with (held; from template 1.4.2 also its web UI), but their source points at
+upstream: they then also need `pkgs.zabbly.com`, and nothing refuses a `branch_release` other than
+`stable`. The setting applies to every Incus deployment at the site. The template's `README.md`
+explains how the snapshots are made.
+
+### Mirroring Zabbly to your own repository server
+
+A mirror for `incus_repository_url` must:
+
+- keep Zabbly's signed release files unchanged (the source always verifies with the bundled
+  `zabbly.asc`), so tools that re-sign with their own key, such as aptly or reprepro, do not work;
+- keep the `dists/` and `pool/` layout, and be served over HTTP or HTTPS by any web server;
+- hold every Ubuntu release and architecture your nodes use. Zabbly stable publishes jammy, noble
+  and resolute (plus bookworm and trixie for Debian), for amd64 and arm64.
+
+Two tools that do this:
+
+- `mirror-apt-snapshot.py` (python3 and gpgv only), in the os-templates repository under
+  `Ubuntu/24.04/incus-gb200-nvidia/`; MetalSoft's snapshots are made with it. It makes a dated,
+  read-only copy: it checks the signature before anything else and every file's SHA256, and
+  publishes the directory only when everything checked out. `zabbly.asc` is
+  `ansible/roles/incus/files/zabbly.asc` in this extension.
+
+  ```bash
+  ./mirror-apt-snapshot.py --url https://pkgs.zabbly.com/incus/stable/ \
+      --suite jammy --suite noble --suite resolute --arch amd64 --arch arm64 \
+      --key zabbly.asc --dest /var/www/apt/zabbly-incus-stable/20261201
+  ```
+
+  Then set `incus_repository_url` to `https://<server>/apt/zabbly-incus-stable/20261201/`. To get
+  exactly the Incus that MetalSoft's snapshot holds, use that snapshot as `--url`
+  (`https://repo.metalsoft.io/.apt-mirrors/zabbly-incus-stable/20261120/`). Repeat with a new
+  `--dest` date for a newer copy; a finished copy is never changed.
+
+- `debmirror` (Debian/Ubuntu package) also keeps Zabbly's release files and checks them, but
+  updates one directory in place:
+
+  ```bash
+  gpg --dearmor -o zabbly.gpg zabbly.asc
+  debmirror --method=https --host=pkgs.zabbly.com --root=incus/stable \
+      --dist=jammy,noble,resolute --section=main --arch=amd64,arm64 --nosource \
+      --keyring=zabbly.gpg --rsync-extra=none --diff=none /var/www/apt/zabbly-incus-stable
+  ```
+
+A copy that is updated in place, such as debmirror run on a timer, behaves like upstream: nodes
+installed at different times can get different Incus versions. With dated copies, the version
+changes only when `incus_repository_url` is pointed at a newer one, and the old directory must stay
+while clusters built from it may still scale out.
+
 ## Tests
 
-An offline render/contract harness lives in `tests/` — it validates the configVars fallback chains, both bootstrap-preseed template branches, the join preseed, and the full outputs payload without any infrastructure:
+An offline render/contract harness lives in `tests/` — it validates the configVars fallback chains, the Incus package source and the repository checks, both bootstrap-preseed template branches, the join preseed, and the full outputs payload without any infrastructure:
 
 ```bash
 cd tests && ansible-playbook -i inventory.yaml render-spec.yaml
@@ -117,11 +200,11 @@ Playbooks must sit at the archive root (no wrapper directory), and never ship a 
 
 ```bash
 cd ansible
-zip -r ../incus-v1.1.4.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
-unzip -l ../incus-v1.1.4.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
+zip -r ../incus-v1.1.5.zip . -x '*.DS_Store' -x '*.zip' -x 'README.md'
+unzip -l ../incus-v1.1.5.zip   # deploy.yaml, scale.yaml, upgrade.yaml, roles/ at top level
 ```
 
-Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.4.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
+Upload to `https://repo.metalsoft.io/.extensions_ms/incus/incus-v1.1.5.zip` (the URL in `extension.json`). Bump the filename version on every change to dodge stale caching.
 
 ### Execution environment image
 

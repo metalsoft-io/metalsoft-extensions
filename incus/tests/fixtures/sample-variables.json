@@ -2,6 +2,7 @@
     "configVars": {
         "DNSResolvers": "10.0.0.10,10.0.0.11",
         "branch_release": "stable",
+        "incus_repository_url": "",
         "images_auto_update_interval": 6,
         "core_https_port": 8443,
         "separate_api_and_cluster_traffic": false,

@@ -1,0 +1,34 @@
+---
+# Imported first by main.yaml and incus-scale-out.yaml: a refused setting changes nothing on the node.
+
+# branch_release names the source file and, while incus_repository_url is empty, the repository:
+# a typo ("Stable", a stray space) would otherwise give a 404 or a malformed URL at apt time.
+- name: Check | branch_release is a Zabbly channel
+  ansible.builtin.assert:
+    that: incus_branch_release is regex('^(stable|daily|lts-[0-9]+[.][0-9]+)\\Z')
+    fail_msg: "branch_release ({{ incus_branch_release | to_json }}) must be stable, daily or lts-<version> (for example lts-6.0)"
+    quiet: true
+
+# One http(s) URL, as in the GB200 OS template: white space would make it several URIs, a newline
+# would add deb822 fields (for example "Trusted: yes").
+- name: Check | incus_repository_url is one http(s) URL
+  ansible.builtin.assert:
+    that: incus_repository_url is regex('^https?://[^\\s/]+\\S*\\Z')
+    fail_msg: "incus_repository_url ({{ incus_repository_url | to_json }}) must be one http:// or https:// URL"
+    quiet: true
+
+# A URL that names a Zabbly channel - MetalSoft's snapshots (.../zabbly-incus-<channel>/<date>/),
+# Zabbly upstream or a mirror with its layout (.../incus/<channel>/) - must match branch_release:
+# otherwise the nodes get that channel under the branch's name (source file, incus_release output).
+# URLs that name no channel are not checked.
+- name: Check | branch_release matches the Incus repository
+  vars:
+    incus_repository_channel: >-
+      {{ incus_repository_url | regex_findall('(?:/zabbly-incus-|/incus/)(stable|daily|lts-[0-9.]+)(?:/|$)') | first | default('') }}
+  ansible.builtin.assert:
+    that: incus_repository_channel in ['', incus_branch_release]
+    fail_msg: >-
+      branch_release is {{ incus_branch_release }}, but incus_repository_url ({{ incus_repository_url }})
+      is the {{ incus_repository_channel }} channel: clear incus_repository_url, or set branch_release
+      to {{ incus_repository_channel }}.
+    quiet: true

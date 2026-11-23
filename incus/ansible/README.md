@@ -14,7 +14,7 @@ The current implementation provides the initial deployment of the Incus cluster 
 
 Site-level settings arrive from the Extension Site Config as `configVars.<label>`; per-deployment settings arrive as `extensionInstanceVariables.<label>`. All consumption goes through `roles/incus/defaults/main.yaml`, which resolves configVars first and keeps a legacy `extensionInstanceVariables` fallback so the bundle also works against instances deployed from the pre-configVars definition.
 
-Site config (`configVars`): `DNSResolvers`, `branch_release`, `images_auto_update_interval`, `core_https_port`, `separate_api_and_cluster_traffic`, `cluster_member_upgrade_enabled`, `cluster_member_force_remove_enabled`, `vars_debugging_enabled`.
+Site config (`configVars`): `DNSResolvers`, `branch_release`, `incus_repository_url`, `images_auto_update_interval`, `core_https_port`, `separate_api_and_cluster_traffic`, `cluster_member_upgrade_enabled`, `cluster_member_force_remove_enabled`, `vars_debugging_enabled`.
 
 Per-deployment inputs: `cluster_server_type`, `cluster_instance_count`, `cluster_node_os_template`, `cluster_enabled`, `install_ui`, `storage_driver`.
 
